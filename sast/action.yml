@@ -1,0 +1,511 @@
+name: SAST Scanners action
+description: Run Static Analysis and summarize results
+
+inputs:
+  wait_pipeline:
+    required: false
+    default: "true"
+  break_on:
+    required: false
+    default: "HIGH"
+  enable_clippy:
+    required: false
+    default: "false"
+  sonarqube_opts:
+    required: false
+    default: ""
+  override_branch:
+    required: false
+    default: ""
+  sonar_url:
+    required: false
+    default: ""
+  sonar_token:
+    required: false
+    default: ""
+  dd_url:
+    required: false
+    default: ""
+  dd_token:
+    required: false
+    default: ""
+  ignore_type:
+    required: false
+    default: "sonarqube"
+
+runs:
+  using: composite
+  steps:
+    - name: Detect Rust
+      id: rust
+      shell: bash
+      run: |
+        if find . -name Cargo.toml -print -quit | grep -q .; then
+          echo "found=true" >> $GITHUB_OUTPUT
+        else
+          echo "found=false" >> $GITHUB_OUTPUT
+        fi
+    - name: Detect Java
+      id: java
+      shell: bash
+      run: |
+        if find . -maxdepth 2 -name "pom.xml" -o -name "build.gradle" -o -name "build.gradle.kts" | grep -q .; then
+          echo "found=true" >> $GITHUB_OUTPUT
+        else
+          echo "found=false" >> $GITHUB_OUTPUT
+        fi
+    - name: Install Rust toolchain
+      if: steps.rust.outputs.found == 'true'
+      shell: bash
+      run: |
+        set -e
+        if ! command -v cargo >/dev/null 2>&1; then
+          echo "Installing Rust via rustup..."
+          curl https://sh.rustup.rs -sSf | sh -s -- -y
+        fi
+        export PATH="$HOME/.cargo/bin:$PATH"
+        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+        rustup component add clippy
+    - name: Setup environment
+      if: always()
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+      with:
+        cache: 'pip'
+        python-version: ''
+    - name: Normalize ignore files & install cosign
+      shell: bash
+      env:
+        IGNORE_TYPE: ${{ inputs.ignore_type || 'all' }}
+      run: |
+        # Install cosign
+        COSIGN_VERSION=3.1.1
+        COSIGN_SHA=ae1ecd212663f3693ad9edf8b1a183900c9a52d3155ba6e354237f9a0f6463fc
+        if [[ ! -f "/usr/local/bin/cosign" ]] || ! echo "$COSIGN_SHA /usr/local/bin/cosign" | sha256sum -c --status; then
+          sudo curl -sfL https://github.com/sigstore/cosign/releases/download/v${COSIGN_VERSION}/cosign-linux-amd64 -o /usr/local/bin/cosign
+        fi
+        echo "$COSIGN_SHA /usr/local/bin/cosign" | sha256sum -c --status
+        sudo chmod +x /usr/local/bin/cosign
+
+        export FILE_SEMGREP=".semgrepignore"
+        export FILE_SONAR="sonar-project.properties"
+        sonar_to_semgrep() {
+          local file="$FILE_SONAR"
+          if [[ ! -f "$file" ]]; then
+            echo "File not found: $file"
+            exit 1
+          fi
+          exclusions=$(
+            awk '
+              BEGIN { collecting=0 }
+              /^[[:space:]]*#/ { next }
+
+              /^(sonar\.exclusions|sonar\.test\.exclusions|sonar\.coverage\.exclusions|sonar\.tests)=/ {
+                collecting=1
+                sub(/^[^=]+= */, "")
+              }
+
+              collecting {
+                gsub(/\\$/, "")   # remove trailing backslash
+                printf "%s", $0
+
+                if ($0 !~ /\\$/) {
+                  printf "\n"
+                  collecting=0
+                }
+              }
+            ' "$file" \
+            | tr ',' '\n' \
+            | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
+            | grep -v '^$' \
+            | sort -u
+          )
+
+          {
+            echo "# Auto-generated from sonar-project.properties"
+            echo ""
+            echo "$exclusions"
+          } > $FILE_SEMGREP
+
+          echo "Generated $FILE_SEMGREP"
+        }
+
+        semgrep_to_sonar() {
+          local file="$FILE_SEMGREP"
+
+          if [[ ! -f "$file" ]]; then
+            echo "File not found: $file"
+            exit 1
+          fi
+
+          exclusions=$(
+            grep -v '^[[:space:]]*#' "$file" \
+            | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
+            | grep -v '^$' \
+            | sort -u \
+            | paste -sd "," -
+          )
+
+          {
+            echo "# Auto-generated from $FILE_SEMGREP"
+            echo ""
+            echo "sonar.exclusions=$exclusions"
+          } > $FILE_SONAR
+
+          echo "Generated $FILE_SONAR"
+        }
+        if [[ -f "$FILE_SEMGREP" && ! -f "$FILE_SONAR" ]]; then
+            semgrep_to_sonar
+        fi
+        if [[ -f "$FILE_SONAR" && ! -f "$FILE_SEMGREP" ]]; then
+            sonar_to_semgrep
+        fi
+    - name: Run opengrep
+      if: always()
+      shell: bash
+      run: |
+        OPENGREP_VERSION=1.23.0
+        OPENGREP_SHA=1f06548af379ab6080698a609612890ffad2d92dc2172f1e97d38d48096d5ef8
+        mkdir -p "$HOME/.local/bin"
+        if [[ ! -f "$HOME/.local/bin/opengrep" ]] || ! echo "$OPENGREP_SHA  $HOME/.local/bin/opengrep" | sha256sum -c --status ; then
+          curl -sfL "https://github.com/opengrep/opengrep/releases/download/v${OPENGREP_VERSION}/opengrep_manylinux_x86" -o "$HOME/.local/bin/opengrep"
+        fi
+        echo "$OPENGREP_SHA $HOME/.local/bin/opengrep" | sha256sum -c --status
+
+        curl -sfL "https://github.com/opengrep/opengrep/releases/download/v${OPENGREP_VERSION}/opengrep_manylinux_x86.sig" -o "$HOME/.local/bin/opengrep.sig"
+        echo "61b2beb453f965c0f37c799964fa5cbe556bd9042141a7b44e8dcd01e9eab56e $HOME/.local/bin/opengrep.sig" | sha256sum -c --status
+
+        curl -sfL "https://github.com/opengrep/opengrep/releases/download/v${OPENGREP_VERSION}/opengrep_manylinux_x86.cert" -o "$HOME/.local/bin/opengrep.cert"
+        echo "9eba8a14e840790e1e7b456e2b7b83a63ad7f1b6b3fd46989881db64c87755b0 $HOME/.local/bin/opengrep.cert" | sha256sum -c --status
+
+        cosign verify-blob \
+          --cert "$HOME/.local/bin/opengrep.cert" \
+          --signature "$HOME/.local/bin/opengrep.sig" \
+          --certificate-identity-regexp "https://github.com/opengrep/opengrep.+" \
+          --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+          "$HOME/.local/bin/opengrep"
+        chmod +x $HOME/.local/bin/opengrep
+        $HOME/.local/bin/opengrep scan . --sarif-output=all-opengrep-sarif.sarif \
+          --opengrep-ignore-pattern NOSONAR
+        jq -c '.runs[].results |= map(select((.suppressions // [] | map(.kind == "inSource") | any | not)))' all-opengrep-sarif.sarif > opengrep-sarif.sarif
+        rm all-opengrep-sarif.sarif
+    - name: Run Vulnerability scan & collect sbom
+      if: always()
+      shell: bash
+      env:
+        DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        CURRENT_BRANCH: ${{ github.ref_name }}
+        DD_URL: ${{ inputs.dd_url || '' }}
+        DD_API_TOKEN: ${{ inputs.dd_token || '' }}
+        PRODUCT_NAME: ${{ github.repository }}
+        ENGAGEMENT_NAME: "${{ inputs.override_branch || github.ref_name }}"
+      run: |
+        touch grype-results.sarif
+        # Install syft
+        SYFT_VERSION=1.46.0
+        SYFT_FILE="syft_${SYFT_VERSION}_linux_amd64.tar.gz"
+        SYFT_BASE_URL="https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/"
+        if [[ ! -f "/usr/local/bin/syft" ]] ; then
+          curl -sfL "${SYFT_BASE_URL}${SYFT_FILE}" -o "${SYFT_FILE}"
+          echo "d654f678b709eb53c393d38519d5ed7d2e57205529404018614cfefa0fb2b5ca ${SYFT_FILE}" | sha256sum -c --status
+          sudo rm -rf /usr/local/bin/syft && sudo tar -C /usr/local/bin -xzf "${SYFT_FILE}"
+        fi
+        curl -sfL "${SYFT_BASE_URL}syft_${SYFT_VERSION}_checksums.txt.pem" -o checksums.txt.pem
+        echo "9cbba2c86a26e4e2ead8d45d6831369dfb63e507b2062605cc108e42946fc029 checksums.txt.pem" | sha256sum -c --status
+        curl -sfL "${SYFT_BASE_URL}syft_${SYFT_VERSION}_checksums.txt.sig" -o checksums.txt.sig
+        echo "66711110e4d351b66ad1e8bcae1057dbad1a7d1dfbae57d65c94fb23f59acf49 checksums.txt.sig" | sha256sum -c --status
+        curl -sfL "${SYFT_BASE_URL}syft_${SYFT_VERSION}_checksums.txt" -o checksums.txt
+        echo "2fefc202b2eccab83888cc91f5a364a75df0dd777afbbae5b5e23ebd93d81ac6 checksums.txt" | sha256sum -c --status
+
+        cosign verify-blob ./checksums.txt \
+          --certificate ./checksums.txt.pem \
+          --signature ./checksums.txt.sig \
+          --certificate-identity-regexp 'https://github\.com/anchore/syft/\.github/workflows/.+' \
+          --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+
+        sudo chmod +x /usr/local/bin/syft
+
+        # Install grype
+        GRYPE_VERSION=0.115.0
+        GRYPE_FILE="grype_${GRYPE_VERSION}_linux_amd64.tar.gz"
+        GRYPE_BASE_URL="https://github.com/anchore/grype/releases/download/v${GRYPE_VERSION}/"
+        if [[ ! -f "/usr/local/bin/grype" ]]; then
+          curl -sfL "${GRYPE_BASE_URL}${GRYPE_FILE}" -o "${GRYPE_FILE}"
+          echo "3fad92940650e514c0aa2dad83526942a055e210cec09a8a59d9c024adc2b90e ${GRYPE_FILE}" | sha256sum -c --status
+          sudo rm -rf /usr/local/bin/grype && sudo tar -C /usr/local/bin -xzf "${GRYPE_FILE}"
+        fi
+        curl -sfL "${GRYPE_BASE_URL}grype_${GRYPE_VERSION}_checksums.txt.pem" -o checksums2.txt.pem
+        echo "86fd326dea67e29c237fd257fa2dfda127be3192c2ccaeed26b6ebb9bf3387a3 checksums2.txt.pem" | sha256sum -c --status
+        curl -sfL "${GRYPE_BASE_URL}grype_${GRYPE_VERSION}_checksums.txt.sig" -o checksums2.txt.sig
+        echo "5048c3b0bee9292c23fe1c19dbd52797b3881683db40689868e937f973ec60a7 checksums2.txt.sig" | sha256sum -c --status
+        curl -sfL "${GRYPE_BASE_URL}grype_${GRYPE_VERSION}_checksums.txt" -o checksums2.txt
+        echo "dce654b6f5185d6e4e31cbdd966056562808c0d82b0acc233e9af03e1d4de2b8 checksums2.txt" | sha256sum -c --status
+
+        cosign verify-blob ./checksums2.txt \
+          --certificate ./checksums2.txt.pem \
+          --signature ./checksums2.txt.sig \
+          --certificate-identity-regexp 'https://github\.com/anchore/grype/\.github/workflows/.+' \
+          --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+        sudo chmod +x /usr/local/bin/grype
+        syft . -o cyclonedx-json=cdx.json && grype sbom:cdx.json -o table -o sarif=grype-results.sarif -o cyclonedx-json=cdx2.json -o json=grype-report.json
+        if [ -n "$DD_API_TOKEN" ] && [ "$CURRENT_BRANCH" = "$DEFAULT_BRANCH" ]; then
+          cat cdx2.json | jq '
+            .vulnerabilities += [
+              .components[] | {
+                "id": ("INFO-" + .name),
+                "source": { "name": "Not-A-Vuln" },
+                "ratings": [{
+                  "severity": "info",
+                  "method": "other"
+                }],
+                "description": "This is just an info severity for tracking packages.",
+                "affects": [{ "ref": (.["bom-ref"] // .purl) }]
+              }
+            ]' > bom_with_info.json
+          echo "Uploading to defectdojo..."
+          PRODUCT_INFO=$(curl -s -X GET "$DD_URL/api/v2/products/?name=${PRODUCT_NAME}" \
+            -H "Authorization: Token $DD_API_TOKEN")
+          PRODUCT_INFO=$(echo -n "${PRODUCT_INFO}" | tr -d '\000-\037')
+          COUNT=$(echo "$PRODUCT_INFO" | jq '.count')
+
+          if [ "$COUNT" -gt 0 ]; then
+              PRODUCT_TYPE_ID=$(echo "$PRODUCT_INFO" | jq '.results[0].prod_type')
+              PARAM_TYPE="product_type=$PRODUCT_TYPE_ID"
+          else
+              echo "Creating product on defectdojo"
+              PARAM_TYPE="product_type_name=Uncategorized"
+          fi
+          # Import SBOM as INFO
+          RESPONSE=$(curl -s -X POST "$DD_URL/api/v2/reimport-scan/" \
+            -H "Authorization: Token $DD_API_TOKEN" \
+            -H "Content-Type: multipart/form-data" \
+            -F "active=true" \
+            -F "verified=true" \
+            -F "scan_type=CycloneDX Scan" \
+            -F "product_name=$PRODUCT_NAME" \
+            -F "engagement_name=$ENGAGEMENT_NAME" \
+            -F "file=@bom_with_info.json" \
+            -F "${PARAM_TYPE}" \
+            -F "auto_create_context=true" \
+            -F "close_old_findings=true")
+          if echo "$RESPONSE" | grep -q '"test":'; then
+              echo "Scan reimported"
+          else
+              echo "Error reimporting to dojo:"
+              echo "$RESPONSE"
+          fi
+          # Import Grype output
+          RESPONSE=$(curl -s -X POST "$DD_URL/api/v2/reimport-scan/" \
+            -H "Authorization: Token $DD_API_TOKEN" \
+            -H "Content-Type: multipart/form-data" \
+            -F "active=true" \
+            -F "verified=true" \
+            -F "scan_type=Anchore Grype" \
+            -F "product_name=$PRODUCT_NAME" \
+            -F "engagement_name=$ENGAGEMENT_NAME" \
+            -F "file=@grype-report.json" \
+            -F "${PARAM_TYPE}" \
+            -F "auto_create_context=true" \
+            -F "close_old_findings=true")
+          if echo "$RESPONSE" | grep -q '"test":'; then
+              echo "Grype scan reimported"
+          else
+              echo "Error reimporting grype to dojo:"
+              echo "$RESPONSE"
+          fi
+        fi
+    - name: 'Set up OpenJDK (Temurin) 24'
+      if: steps.java.outputs.found == 'true'
+      uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
+      with:
+        distribution: 'temurin'
+        java-version: '24'
+    - name: Set up Maven
+      if: steps.java.outputs.found == 'true'
+      uses: stCarolas/setup-maven@12eb41b233df95d49b0c11fc1b5bc8312e5d4ce0
+      with:
+        maven-version: 3.9.12
+    - name: Build Classes
+      if: steps.java.outputs.found == 'true'
+      shell: bash
+      run: mvn clean compile
+    - name: SonarQube
+      if: inputs.sonar_url && inputs.sonar_token
+      # NOSONAR: generic.secrets.security.detected-sonarqube-docs-api-key.detected-sonarqube-docs-api-key
+      uses: SonarSource/sonarqube-scan-action@59db25f34e16620e48ab4bb9e4a5dce155cb5432 # v8.0.0
+      with:
+        args: >
+          "-Dsonar.projectName=${{ github.repository }}"
+          -Dsonar.projectKey=repo:${{ github.repository_id }}
+          -Dsonar.qualitygate.wait=${{ inputs.wait_pipeline || 'true' }}
+          -Dsonar.sarifReportPaths=grype-results.sarif,opengrep-sarif.sarif
+          ${{ github.event_name == 'pull_request' && 
+          format('-Dsonar.pullrequest.key={0} -Dsonar.pullrequest.branch={1} -Dsonar.pullrequest.base={2}',
+          github.event.pull_request.number,
+          github.event.pull_request.head.ref,
+          github.event.pull_request.base.ref) ||
+          format('-Dsonar.branch.name={0}', inputs.override_branch || github.ref_name )
+          }}
+          -Dsonar.rust.clippy.enabled=${{ inputs.enable_clippy || 'false' }}
+          ${{ steps.java.outputs.found == 'true' && '-Dsonar.java.binaries=**/target/classes' || '' }}
+          ${{ inputs.sonarqube_opts }}
+      env:
+        SONAR_TOKEN: ${{ inputs.sonar_token }}
+        SONAR_HOST_URL: ${{ inputs.sonar_url }}
+    - name: Showing issues to summary
+      if: always()
+      shell: bash
+      env:
+        SONAR_TOKEN: ${{ inputs.sonar_token }}
+        PROJECT_KEY: repo:${{ github.repository_id }}
+        BREAK_ON: ${{ inputs.break_on || 'HIGH' }}
+        BRANCH_KEY: ${{ github.event_name == 'pull_request' && 'pullRequest' || 'branch' }}
+        BRANCH_VALUE: ${{ github.event_name == 'pull_request' && github.event.pull_request.number || (inputs.override_branch || github.ref_name) }}
+        SONAR_HOST_URL: ${{ inputs.sonar_url }}
+        SONAR_HOST_URL_PUBLIC: ${{ inputs.sonar_url }}
+      run: |
+        MAX_RESULTS=200
+
+        CE_TASK_ID=$(grep ceTaskId .scannerwork/report-task.txt | cut -d= -f2)
+        for i in {1..10}; do
+          STATUS=$(curl -s -u $SONAR_TOKEN: \
+            "$SONAR_HOST_URL/api/ce/task?id=$CE_TASK_ID" | jq -r '.task.status')
+
+          [ "$STATUS" = "SUCCESS" ] && break
+          [ "$STATUS" = "FAILED" ] && exit 1
+
+          sleep 5
+        done
+        for i in {1..6}; do
+          COUNT=$(curl -s -u $SONAR_TOKEN: \
+            "$SONAR_HOST_URL/api/issues/search?components=$PROJECT_KEY&${BRANCH_KEY}=${BRANCH_VALUE}&issueStatuses=OPEN&ps=1" \
+            | jq '.total')
+
+          [ "$COUNT" -ge 0 ] && break
+          sleep 10
+        done
+
+        RESPONSE=$(curl -s -u $SONAR_TOKEN: \
+          "$SONAR_HOST_URL/api/issues/search?components=$PROJECT_KEY&${BRANCH_KEY}=${BRANCH_VALUE}&issueStatuses=OPEN&types=VULNERABILITY&ps=$MAX_RESULTS")
+
+        TOTAL=$(echo "$RESPONSE" | jq '.total')
+
+        if [ "$TOTAL" -eq 0 ]; then
+            echo "No new security issues" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+        fi
+
+        TOTAL_CRITICAL=$(echo $RESPONSE | jq -r '.issues | map(select(.severity == "CRITICAL")) | length')
+        TOTAL_HIGH=$(echo $RESPONSE | jq -r '.issues | map(select(.severity == "HIGH")) | length')
+        TOTAL_MEDIUM=$(echo $RESPONSE | jq -r '.issues | map(select(.severity == "MEDIUM")) | length')
+        TOTAL_LOW=$(echo $RESPONSE | jq -r '.issues | map(select(.severity == "LOW")) | length')
+
+        SONAR_ISSUES=$(echo "$RESPONSE" | jq '
+            .issues
+            | unique_by(.key)
+            | map(select(.rule | contains("external_grype") | not ))
+        ')
+
+        if [ "$(echo "$SONAR_ISSUES" | jq 'length')" -gt 0 ]; then
+            echo "### Sonar Security Findings" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Issue | File | Rule | Severity |" >> $GITHUB_STEP_SUMMARY
+            echo "|------|------|------|-----------|" >> $GITHUB_STEP_SUMMARY
+
+            echo "$SONAR_ISSUES" | jq -r '
+            .[] |
+            "| [" + .message + "]('"$SONAR_HOST_URL_PUBLIC"'/project/issues?id='"$PROJECT_KEY"'&open=" + .key + ") | " +
+            (.component | split(":")[-1]) + ":"+((.line // "please check output") | tostring)+" | " +
+            .rule + " |" + .severity +" |"
+            ' >> $GITHUB_STEP_SUMMARY
+
+            echo "" >> $GITHUB_STEP_SUMMARY
+        fi
+
+        GRYPE_ISSUES=$(cat grype-results.sarif | jq '.runs[0].tool.driver.rules')
+        if [[ -n "$GRYPE_ISSUES" && "$GRYPE_ISSUES" != "null" && "$GRYPE_ISSUES" != "[]" && "$(echo "$GRYPE_ISSUES" | jq 'length')" -gt 0 ]]; then
+            echo "### Dependency Vulnerabilities" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Advisory | Package | Installed | Fixed | Severity | File |" >> $GITHUB_STEP_SUMMARY
+            echo "|:---|:---|:---|:---|:---|:---|" >> $GITHUB_STEP_SUMMARY
+
+            echo "$GRYPE_ISSUES" | jq -r '
+            def map_severity:
+            {
+                "critical": "CRITICAL",
+                "high": "HIGH",
+                "medium": "MEDIUM",
+                "low": "LOW"
+            }[.] // .;
+
+            .[] |
+            # Extração segura dos dados via Regex
+            (.help.text | capture("Severity: (?<s>[^\\n]+)").s) as $raw_sev |
+            (.help.text | capture("Link: \\[[^\\]]+\\]\\((?<url>[^\\)]+)\\)").url) as $url |
+            (.help.text | capture("Package: (?<p>[^\\n]+)").p) as $pkg |
+            (.help.text | capture("Version: (?<v>[^\\n]+)").v) as $ver |
+            (.help.text | capture("Fix Version: (?<f>[^\\n]+)").f) as $fix |
+            (.help.text | capture("Location: (?<l>[^\\n]+)").l) as $loc |
+            (.properties["security-severity"] // "N/A") as $cvss |
+            
+            # Formatação da Severidade
+            (($raw_sev | map_severity) + " (" + ($cvss|tostring) + ")") as $final_sev |
+
+            # Montagem da linha na ordem correta do cabeçalho
+            "| [" + .id + "](" + $url + ") | " + 
+            $pkg + " | " + 
+            $ver + " | " + 
+            $fix + " | " + 
+            $final_sev + " | " + 
+            $loc + " |"
+            ' >> $GITHUB_STEP_SUMMARY
+
+            echo "" >> $GITHUB_STEP_SUMMARY
+        fi
+
+        HOTSPOTS=$(curl -s -u $SONAR_TOKEN: \
+            "$SONAR_HOST_URL/api/hotspots/search?project=$PROJECT_KEY&${BRANCH_KEY}=${BRANCH_VALUE}&status=TO_REVIEW&ps=$MAX_RESULTS")
+        HOTSPOT_COUNT=$(echo "$HOTSPOTS" | jq '.paging.total')
+
+        HOTSPOTS=$(echo $HOTSPOTS | jq '.hotspots')
+
+        if [ "$HOTSPOT_COUNT" -gt 0 ]; then
+            echo "### Security Hotspots (Review Required)" >> $GITHUB_STEP_SUMMARY
+            echo "| Hotspot | File | Category |" >> $GITHUB_STEP_SUMMARY
+            echo "|---------|------|----------|" >> $GITHUB_STEP_SUMMARY
+
+            echo "$HOTSPOTS" | jq -r \
+            --arg host "$SONAR_HOST_URL_PUBLIC" \
+            --arg project "$PROJECT_KEY" \
+            --arg branch_key "$BRANCH_KEY" \
+            --arg branch_value "$BRANCH_VALUE" '
+            .[] |
+            "| [" + .message + "](" +
+                $host + "/security_hotspots?hotspots=" + .key +
+                "&"+$branch_key+"=" + $branch_value + "&id=" + $project +
+            ") | " +
+            (.component | split(":")[-1]) + ":"+((.line // "-") | tostring)+" | " +
+            .securityCategory + " | "
+            ' >> $GITHUB_STEP_SUMMARY
+
+            echo "" >> $GITHUB_STEP_SUMMARY
+        else
+            echo "### Security Hotspots" >> $GITHUB_STEP_SUMMARY
+            echo "No new security hotspots" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+        fi
+
+        echo "[View all new security issues in SonarQube]($SONAR_HOST_URL_PUBLIC/project/issues?id=$PROJECT_KEY&${BRANCH_KEY}=${BRANCH_VALUE}&types=VULNERABILITY&sinceLeakPeriod=true)" >> $GITHUB_STEP_SUMMARY
+
+        if [ "$BREAK_ON" == "CRITICAL" ] && [ $TOTAL_CRITICAL -gt 0 ]; then
+          echo "::error title=SonarQube::Quality gate met CRITICAL"
+          exit 1
+        elif [ "$BREAK_ON" == "HIGH" ] && ( [ $TOTAL_CRITICAL -gt 0 ] ); then
+          echo "::error title=SonarQube::Quality gate met HIGH"
+          exit 1
+        elif [ "$BREAK_ON" == "MEDIUM" ] && ( [ $TOTAL_CRITICAL -gt 0 ] || [ $TOTAL_MEDIUM -gt 0 ] ); then
+          echo "::error title=SonarQube::Quality gate met MEDIUM"
+          exit 1
+        elif [ "$BREAK_ON" == "LOW" ] && ( [ $TOTAL_CRITICAL -gt 0 ] || [ $TOTAL_HIGH -gt 0 ] || [ $TOTAL_MEDIUM -gt 0 ] ); then
+          echo "::error title=SonarQube::Quality gate met LOW"
+          exit 1
+        fi

@@ -1,0 +1,92 @@
+name: SAST
+
+# Reusable workflow. Outros repos chamam assim:
+#
+#   jobs:
+#     sast:
+#       uses: prefeitura-rio/actions/.github/workflows/sast.yml@main
+#       with:
+#         sonar_url: ${{ vars.SONAR_HOST_URL }}
+#       secrets:
+#         sonar_token: ${{ secrets.SONAR_TOKEN }}
+
+on:
+  workflow_call:
+    inputs:
+      sonar_url:
+        description: URL do SonarQube (SONAR_HOST_URL)
+        type: string
+        required: true
+      wait_pipeline:
+        description: Aguardar o quality gate do SonarQube
+        type: string
+        required: false
+        default: "true"
+      break_on:
+        description: Severidade que falha o job (CRITICAL/HIGH/MEDIUM/LOW)
+        type: string
+        required: false
+        default: "HIGH"
+      enable_clippy:
+        description: Habilitar análise Rust clippy
+        type: string
+        required: false
+        default: "false"
+      sonarqube_opts:
+        description: Args extras para o scanner do SonarQube
+        type: string
+        required: false
+        default: ""
+      override_branch:
+        description: Sobrescreve o nome do branch reportado ao SonarQube
+        type: string
+        required: false
+        default: ""
+      ignore_type:
+        description: Fonte da verdade para arquivos de ignore (sonarqube/semgrep)
+        type: string
+        required: false
+        default: "sonarqube"
+      dd_url:
+        description: URL do DefectDojo (opcional)
+        type: string
+        required: false
+        default: ""
+      runs_on:
+        description: Runner a usar (precisa ser linux/amd64)
+        type: string
+        required: false
+        default: "ubuntu-latest"
+    secrets:
+      sonar_token:
+        required: true
+      dd_token:
+        required: false
+
+jobs:
+  sast:
+    runs-on: ${{ inputs.runs_on }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          # SonarQube precisa do histórico completo para blame/analise por branch.
+          fetch-depth: 0
+
+      - name: Run SAST
+        # Pinar em uma tag/SHA em produção (ex.: prefeitura-rio/actions/sast@v1).
+        # `uses` não aceita interpolação ${{ }}, então o ref fica fixo aqui.
+        uses: prefeitura-rio/actions/sast@main
+        with:
+          sonar_url: ${{ inputs.sonar_url }}
+          sonar_token: ${{ secrets.sonar_token }}
+          wait_pipeline: ${{ inputs.wait_pipeline }}
+          break_on: ${{ inputs.break_on }}
+          enable_clippy: ${{ inputs.enable_clippy }}
+          sonarqube_opts: ${{ inputs.sonarqube_opts }}
+          override_branch: ${{ inputs.override_branch }}
+          ignore_type: ${{ inputs.ignore_type }}
+          dd_url: ${{ inputs.dd_url }}
+          dd_token: ${{ secrets.dd_token }}
