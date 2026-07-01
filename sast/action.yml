@@ -495,17 +495,17 @@ runs:
           fi
 
           echo "[View all new security issues in SonarQube]($SONAR_HOST_URL_PUBLIC/project/issues?id=$PROJECT_KEY&${BRANCH_KEY}=${BRANCH_VALUE}&types=VULNERABILITY&sinceLeakPeriod=true)" >> $GITHUB_STEP_SUMMARY
-        fi
-        if [ "$BREAK_ON" == "CRITICAL" ] && [ $TOTAL_CRITICAL -gt 0 ]; then
-          echo "::error title=SAST::Quality gate met CRITICAL"
-          exit 1
-        elif [ "$BREAK_ON" == "HIGH" ] && ( [ $TOTAL_CRITICAL -gt 0 ] ); then
-          echo "::error title=SAST::Quality gate met HIGH"
-          exit 1
-        elif [ "$BREAK_ON" == "MEDIUM" ] && ( [ $TOTAL_CRITICAL -gt 0 ] || [ $TOTAL_MEDIUM -gt 0 ] ); then
-          echo "::error title=SAST::Quality gate met MEDIUM"
-          exit 1
-        elif [ "$BREAK_ON" == "LOW" ] && ( [ $TOTAL_CRITICAL -gt 0 ] || [ $TOTAL_HIGH -gt 0 ] || [ $TOTAL_MEDIUM -gt 0 ] ); then
-          echo "::error title=SAST::Quality gate met LOW"
-          exit 1
+          if [ "$BREAK_ON" == "CRITICAL" ] && [ $TOTAL_CRITICAL -gt 0 ]; then
+            echo "::error title=SAST::Quality gate met CRITICAL"
+            exit 1
+          elif [ "$BREAK_ON" == "HIGH" ] && ( [ $TOTAL_CRITICAL -gt 0 ] ); then
+            echo "::error title=SAST::Quality gate met HIGH"
+            exit 1
+          elif [ "$BREAK_ON" == "MEDIUM" ] && ( [ $TOTAL_CRITICAL -gt 0 ] || [ $TOTAL_MEDIUM -gt 0 ] ); then
+            echo "::error title=SAST::Quality gate met MEDIUM"
+            exit 1
+          elif [ "$BREAK_ON" == "LOW" ] && ( [ $TOTAL_CRITICAL -gt 0 ] || [ $TOTAL_HIGH -gt 0 ] || [ $TOTAL_MEDIUM -gt 0 ] ); then
+            echo "::error title=SAST::Quality gate met LOW"
+            exit 1
+          fi
         fi
