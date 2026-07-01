@@ -330,8 +330,7 @@ runs:
       run: mvn clean compile
     - name: SonarQube
       if: inputs.sonar_url && inputs.sonar_token
-      # NOSONAR: generic.secrets.security.detected-sonarqube-docs-api-key.detected-sonarqube-docs-api-key
-      uses: SonarSource/sonarqube-scan-action@59db25f34e16620e48ab4bb9e4a5dce155cb5432 # v8.0.0
+      uses: SonarSource/sonarqube-scan-action@713881670b6b3676cda39549040e2d88c70d582e # v8.2.0
       with:
         args: >
           "-Dsonar.projectName=${{ github.repository }}"
@@ -364,61 +363,62 @@ runs:
         SONAR_HOST_URL_PUBLIC: ${{ inputs.sonar_url }}
       run: |
         MAX_RESULTS=200
+        if [ -n "$SONAR_TOKEN" ] && [ -n "$SONAR_HOST_URL" ]; then
+          CE_TASK_ID=$(grep ceTaskId .scannerwork/report-task.txt | cut -d= -f2)
+          for i in {1..10}; do
+            STATUS=$(curl -s -u $SONAR_TOKEN: \
+              "$SONAR_HOST_URL/api/ce/task?id=$CE_TASK_ID" | jq -r '.task.status')
 
-        CE_TASK_ID=$(grep ceTaskId .scannerwork/report-task.txt | cut -d= -f2)
-        for i in {1..10}; do
-          STATUS=$(curl -s -u $SONAR_TOKEN: \
-            "$SONAR_HOST_URL/api/ce/task?id=$CE_TASK_ID" | jq -r '.task.status')
+            [ "$STATUS" = "SUCCESS" ] && break
+            [ "$STATUS" = "FAILED" ] && exit 1
 
-          [ "$STATUS" = "SUCCESS" ] && break
-          [ "$STATUS" = "FAILED" ] && exit 1
+            sleep 5
+          done
+          for i in {1..6}; do
+            COUNT=$(curl -s -u $SONAR_TOKEN: \
+              "$SONAR_HOST_URL/api/issues/search?components=$PROJECT_KEY&${BRANCH_KEY}=${BRANCH_VALUE}&issueStatuses=OPEN&ps=1" \
+              | jq '.total')
 
-          sleep 5
-        done
-        for i in {1..6}; do
-          COUNT=$(curl -s -u $SONAR_TOKEN: \
-            "$SONAR_HOST_URL/api/issues/search?components=$PROJECT_KEY&${BRANCH_KEY}=${BRANCH_VALUE}&issueStatuses=OPEN&ps=1" \
-            | jq '.total')
+            [ "$COUNT" -ge 0 ] && break
+            sleep 10
+          done
 
-          [ "$COUNT" -ge 0 ] && break
-          sleep 10
-        done
+          RESPONSE=$(curl -s -u $SONAR_TOKEN: \
+            "$SONAR_HOST_URL/api/issues/search?components=$PROJECT_KEY&${BRANCH_KEY}=${BRANCH_VALUE}&issueStatuses=OPEN&types=VULNERABILITY&ps=$MAX_RESULTS")
 
-        RESPONSE=$(curl -s -u $SONAR_TOKEN: \
-          "$SONAR_HOST_URL/api/issues/search?components=$PROJECT_KEY&${BRANCH_KEY}=${BRANCH_VALUE}&issueStatuses=OPEN&types=VULNERABILITY&ps=$MAX_RESULTS")
+          TOTAL=$(echo "$RESPONSE" | jq '.total')
 
-        TOTAL=$(echo "$RESPONSE" | jq '.total')
+          if [ "$TOTAL" -eq 0 ]; then
+              echo "No new security issues" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+          fi
 
-        if [ "$TOTAL" -eq 0 ]; then
-            echo "No new security issues" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-        fi
+          TOTAL_CRITICAL=$(echo $RESPONSE | jq -r '.issues | map(select(.severity == "CRITICAL")) | length')
+          TOTAL_HIGH=$(echo $RESPONSE | jq -r '.issues | map(select(.severity == "HIGH")) | length')
+          TOTAL_MEDIUM=$(echo $RESPONSE | jq -r '.issues | map(select(.severity == "MEDIUM")) | length')
+          TOTAL_LOW=$(echo $RESPONSE | jq -r '.issues | map(select(.severity == "LOW")) | length')
 
-        TOTAL_CRITICAL=$(echo $RESPONSE | jq -r '.issues | map(select(.severity == "CRITICAL")) | length')
-        TOTAL_HIGH=$(echo $RESPONSE | jq -r '.issues | map(select(.severity == "HIGH")) | length')
-        TOTAL_MEDIUM=$(echo $RESPONSE | jq -r '.issues | map(select(.severity == "MEDIUM")) | length')
-        TOTAL_LOW=$(echo $RESPONSE | jq -r '.issues | map(select(.severity == "LOW")) | length')
+          SONAR_ISSUES=$(echo "$RESPONSE" | jq '
+              .issues
+              | unique_by(.key)
+              | map(select(.rule | contains("external_grype") | not ))
+          ')
 
-        SONAR_ISSUES=$(echo "$RESPONSE" | jq '
-            .issues
-            | unique_by(.key)
-            | map(select(.rule | contains("external_grype") | not ))
-        ')
+          if [ "$(echo "$SONAR_ISSUES" | jq 'length')" -gt 0 ]; then
+              echo "### Sonar Security Findings" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "| Issue | File | Rule | Severity |" >> $GITHUB_STEP_SUMMARY
+              echo "|------|------|------|-----------|" >> $GITHUB_STEP_SUMMARY
 
-        if [ "$(echo "$SONAR_ISSUES" | jq 'length')" -gt 0 ]; then
-            echo "### Sonar Security Findings" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "| Issue | File | Rule | Severity |" >> $GITHUB_STEP_SUMMARY
-            echo "|------|------|------|-----------|" >> $GITHUB_STEP_SUMMARY
+              echo "$SONAR_ISSUES" | jq -r '
+              .[] |
+              "| [" + .message + "]('"$SONAR_HOST_URL_PUBLIC"'/project/issues?id='"$PROJECT_KEY"'&open=" + .key + ") | " +
+              (.component | split(":")[-1]) + ":"+((.line // "please check output") | tostring)+" | " +
+              .rule + " |" + .severity +" |"
+              ' >> $GITHUB_STEP_SUMMARY
 
-            echo "$SONAR_ISSUES" | jq -r '
-            .[] |
-            "| [" + .message + "]('"$SONAR_HOST_URL_PUBLIC"'/project/issues?id='"$PROJECT_KEY"'&open=" + .key + ") | " +
-            (.component | split(":")[-1]) + ":"+((.line // "please check output") | tostring)+" | " +
-            .rule + " |" + .severity +" |"
-            ' >> $GITHUB_STEP_SUMMARY
-
-            echo "" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+          fi
         fi
 
         GRYPE_ISSUES=$(cat grype-results.sarif | jq '.runs[0].tool.driver.rules')
@@ -461,51 +461,51 @@ runs:
 
             echo "" >> $GITHUB_STEP_SUMMARY
         fi
+        if [ -n "$SONAR_TOKEN" ] && [ -n "$SONAR_HOST_URL" ]; then
+          HOTSPOTS=$(curl -s -u $SONAR_TOKEN: \
+              "$SONAR_HOST_URL/api/hotspots/search?project=$PROJECT_KEY&${BRANCH_KEY}=${BRANCH_VALUE}&status=TO_REVIEW&ps=$MAX_RESULTS")
+          HOTSPOT_COUNT=$(echo "$HOTSPOTS" | jq '.paging.total')
 
-        HOTSPOTS=$(curl -s -u $SONAR_TOKEN: \
-            "$SONAR_HOST_URL/api/hotspots/search?project=$PROJECT_KEY&${BRANCH_KEY}=${BRANCH_VALUE}&status=TO_REVIEW&ps=$MAX_RESULTS")
-        HOTSPOT_COUNT=$(echo "$HOTSPOTS" | jq '.paging.total')
+          HOTSPOTS=$(echo $HOTSPOTS | jq '.hotspots')
 
-        HOTSPOTS=$(echo $HOTSPOTS | jq '.hotspots')
+          if [ "$HOTSPOT_COUNT" -gt 0 ]; then
+              echo "### Security Hotspots (Review Required)" >> $GITHUB_STEP_SUMMARY
+              echo "| Hotspot | File | Category |" >> $GITHUB_STEP_SUMMARY
+              echo "|---------|------|----------|" >> $GITHUB_STEP_SUMMARY
 
-        if [ "$HOTSPOT_COUNT" -gt 0 ]; then
-            echo "### Security Hotspots (Review Required)" >> $GITHUB_STEP_SUMMARY
-            echo "| Hotspot | File | Category |" >> $GITHUB_STEP_SUMMARY
-            echo "|---------|------|----------|" >> $GITHUB_STEP_SUMMARY
+              echo "$HOTSPOTS" | jq -r \
+              --arg host "$SONAR_HOST_URL_PUBLIC" \
+              --arg project "$PROJECT_KEY" \
+              --arg branch_key "$BRANCH_KEY" \
+              --arg branch_value "$BRANCH_VALUE" '
+              .[] |
+              "| [" + .message + "](" +
+                  $host + "/security_hotspots?hotspots=" + .key +
+                  "&"+$branch_key+"=" + $branch_value + "&id=" + $project +
+              ") | " +
+              (.component | split(":")[-1]) + ":"+((.line // "-") | tostring)+" | " +
+              .securityCategory + " | "
+              ' >> $GITHUB_STEP_SUMMARY
 
-            echo "$HOTSPOTS" | jq -r \
-            --arg host "$SONAR_HOST_URL_PUBLIC" \
-            --arg project "$PROJECT_KEY" \
-            --arg branch_key "$BRANCH_KEY" \
-            --arg branch_value "$BRANCH_VALUE" '
-            .[] |
-            "| [" + .message + "](" +
-                $host + "/security_hotspots?hotspots=" + .key +
-                "&"+$branch_key+"=" + $branch_value + "&id=" + $project +
-            ") | " +
-            (.component | split(":")[-1]) + ":"+((.line // "-") | tostring)+" | " +
-            .securityCategory + " | "
-            ' >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+          else
+              echo "### Security Hotspots" >> $GITHUB_STEP_SUMMARY
+              echo "No new security hotspots" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+          fi
 
-            echo "" >> $GITHUB_STEP_SUMMARY
-        else
-            echo "### Security Hotspots" >> $GITHUB_STEP_SUMMARY
-            echo "No new security hotspots" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
+          echo "[View all new security issues in SonarQube]($SONAR_HOST_URL_PUBLIC/project/issues?id=$PROJECT_KEY&${BRANCH_KEY}=${BRANCH_VALUE}&types=VULNERABILITY&sinceLeakPeriod=true)" >> $GITHUB_STEP_SUMMARY
         fi
-
-        echo "[View all new security issues in SonarQube]($SONAR_HOST_URL_PUBLIC/project/issues?id=$PROJECT_KEY&${BRANCH_KEY}=${BRANCH_VALUE}&types=VULNERABILITY&sinceLeakPeriod=true)" >> $GITHUB_STEP_SUMMARY
-
         if [ "$BREAK_ON" == "CRITICAL" ] && [ $TOTAL_CRITICAL -gt 0 ]; then
-          echo "::error title=SonarQube::Quality gate met CRITICAL"
+          echo "::error title=SAST::Quality gate met CRITICAL"
           exit 1
         elif [ "$BREAK_ON" == "HIGH" ] && ( [ $TOTAL_CRITICAL -gt 0 ] ); then
-          echo "::error title=SonarQube::Quality gate met HIGH"
+          echo "::error title=SAST::Quality gate met HIGH"
           exit 1
         elif [ "$BREAK_ON" == "MEDIUM" ] && ( [ $TOTAL_CRITICAL -gt 0 ] || [ $TOTAL_MEDIUM -gt 0 ] ); then
-          echo "::error title=SonarQube::Quality gate met MEDIUM"
+          echo "::error title=SAST::Quality gate met MEDIUM"
           exit 1
         elif [ "$BREAK_ON" == "LOW" ] && ( [ $TOTAL_CRITICAL -gt 0 ] || [ $TOTAL_HIGH -gt 0 ] || [ $TOTAL_MEDIUM -gt 0 ] ); then
-          echo "::error title=SonarQube::Quality gate met LOW"
+          echo "::error title=SAST::Quality gate met LOW"
           exit 1
         fi
