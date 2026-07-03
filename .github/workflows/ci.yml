@@ -16,7 +16,6 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
-
       - name: Run SAST (local action)
         uses: ./sast
         with:
@@ -24,3 +23,6 @@ jobs:
           sonar_token: ${{ secrets.SONAR_TOKEN }}
           dd_url: ${{ vars.DD_URL }}
           dd_token: ${{ secrets.DD_TOKEN }}
+          ts_tags: tag:sast-cicd
+          ts_oauth_client_id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          ts_oauth_secret: ${{ secrets.TS_OAUTH_SECRET }}

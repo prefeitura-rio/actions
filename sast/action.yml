@@ -32,10 +32,25 @@ inputs:
   ignore_type:
     required: false
     default: "sonarqube"
+  ts_tags:
+    description: Tailscale tags
+    required: true
+  ts_oauth_client_id:
+    description: Tailscale OAuth client ID
+    required: true
+  ts_oauth_secret:
+    description: Tailscale OAuth secret
+    required: true
 
 runs:
   using: composite
   steps:
+    - name: Tailscale connect
+      uses: tailscale/github-action@780049a30b6ff5c378a9e7b389d15ece7a204888 # v4.1.3
+      with:
+        oauth-client-id: ${{ inputs.ts_oauth_client_id }}
+        oauth-secret: ${{ inputs.ts_oauth_secret }}
+        tags: ${{ inputs.ts_tags }}
     - name: Detect Rust
       id: rust
       shell: bash

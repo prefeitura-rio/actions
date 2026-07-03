@@ -61,7 +61,16 @@ on:
       sonar_token:
         required: true
       dd_token:
-        required: false
+        required: true
+      ts_tags:
+        description: Tailscale tags
+        required: true
+      ts_oauth_client_id:
+        description: Tailscale OAuth client ID
+        required: true
+      ts_oauth_secret:
+        description: Tailscale OAuth secret
+        required: true
 
 jobs:
   sast:
