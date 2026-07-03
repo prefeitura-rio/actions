@@ -81,12 +81,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          # SonarQube precisa do histórico completo para blame/analise por branch.
           fetch-depth: 0
 
       - name: Run SAST
-        # Pinar em uma tag/SHA em produção (ex.: prefeitura-rio/actions/sast@v1).
-        # `uses` não aceita interpolação ${{ }}, então o ref fica fixo aqui.
         uses: prefeitura-rio/actions/sast@main
         with:
           sonar_url: ${{ inputs.sonar_url }}
