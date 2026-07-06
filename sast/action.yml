@@ -200,7 +200,7 @@ runs:
           "$HOME/.local/bin/opengrep"
         chmod +x $HOME/.local/bin/opengrep
         $HOME/.local/bin/opengrep scan . --sarif-output=all-opengrep-sarif.sarif \
-          --json-output=opengrep-report.json
+          --json-output=opengrep-report.json \
           --opengrep-ignore-pattern NOSONAR
         jq -c '.runs[].results |= map(select((.suppressions // [] | map(.kind == "inSource") | any | not)))' all-opengrep-sarif.sarif > opengrep-sarif.sarif
         rm all-opengrep-sarif.sarif
@@ -470,16 +470,6 @@ runs:
         fi
         MAX_RESULTS=200
         if [ -n "$SONAR_TOKEN" ] && [ -n "$SONAR_HOST_URL" ]; then
-          CE_TASK_ID=$(grep ceTaskId .scannerwork/report-task.txt | cut -d= -f2)
-          for i in {1..10}; do
-            STATUS=$(curl -s -u $SONAR_TOKEN: \
-              "$SONAR_HOST_URL/api/ce/task?id=$CE_TASK_ID" | jq -r '.task.status')
-
-            [ "$STATUS" = "SUCCESS" ] && break
-            [ "$STATUS" = "FAILED" ] && exit 1
-
-            sleep 5
-          done
           for i in {1..6}; do
             COUNT=$(curl -s -u $SONAR_TOKEN: \
               "$SONAR_HOST_URL/api/issues/search?components=$PROJECT_KEY&${BRANCH_KEY}=${BRANCH_VALUE}&issueStatuses=OPEN&ps=1" \
