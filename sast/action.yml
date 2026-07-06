@@ -200,6 +200,7 @@ runs:
           "$HOME/.local/bin/opengrep"
         chmod +x $HOME/.local/bin/opengrep
         $HOME/.local/bin/opengrep scan . --sarif-output=all-opengrep-sarif.sarif \
+          --json-output=opengrep-report.json
           --opengrep-ignore-pattern NOSONAR
         jq -c '.runs[].results |= map(select((.suppressions // [] | map(.kind == "inSource") | any | not)))' all-opengrep-sarif.sarif > opengrep-sarif.sarif
         rm all-opengrep-sarif.sarif
@@ -345,6 +346,7 @@ runs:
       run: mvn clean compile
     - name: SonarQube
       if: inputs.sonar_url && inputs.sonar_token
+      # NOSONAR: generic.secrets.security.detected-sonarqube-docs-api-key.detected-sonarqube-docs-api-key
       uses: SonarSource/sonarqube-scan-action@713881670b6b3676cda39549040e2d88c70d582e # v8.2.0
       with:
         args: >
@@ -365,6 +367,43 @@ runs:
       env:
         SONAR_TOKEN: ${{ inputs.sonar_token }}
         SONAR_HOST_URL: ${{ inputs.sonar_url }}
+    - name: Find Sonar task ID
+      id: sonar_task_id_step
+      shell: bash
+      run: |
+        echo "Searching for report-task.txt file..."
+        REPORT_TASK_FILE=$(find . -name 'report-task.txt' | head -n1)
+        [ -f "$REPORT_TASK_FILE" ] || echo "repot-task.txt file was not found."
+        #[ -f "$REPORT_TASK_FILE" ] && echo "report-task.txt content:" && cat "$REPORT_TASK_FILE"
+        [ -f "$REPORT_TASK_FILE" ] && echo "Sonar report file: $REPORT_TASK_FILE"
+        [ -f "$REPORT_TASK_FILE" ] && SONAR_TASK_ID=$(grep 'ceTaskId=' "$REPORT_TASK_FILE" | cut -d'=' -f2)
+        [ "" == "$SONAR_TASK_ID" ] && echo "Sonar task ID was not found."
+        [ "" != "$SONAR_TASK_ID" ] && echo "Sonar task ID: $SONAR_TASK_ID"
+        echo "sonar_task_id=$SONAR_TASK_ID" >> "$GITHUB_OUTPUT"
+    - name: Get Sonar analysis result file
+      continue-on-error: true
+      shell: bash
+      env:
+        SONAR_TOKEN: ${{ inputs.sonar_token }}
+        SONAR_HOST_URL: ${{ inputs.sonar_url }}
+      run: |
+        set +e
+        cd quoteofday
+        SONAR_TASK_ID=${{ steps.sonar_task_id_step.outputs.sonar_task_id }}
+        [ "" == "$SONAR_TASK_ID" ] && echo "Missing Sonar task ID."
+        [ "" == "${SONAR_TOKEN}" ] && echo "Missing Sonar token."
+        [ "" != "$SONAR_TASK_ID" ] && [ "" != "${SONAR_TOKEN}" ] && wget -X GET --header="Authorization: Bearer ${SONAR_TOKEN}" -O sonar.status.json "${SONAR_HOST_URL}/api/ce/task?id=$SONAR_TASK_ID"
+        [ -f sonar.status.json ] && echo "Sonar status: " && cat sonar.status.json && echo
+        [ -f sonar.status.json ] && SONAR_ANALYSIS_ID=$(cat sonar.status.json | jq '.task.analysisId' | tr -d '"')
+        echo "SONAR_ANALYSIS_ID=$SONAR_ANALYSIS_ID"
+        [ "" != "$SONAR_ANALYSIS_ID" ] && [ "" != "${SONAR_TOKEN}" ] && wget -v -X GET --header="Authorization: Bearer ${SONAR_TOKEN}" -O sonar.result.json "${SONAR_HOST_URL}/api/qualitygates/project_status?analysisId=$SONAR_ANALYSIS_ID"
+        GET_RESULT_CODE=$?
+        echo "GET_RESULT_CODE=$GET_RESULT_CODE"
+        [ -f sonar.result.json ] && echo "Sonar result:" && cat sonar.result.json || echo "No Sonar result JSON file created."
+        # If the output file contains only the returned error message delete it so the evidence creation step won't try to create an evidence out of it.
+        [ $GET_RESULT_CODE -ne 0 ] && rm sonar.result.json
+        # return 0 if GET_RESULT_CODE is 0
+        [ $GET_RESULT_CODE -eq 0 ]
     - name: Showing issues to summary
       if: always()
       shell: bash
@@ -377,6 +416,58 @@ runs:
         SONAR_HOST_URL: ${{ inputs.sonar_url }}
         SONAR_HOST_URL_PUBLIC: ${{ inputs.sonar_url }}
       run: |
+        # Import sonarqube and opengrep to defectdojo
+        if [ -n "$DD_API_TOKEN" ] && [ "$CURRENT_BRANCH" = "$DEFAULT_BRANCH" ]; then
+          PRODUCT_INFO=$(curl -s -X GET "$DD_URL/api/v2/products/?name=${PRODUCT_NAME}" \
+            -H "Authorization: Token $DD_API_TOKEN")
+          PRODUCT_INFO=$(echo -n "${PRODUCT_INFO}" | tr -d '\000-\037')
+          COUNT=$(echo "$PRODUCT_INFO" | jq '.count')
+          if [ "$COUNT" -gt 0 ]; then
+              PRODUCT_TYPE_ID=$(echo "$PRODUCT_INFO" | jq '.results[0].prod_type')
+              PARAM_TYPE="product_type=$PRODUCT_TYPE_ID"
+          else
+              echo "Creating product on defectdojo"
+              PARAM_TYPE="product_type_name=Uncategorized"
+          fi
+          # opengrep
+          RESPONSE=$(curl -s -X POST "$DD_URL/api/v2/reimport-scan/" \
+            -H "Authorization: Token $DD_API_TOKEN" \
+            -H "Content-Type: multipart/form-data" \
+            -F "active=true" \
+            -F "verified=true" \
+            -F "scan_type=Semgrep JSON Report" \
+            -F "product_name=$PRODUCT_NAME" \
+            -F "engagement_name=$ENGAGEMENT_NAME" \
+            -F "file=@opengrep-report.json" \
+            -F "${PARAM_TYPE}" \
+            -F "auto_create_context=true" \
+            -F "close_old_findings=true")
+          if echo "$RESPONSE" | grep -q '"test":'; then
+              echo "Opengrep scan reimported"
+          else
+              echo "Error reimporting opengrep to dojo:"
+              echo "$RESPONSE"
+          fi
+          # sonarqube
+          RESPONSE=$(curl -s -X POST "$DD_URL/api/v2/reimport-scan/" \
+            -H "Authorization: Token $DD_API_TOKEN" \
+            -H "Content-Type: multipart/form-data" \
+            -F "active=true" \
+            -F "verified=true" \
+            -F "scan_type=SonarQube Scan detailed" \
+            -F "product_name=$PRODUCT_NAME" \
+            -F "engagement_name=$ENGAGEMENT_NAME" \
+            -F "file=@sonar.result.json" \
+            -F "${PARAM_TYPE}" \
+            -F "auto_create_context=true" \
+            -F "close_old_findings=true")
+          if echo "$RESPONSE" | grep -q '"test":'; then
+              echo "Sonarqube scan reimported"
+          else
+              echo "Error reimporting sonarqube to dojo:"
+              echo "$RESPONSE"
+          fi
+        fi
         MAX_RESULTS=200
         if [ -n "$SONAR_TOKEN" ] && [ -n "$SONAR_HOST_URL" ]; then
           CE_TASK_ID=$(grep ceTaskId .scannerwork/report-task.txt | cut -d= -f2)

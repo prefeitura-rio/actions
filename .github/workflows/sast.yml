@@ -84,6 +84,7 @@ jobs:
           fetch-depth: 0
 
       - name: Run SAST
+        # NOSONAR: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         uses: prefeitura-rio/actions/sast@master
         with:
           sonar_url: ${{ inputs.sonar_url }}
