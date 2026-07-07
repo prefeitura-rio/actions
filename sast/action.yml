@@ -454,23 +454,27 @@ runs:
               echo "$RESPONSE"
           fi
           # sonarqube
-          RESPONSE=$(curl -s -X POST "$DD_URL/api/v2/reimport-scan/" \
-            -H "Authorization: Token $DD_API_TOKEN" \
-            -H "Content-Type: multipart/form-data" \
-            -F "active=true" \
-            -F "verified=true" \
-            -F "scan_type=SonarQube Scan detailed" \
-            -F "product_name=$PRODUCT_NAME" \
-            -F "engagement_name=$ENGAGEMENT_NAME" \
-            -F "file=@sonar.result.json" \
-            -F "${PARAM_TYPE}" \
-            -F "auto_create_context=true" \
-            -F "close_old_findings=true")
-          if echo "$RESPONSE" | grep -q '"test":'; then
-              echo "Sonarqube scan reimported"
+          if [ -s sonar.result.json ]; then
+            RESPONSE=$(curl -s -X POST "$DD_URL/api/v2/reimport-scan/" \
+              -H "Authorization: Token $DD_API_TOKEN" \
+              -H "Content-Type: multipart/form-data" \
+              -F "active=true" \
+              -F "verified=true" \
+              -F "scan_type=SonarQube Scan detailed" \
+              -F "product_name=$PRODUCT_NAME" \
+              -F "engagement_name=$ENGAGEMENT_NAME" \
+              -F "file=@sonar.result.json" \
+              -F "${PARAM_TYPE}" \
+              -F "auto_create_context=true" \
+              -F "close_old_findings=true")
+            if echo "$RESPONSE" | grep -q '"test":'; then
+                echo "Sonarqube scan reimported"
+            else
+                echo "Error reimporting sonarqube to dojo:"
+                echo "$RESPONSE"
+            fi
           else
-              echo "Error reimporting sonarqube to dojo:"
-              echo "$RESPONSE"
+              echo "::warning title=SAST::Skipping SonarQube DefectDojo upload: sonar.result.json missing or empty"
           fi
         fi
         MAX_RESULTS=200
