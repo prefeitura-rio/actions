@@ -388,7 +388,6 @@ runs:
         SONAR_HOST_URL: ${{ inputs.sonar_url }}
       run: |
         set +e
-        cd quoteofday
         SONAR_TASK_ID=${{ steps.sonar_task_id_step.outputs.sonar_task_id }}
         [ "" == "$SONAR_TASK_ID" ] && echo "Missing Sonar task ID."
         [ "" == "${SONAR_TOKEN}" ] && echo "Missing Sonar token."
