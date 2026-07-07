@@ -454,7 +454,33 @@ runs:
               echo "$RESPONSE"
           fi
           # sonarqube
-          if [ -s sonar.result.json ]; then
+          # DefectDojo's "SonarQube Scan detailed" parser reads the REST API JSON
+          # (top-level "paging" + "components"), i.e. the /api/issues/search payload.
+          # We build it here and drop external_* rules (the grype/opengrep SARIF
+          # imports) so they are not duplicated against their direct DD imports.
+          if [ -n "$SONAR_TOKEN" ] && [ -n "$SONAR_HOST_URL" ]; then
+            rm -f sonar_page_*.json sonar-issues.json
+            p=1
+            while :; do
+              curl -s -u "$SONAR_TOKEN:" \
+                "$SONAR_HOST_URL/api/issues/search?components=$PROJECT_KEY&${BRANCH_KEY}=${BRANCH_VALUE}&issueStatuses=OPEN&types=VULNERABILITY&additionalFields=_all&ps=500&p=$p" \
+                > "sonar_page_$p.json"
+              TOTAL=$(jq '.paging.total // .total // 0' "sonar_page_$p.json")
+              PS=$(jq '.paging.pageSize // 500' "sonar_page_$p.json")
+              [ $((p * PS)) -ge "$TOTAL" ] && break
+              p=$((p + 1))
+              [ "$p" -gt 20 ] && break   # SonarQube caps issue search at 10000
+            done
+            jq -s '{
+              total: (.[0].paging.total // .[0].total // 0),
+              paging: (.[0].paging // {total: (.[0].total // 0)}),
+              components: (map(.components // []) | add | unique_by(.key)),
+              rules: (map(.rules // []) | add | unique_by(.key)),
+              issues: (map(.issues // []) | add
+                        | map(select((.rule // "") | startswith("external_") | not)))
+            }' sonar_page_*.json > sonar-issues.json
+            rm -f sonar_page_*.json
+            echo "SonarQube native issues to upload (external_* excluded): $(jq '.issues | length' sonar-issues.json)"
             RESPONSE=$(curl -s -X POST "$DD_URL/api/v2/reimport-scan/" \
               -H "Authorization: Token $DD_API_TOKEN" \
               -H "Content-Type: multipart/form-data" \
@@ -463,7 +489,7 @@ runs:
               -F "scan_type=SonarQube Scan detailed" \
               -F "product_name=$PRODUCT_NAME" \
               -F "engagement_name=$ENGAGEMENT_NAME" \
-              -F "file=@sonar.result.json" \
+              -F "file=@sonar-issues.json" \
               -F "${PARAM_TYPE}" \
               -F "auto_create_context=true" \
               -F "close_old_findings=true")
@@ -474,7 +500,7 @@ runs:
                 echo "$RESPONSE"
             fi
           else
-              echo "::warning title=SAST::Skipping SonarQube DefectDojo upload: sonar.result.json missing or empty"
+              echo "::warning title=SAST::Skipping SonarQube DefectDojo upload: SONAR_TOKEN/SONAR_HOST_URL not set"
           fi
         fi
         MAX_RESULTS=200
