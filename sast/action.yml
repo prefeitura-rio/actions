@@ -414,6 +414,12 @@ runs:
         BRANCH_VALUE: ${{ github.event_name == 'pull_request' && github.event.pull_request.number || (inputs.override_branch || github.ref_name) }}
         SONAR_HOST_URL: ${{ inputs.sonar_url }}
         SONAR_HOST_URL_PUBLIC: ${{ inputs.sonar_url }}
+        DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        CURRENT_BRANCH: ${{ github.ref_name }}
+        DD_URL: ${{ inputs.dd_url || '' }}
+        DD_API_TOKEN: ${{ inputs.dd_token || '' }}
+        PRODUCT_NAME: ${{ github.repository }}
+        ENGAGEMENT_NAME: "${{ inputs.override_branch || github.ref_name }}"
       run: |
         # Import sonarqube and opengrep to defectdojo
         if [ -n "$DD_API_TOKEN" ] && [ "$CURRENT_BRANCH" = "$DEFAULT_BRANCH" ]; then
