@@ -32,6 +32,17 @@ inputs:
   ignore_type:
     required: false
     default: "sonarqube"
+  enable_checkov:
+    description: Run checkov infrastructure-as-code scanning
+    required: false
+    default: "true"
+  checkov_version:
+    required: false
+    default: "3.3.8"
+  checkov_opts:
+    description: Extra arguments passed to checkov (e.g. --skip-path node_modules --skip-check CKV_DOCKER_2)
+    required: false
+    default: ""
   ts_tags:
     description: Tailscale tags
     required: true
@@ -87,20 +98,144 @@ runs:
       with:
         cache: 'pip'
         python-version: ''
-    - name: Normalize ignore files & install cosign
+    - name: Prepare tool cache
+      id: tools
+      if: always()
+      shell: bash
+      run: |
+        set -euo pipefail
+        COSIGN_VERSION=3.1.1
+        OPENGREP_VERSION=1.23.0
+        SYFT_VERSION=1.46.0
+        GRYPE_VERSION=0.115.0
+        CHECKOV_VERSION="${{ inputs.checkov_version }}"
+        TOOL_DIR="$HOME/.sast-tools"
+        PY_VERSION=$(python3 -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])')
+
+        mkdir -p "$TOOL_DIR/bin" "$TOOL_DIR/dl"
+        echo "$TOOL_DIR/bin" >> "$GITHUB_PATH"
+
+        {
+          echo "TOOL_DIR=$TOOL_DIR"
+          echo "TOOL_BIN=$TOOL_DIR/bin"
+          echo "TOOL_DL=$TOOL_DIR/dl"
+          echo "COSIGN_VERSION=$COSIGN_VERSION"
+          echo "OPENGREP_VERSION=$OPENGREP_VERSION"
+          echo "SYFT_VERSION=$SYFT_VERSION"
+          echo "GRYPE_VERSION=$GRYPE_VERSION"
+          echo "CHECKOV_VERSION=$CHECKOV_VERSION"
+        } >> "$GITHUB_ENV"
+
+        echo "dir=$TOOL_DIR" >> "$GITHUB_OUTPUT"
+        echo "key=sast-tools-$(uname -s)-$(uname -m)-cosign${COSIGN_VERSION}-opengrep${OPENGREP_VERSION}-syft${SYFT_VERSION}-grype${GRYPE_VERSION}-checkov${CHECKOV_VERSION}-py${PY_VERSION}" >> "$GITHUB_OUTPUT"
+    - name: Restore tool cache
+      if: always()
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.tools.outputs.dir }}
+        key: ${{ steps.tools.outputs.key }}
+    - name: Install scanner tools
+      if: always()
+      shell: bash
+      env:
+        ENABLE_CHECKOV: ${{ inputs.enable_checkov }}
+      run: |
+        set -euo pipefail
+
+        # Downloads $2 to $TOOL_DL/$1 unless a copy matching the pinned sha256 $3
+        # is already there (i.e. restored from cache). Returns 0 when it downloaded,
+        # 1 when the cached copy was reused, so callers can skip signature checks on
+        # cache hits. The sha256 verification below runs either way, so a poisoned
+        # cache entry never survives.
+        fetch() {
+          local name="$1" url="$2" sha="$3" out="$TOOL_DL/$1" downloaded=1
+          if [[ ! -f "$out" ]] || ! echo "$sha  $out" | sha256sum -c --status; then
+            curl -sfL "$url" -o "$out"
+            downloaded=0
+          fi
+          # Hard exit, not "set -e": callers invoke fetch in an if-condition, which
+          # disables errexit inside the function, so a mismatch must abort explicitly.
+          if ! echo "$sha  $out" | sha256sum -c --status; then
+            echo "::error title=SAST::checksum mismatch for $name from $url"
+            rm -f "$out"
+            exit 1
+          fi
+          return $downloaded
+        }
+
+        # cosign (pinned sha256 only: it is the root of trust for the others)
+        fetch cosign "https://github.com/sigstore/cosign/releases/download/v${COSIGN_VERSION}/cosign-linux-amd64" \
+          ae1ecd212663f3693ad9edf8b1a183900c9a52d3155ba6e354237f9a0f6463fc || true
+        install -m 0755 "$TOOL_DL/cosign" "$TOOL_BIN/cosign"
+
+        # opengrep
+        if fetch opengrep "https://github.com/opengrep/opengrep/releases/download/v${OPENGREP_VERSION}/opengrep_manylinux_x86" \
+          1f06548af379ab6080698a609612890ffad2d92dc2172f1e97d38d48096d5ef8; then
+          fetch opengrep.sig "https://github.com/opengrep/opengrep/releases/download/v${OPENGREP_VERSION}/opengrep_manylinux_x86.sig" \
+            61b2beb453f965c0f37c799964fa5cbe556bd9042141a7b44e8dcd01e9eab56e || true
+          fetch opengrep.cert "https://github.com/opengrep/opengrep/releases/download/v${OPENGREP_VERSION}/opengrep_manylinux_x86.cert" \
+            9eba8a14e840790e1e7b456e2b7b83a63ad7f1b6b3fd46989881db64c87755b0 || true
+          "$TOOL_BIN/cosign" verify-blob \
+            --cert "$TOOL_DL/opengrep.cert" \
+            --signature "$TOOL_DL/opengrep.sig" \
+            --certificate-identity-regexp "https://github.com/opengrep/opengrep.+" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "$TOOL_DL/opengrep"
+        fi
+        install -m 0755 "$TOOL_DL/opengrep" "$TOOL_BIN/opengrep"
+
+        # syft
+        SYFT_BASE_URL="https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/"
+        if fetch "syft.tar.gz" "${SYFT_BASE_URL}syft_${SYFT_VERSION}_linux_amd64.tar.gz" \
+          d654f678b709eb53c393d38519d5ed7d2e57205529404018614cfefa0fb2b5ca; then
+          fetch syft-checksums.txt.pem "${SYFT_BASE_URL}syft_${SYFT_VERSION}_checksums.txt.pem" \
+            9cbba2c86a26e4e2ead8d45d6831369dfb63e507b2062605cc108e42946fc029 || true
+          fetch syft-checksums.txt.sig "${SYFT_BASE_URL}syft_${SYFT_VERSION}_checksums.txt.sig" \
+            66711110e4d351b66ad1e8bcae1057dbad1a7d1dfbae57d65c94fb23f59acf49 || true
+          fetch syft-checksums.txt "${SYFT_BASE_URL}syft_${SYFT_VERSION}_checksums.txt" \
+            2fefc202b2eccab83888cc91f5a364a75df0dd777afbbae5b5e23ebd93d81ac6 || true
+          "$TOOL_BIN/cosign" verify-blob "$TOOL_DL/syft-checksums.txt" \
+            --certificate "$TOOL_DL/syft-checksums.txt.pem" \
+            --signature "$TOOL_DL/syft-checksums.txt.sig" \
+            --certificate-identity-regexp 'https://github\.com/anchore/syft/\.github/workflows/.+' \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+        fi
+        tar -C "$TOOL_BIN" -xzf "$TOOL_DL/syft.tar.gz" syft
+        chmod +x "$TOOL_BIN/syft"
+
+        # grype
+        GRYPE_BASE_URL="https://github.com/anchore/grype/releases/download/v${GRYPE_VERSION}/"
+        if fetch "grype.tar.gz" "${GRYPE_BASE_URL}grype_${GRYPE_VERSION}_linux_amd64.tar.gz" \
+          3fad92940650e514c0aa2dad83526942a055e210cec09a8a59d9c024adc2b90e; then
+          fetch grype-checksums.txt.pem "${GRYPE_BASE_URL}grype_${GRYPE_VERSION}_checksums.txt.pem" \
+            86fd326dea67e29c237fd257fa2dfda127be3192c2ccaeed26b6ebb9bf3387a3 || true
+          fetch grype-checksums.txt.sig "${GRYPE_BASE_URL}grype_${GRYPE_VERSION}_checksums.txt.sig" \
+            5048c3b0bee9292c23fe1c19dbd52797b3881683db40689868e937f973ec60a7 || true
+          fetch grype-checksums.txt "${GRYPE_BASE_URL}grype_${GRYPE_VERSION}_checksums.txt" \
+            dce654b6f5185d6e4e31cbdd966056562808c0d82b0acc233e9af03e1d4de2b8 || true
+          "$TOOL_BIN/cosign" verify-blob "$TOOL_DL/grype-checksums.txt" \
+            --certificate "$TOOL_DL/grype-checksums.txt.pem" \
+            --signature "$TOOL_DL/grype-checksums.txt.sig" \
+            --certificate-identity-regexp 'https://github\.com/anchore/grype/\.github/workflows/.+' \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+        fi
+        tar -C "$TOOL_BIN" -xzf "$TOOL_DL/grype.tar.gz" grype
+        chmod +x "$TOOL_BIN/grype"
+
+        # checkov (venv lives in the cached dir, so a cache hit skips pip entirely)
+        if [[ "$ENABLE_CHECKOV" == "true" ]]; then
+          if [[ "$("$TOOL_DIR/venv/bin/checkov" --version 2>/dev/null || true)" != "$CHECKOV_VERSION" ]]; then
+            rm -rf "$TOOL_DIR/venv"
+            python3 -m venv "$TOOL_DIR/venv"
+            "$TOOL_DIR/venv/bin/pip" install --quiet --disable-pip-version-check "checkov==${CHECKOV_VERSION}"
+          fi
+          ln -sf "$TOOL_DIR/venv/bin/checkov" "$TOOL_BIN/checkov"
+        fi
+    - name: Normalize ignore files
       shell: bash
       env:
         IGNORE_TYPE: ${{ inputs.ignore_type || 'all' }}
       run: |
-        # Install cosign
-        COSIGN_VERSION=3.1.1
-        COSIGN_SHA=ae1ecd212663f3693ad9edf8b1a183900c9a52d3155ba6e354237f9a0f6463fc
-        if [[ ! -f "/usr/local/bin/cosign" ]] || ! echo "$COSIGN_SHA /usr/local/bin/cosign" | sha256sum -c --status; then
-          sudo curl -sfL https://github.com/sigstore/cosign/releases/download/v${COSIGN_VERSION}/cosign-linux-amd64 -o /usr/local/bin/cosign
-        fi
-        echo "$COSIGN_SHA /usr/local/bin/cosign" | sha256sum -c --status
-        sudo chmod +x /usr/local/bin/cosign
-
         export FILE_SEMGREP=".semgrepignore"
         export FILE_SONAR="sonar-project.properties"
         sonar_to_semgrep() {
@@ -178,28 +313,7 @@ runs:
       if: always()
       shell: bash
       run: |
-        OPENGREP_VERSION=1.23.0
-        OPENGREP_SHA=1f06548af379ab6080698a609612890ffad2d92dc2172f1e97d38d48096d5ef8
-        mkdir -p "$HOME/.local/bin"
-        if [[ ! -f "$HOME/.local/bin/opengrep" ]] || ! echo "$OPENGREP_SHA  $HOME/.local/bin/opengrep" | sha256sum -c --status ; then
-          curl -sfL "https://github.com/opengrep/opengrep/releases/download/v${OPENGREP_VERSION}/opengrep_manylinux_x86" -o "$HOME/.local/bin/opengrep"
-        fi
-        echo "$OPENGREP_SHA $HOME/.local/bin/opengrep" | sha256sum -c --status
-
-        curl -sfL "https://github.com/opengrep/opengrep/releases/download/v${OPENGREP_VERSION}/opengrep_manylinux_x86.sig" -o "$HOME/.local/bin/opengrep.sig"
-        echo "61b2beb453f965c0f37c799964fa5cbe556bd9042141a7b44e8dcd01e9eab56e $HOME/.local/bin/opengrep.sig" | sha256sum -c --status
-
-        curl -sfL "https://github.com/opengrep/opengrep/releases/download/v${OPENGREP_VERSION}/opengrep_manylinux_x86.cert" -o "$HOME/.local/bin/opengrep.cert"
-        echo "9eba8a14e840790e1e7b456e2b7b83a63ad7f1b6b3fd46989881db64c87755b0 $HOME/.local/bin/opengrep.cert" | sha256sum -c --status
-
-        cosign verify-blob \
-          --cert "$HOME/.local/bin/opengrep.cert" \
-          --signature "$HOME/.local/bin/opengrep.sig" \
-          --certificate-identity-regexp "https://github.com/opengrep/opengrep.+" \
-          --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-          "$HOME/.local/bin/opengrep"
-        chmod +x $HOME/.local/bin/opengrep
-        $HOME/.local/bin/opengrep scan . --sarif-output=all-opengrep-sarif.sarif \
+        opengrep scan . --sarif-output=all-opengrep-sarif.sarif \
           --json-output=opengrep-report.json \
           --opengrep-ignore-pattern NOSONAR
         jq -c '.runs[].results |= map(select((.suppressions // [] | map(.kind == "inSource") | any | not)))' all-opengrep-sarif.sarif > opengrep-sarif.sarif
@@ -216,52 +330,6 @@ runs:
         ENGAGEMENT_NAME: "${{ inputs.override_branch || github.ref_name }}"
       run: |
         touch grype-results.sarif
-        # Install syft
-        SYFT_VERSION=1.46.0
-        SYFT_FILE="syft_${SYFT_VERSION}_linux_amd64.tar.gz"
-        SYFT_BASE_URL="https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/"
-        if [[ ! -f "/usr/local/bin/syft" ]] ; then
-          curl -sfL "${SYFT_BASE_URL}${SYFT_FILE}" -o "${SYFT_FILE}"
-          echo "d654f678b709eb53c393d38519d5ed7d2e57205529404018614cfefa0fb2b5ca ${SYFT_FILE}" | sha256sum -c --status
-          sudo rm -rf /usr/local/bin/syft && sudo tar -C /usr/local/bin -xzf "${SYFT_FILE}"
-        fi
-        curl -sfL "${SYFT_BASE_URL}syft_${SYFT_VERSION}_checksums.txt.pem" -o checksums.txt.pem
-        echo "9cbba2c86a26e4e2ead8d45d6831369dfb63e507b2062605cc108e42946fc029 checksums.txt.pem" | sha256sum -c --status
-        curl -sfL "${SYFT_BASE_URL}syft_${SYFT_VERSION}_checksums.txt.sig" -o checksums.txt.sig
-        echo "66711110e4d351b66ad1e8bcae1057dbad1a7d1dfbae57d65c94fb23f59acf49 checksums.txt.sig" | sha256sum -c --status
-        curl -sfL "${SYFT_BASE_URL}syft_${SYFT_VERSION}_checksums.txt" -o checksums.txt
-        echo "2fefc202b2eccab83888cc91f5a364a75df0dd777afbbae5b5e23ebd93d81ac6 checksums.txt" | sha256sum -c --status
-
-        cosign verify-blob ./checksums.txt \
-          --certificate ./checksums.txt.pem \
-          --signature ./checksums.txt.sig \
-          --certificate-identity-regexp 'https://github\.com/anchore/syft/\.github/workflows/.+' \
-          --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
-
-        sudo chmod +x /usr/local/bin/syft
-
-        # Install grype
-        GRYPE_VERSION=0.115.0
-        GRYPE_FILE="grype_${GRYPE_VERSION}_linux_amd64.tar.gz"
-        GRYPE_BASE_URL="https://github.com/anchore/grype/releases/download/v${GRYPE_VERSION}/"
-        if [[ ! -f "/usr/local/bin/grype" ]]; then
-          curl -sfL "${GRYPE_BASE_URL}${GRYPE_FILE}" -o "${GRYPE_FILE}"
-          echo "3fad92940650e514c0aa2dad83526942a055e210cec09a8a59d9c024adc2b90e ${GRYPE_FILE}" | sha256sum -c --status
-          sudo rm -rf /usr/local/bin/grype && sudo tar -C /usr/local/bin -xzf "${GRYPE_FILE}"
-        fi
-        curl -sfL "${GRYPE_BASE_URL}grype_${GRYPE_VERSION}_checksums.txt.pem" -o checksums2.txt.pem
-        echo "86fd326dea67e29c237fd257fa2dfda127be3192c2ccaeed26b6ebb9bf3387a3 checksums2.txt.pem" | sha256sum -c --status
-        curl -sfL "${GRYPE_BASE_URL}grype_${GRYPE_VERSION}_checksums.txt.sig" -o checksums2.txt.sig
-        echo "5048c3b0bee9292c23fe1c19dbd52797b3881683db40689868e937f973ec60a7 checksums2.txt.sig" | sha256sum -c --status
-        curl -sfL "${GRYPE_BASE_URL}grype_${GRYPE_VERSION}_checksums.txt" -o checksums2.txt
-        echo "dce654b6f5185d6e4e31cbdd966056562808c0d82b0acc233e9af03e1d4de2b8 checksums2.txt" | sha256sum -c --status
-
-        cosign verify-blob ./checksums2.txt \
-          --certificate ./checksums2.txt.pem \
-          --signature ./checksums2.txt.sig \
-          --certificate-identity-regexp 'https://github\.com/anchore/grype/\.github/workflows/.+' \
-          --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
-        sudo chmod +x /usr/local/bin/grype
         syft . -o cyclonedx-json=cdx.json && grype sbom:cdx.json -o table -o sarif=grype-results.sarif -o cyclonedx-json=cdx2.json -o json=grype-report.json
         if [ -n "$DD_API_TOKEN" ] && [ "$CURRENT_BRANCH" = "$DEFAULT_BRANCH" ]; then
           cat cdx2.json | jq '
@@ -329,6 +397,34 @@ runs:
               echo "$RESPONSE"
           fi
         fi
+    - name: Run checkov (IaC)
+      if: always()
+      shell: bash
+      env:
+        ENABLE_CHECKOV: ${{ inputs.enable_checkov }}
+        CHECKOV_OPTS: ${{ inputs.checkov_opts }}
+      run: |
+        set -o pipefail
+        # SonarQube fails the analysis on a sarifReportPaths entry it cannot read,
+        # so checkov-sarif.sarif must exist even when checkov is off or finds nothing.
+        echo '{"version":"2.1.0","$schema":"https://json.schemastore.org/sarif-2.1.0.json","runs":[]}' > checkov-sarif.sarif
+        echo '{"results":{"failed_checks":[]}}' > checkov-report.json
+
+        if [[ "$ENABLE_CHECKOV" != "true" ]]; then
+          echo "checkov disabled, skipping"
+          exit 0
+        fi
+
+        # --output-file-path entries map 1:1 to the -o flags, in order. They must be
+        # distinct paths that do not already exist as directories, otherwise checkov
+        # writes results_<format>.<ext> inside them instead.
+        # --soft-fail: findings are gated in the summary step, not here.
+        checkov -d . \
+          --quiet --compact --soft-fail --skip-download \
+          -o cli -o sarif -o json \
+          --output-file-path console,checkov-sarif.sarif,checkov-report.json \
+          $CHECKOV_OPTS
+        exit 0
     - name: 'Set up OpenJDK (Temurin) 24'
       if: steps.java.outputs.found == 'true'
       uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
@@ -353,7 +449,7 @@ runs:
           "-Dsonar.projectName=${{ github.repository }}"
           -Dsonar.projectKey=repo:${{ github.repository_id }}
           -Dsonar.qualitygate.wait=${{ inputs.wait_pipeline || 'true' }}
-          -Dsonar.sarifReportPaths=grype-results.sarif,opengrep-sarif.sarif
+          -Dsonar.sarifReportPaths=grype-results.sarif,opengrep-sarif.sarif,checkov-sarif.sarif
           ${{ github.event_name == 'pull_request' && 
           format('-Dsonar.pullrequest.key={0} -Dsonar.pullrequest.branch={1} -Dsonar.pullrequest.base={2}',
           github.event.pull_request.number,
@@ -420,8 +516,9 @@ runs:
         DD_API_TOKEN: ${{ inputs.dd_token || '' }}
         PRODUCT_NAME: ${{ github.repository }}
         ENGAGEMENT_NAME: "${{ inputs.override_branch || github.ref_name }}"
+        ENABLE_CHECKOV: ${{ inputs.enable_checkov }}
       run: |
-        # Import sonarqube and opengrep to defectdojo
+        # Import sonarqube, opengrep and checkov to defectdojo
         if [ -n "$DD_API_TOKEN" ] && [ "$CURRENT_BRANCH" = "$DEFAULT_BRANCH" ]; then
           PRODUCT_INFO=$(curl -s -X GET "$DD_URL/api/v2/products/?name=${PRODUCT_NAME}" \
             -H "Authorization: Token $DD_API_TOKEN")
@@ -452,6 +549,27 @@ runs:
           else
               echo "Error reimporting opengrep to dojo:"
               echo "$RESPONSE"
+          fi
+          # checkov
+          if [ "$ENABLE_CHECKOV" = "true" ] && [ -f checkov-report.json ]; then
+            RESPONSE=$(curl -s -X POST "$DD_URL/api/v2/reimport-scan/" \
+              -H "Authorization: Token $DD_API_TOKEN" \
+              -H "Content-Type: multipart/form-data" \
+              -F "active=true" \
+              -F "verified=true" \
+              -F "scan_type=Checkov Scan" \
+              -F "product_name=$PRODUCT_NAME" \
+              -F "engagement_name=$ENGAGEMENT_NAME" \
+              -F "file=@checkov-report.json" \
+              -F "${PARAM_TYPE}" \
+              -F "auto_create_context=true" \
+              -F "close_old_findings=true")
+            if echo "$RESPONSE" | grep -q '"test":'; then
+                echo "Checkov scan reimported"
+            else
+                echo "Error reimporting checkov to dojo:"
+                echo "$RESPONSE"
+            fi
           fi
           # sonarqube
           # DefectDojo's "SonarQube Scan detailed" parser reads the REST API JSON
@@ -592,6 +710,40 @@ runs:
 
             echo "" >> $GITHUB_STEP_SUMMARY
         fi
+
+        # checkov results are a single object, or a list of objects when several
+        # frameworks (terraform, dockerfile, github_actions, ...) match.
+        if [ "$ENABLE_CHECKOV" = "true" ] && [ -f checkov-report.json ]; then
+          CHECKOV_FAILED=$(jq -c '
+            [ (if type == "array" then .[] else . end)
+              | (.check_type // "iac") as $fw
+              | (.results.failed_checks // [])[]
+              | . + { check_type: $fw } ]
+          ' checkov-report.json)
+
+          if [ "$(echo "$CHECKOV_FAILED" | jq 'length')" -gt 0 ]; then
+              echo "### Infrastructure as Code (checkov)" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "| Check | Resource | File | Framework |" >> $GITHUB_STEP_SUMMARY
+              echo "|:---|:---|:---|:---|" >> $GITHUB_STEP_SUMMARY
+
+              echo "$CHECKOV_FAILED" | jq -r '
+              .[] |
+              (if .guideline then "[" + .check_id + "](" + .guideline + ")" else .check_id end) as $check |
+              "| " + $check + ": " + (.check_name // "") + " | " +
+              (.resource // "-") + " | " +
+              (.file_path // "-") + ":" + ((.file_line_range[0] // "-") | tostring) + " | " +
+              .check_type + " |"
+              ' >> $GITHUB_STEP_SUMMARY
+
+              echo "" >> $GITHUB_STEP_SUMMARY
+          else
+              echo "### Infrastructure as Code (checkov)" >> $GITHUB_STEP_SUMMARY
+              echo "No IaC misconfigurations found" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+        fi
+
         if [ -n "$SONAR_TOKEN" ] && [ -n "$SONAR_HOST_URL" ]; then
           HOTSPOTS=$(curl -s -u $SONAR_TOKEN: \
               "$SONAR_HOST_URL/api/hotspots/search?project=$PROJECT_KEY&${BRANCH_KEY}=${BRANCH_VALUE}&status=TO_REVIEW&ps=$MAX_RESULTS")
