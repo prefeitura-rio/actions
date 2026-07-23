@@ -142,19 +142,12 @@ runs:
       run: |
         set -euo pipefail
 
-        # Downloads $2 to $TOOL_DL/$1 unless a copy matching the pinned sha256 $3
-        # is already there (i.e. restored from cache). Returns 0 when it downloaded,
-        # 1 when the cached copy was reused, so callers can skip signature checks on
-        # cache hits. The sha256 verification below runs either way, so a poisoned
-        # cache entry never survives.
         fetch() {
           local name="$1" url="$2" sha="$3" out="$TOOL_DL/$1" downloaded=1
           if [[ ! -f "$out" ]] || ! echo "$sha  $out" | sha256sum -c --status; then
             curl -sfL "$url" -o "$out"
             downloaded=0
           fi
-          # Hard exit, not "set -e": callers invoke fetch in an if-condition, which
-          # disables errexit inside the function, so a mismatch must abort explicitly.
           if ! echo "$sha  $out" | sha256sum -c --status; then
             echo "::error title=SAST::checksum mismatch for $name from $url"
             rm -f "$out"
@@ -416,12 +409,18 @@ runs:
           exit 0
         fi
 
-        # --output-file-path entries map 1:1 to the -o flags, in order. They must be
-        # distinct paths that do not already exist as directories, otherwise checkov
-        # writes results_<format>.<ext> inside them instead.
-        # --soft-fail: findings are gated in the summary step, not here.
+        #   CKV_GHA_3 flags any run line containing the raw substrings "curl" and
+        #     "secret" (e.g. `curl -H "Authorization: Bearer $MY_SECRET"` sourced from
+        #     an env: mapped secret, the recommended-safe pattern). Real interpolation
+        #     risk is already covered precisely by CKV_GHA_2 (shell injection), kept on.
+        #   CKV_GHA_5 / CKV_GHA_6 flag any docker/build step lacking a later
+        #     `cosign sign` / `cosign ... sbom` string in the same job
+        #   CKV_GHA_7 flags any workflow_dispatch with inputs, which is the standard
+        # Extend via checkov_opts; --skip-check is cumulative (argparse action=append),
+        # so a caller-supplied --skip-check adds to this list instead of replacing it.
         checkov -d . \
           --quiet --compact --soft-fail --skip-download \
+          --skip-check CKV_GHA_3,CKV_GHA_5,CKV_GHA_6,CKV_GHA_7 \
           -o cli -o sarif -o json \
           --output-file-path console,checkov-sarif.sarif,checkov-report.json \
           $CHECKOV_OPTS
@@ -441,6 +440,14 @@ runs:
       if: steps.java.outputs.found == 'true'
       shell: bash
       run: mvn clean compile
+    - name: Restore SonarQube scanner cache
+      if: inputs.sonar_url && inputs.sonar_token
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.sonar/cache
+        key: sonar-scanner-${{ runner.os }}-${{ inputs.sonar_url }}
+        restore-keys: |
+          sonar-scanner-${{ runner.os }}-
     - name: SonarQube
       if: inputs.sonar_url && inputs.sonar_token
       # NOSONAR: generic.secrets.security.detected-sonarqube-docs-api-key.detected-sonarqube-docs-api-key
