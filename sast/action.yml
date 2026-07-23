@@ -420,8 +420,25 @@ runs:
         # distinct paths that do not already exist as directories, otherwise checkov
         # writes results_<format>.<ext> inside them instead.
         # --soft-fail: findings are gated in the summary step, not here.
+        # --skip-check: these github_actions checks are muted org-wide because their
+        # detection heuristic can't tell a real finding from the standard safe idiom,
+        # so they fire on the majority of legitimate workflows:
+        #   CKV_GHA_3 flags any run line containing the raw substrings "curl" and
+        #     "secret" (e.g. `curl -H "Authorization: Bearer $MY_SECRET"` sourced from
+        #     an env: mapped secret, the recommended-safe pattern). Real interpolation
+        #     risk is already covered precisely by CKV_GHA_2 (shell injection), kept on.
+        #   CKV_GHA_5 / CKV_GHA_6 flag any docker/build step lacking a later
+        #     `cosign sign` / `cosign ... sbom` string in the same job, even when the
+        #     image is never pushed (PR-only build) or is signed via another job,
+        #     workflow, or GH-native attestation (actions/attest-build-provenance).
+        #   CKV_GHA_7 flags any workflow_dispatch with inputs, which is the standard,
+        #     intentional way to parameterize a manual run (e.g. environment picker);
+        #     see bridgecrewio/checkov#3839.
+        # Extend via checkov_opts; --skip-check is cumulative (argparse action=append),
+        # so a caller-supplied --skip-check adds to this list instead of replacing it.
         checkov -d . \
           --quiet --compact --soft-fail --skip-download \
+          --skip-check CKV_GHA_3,CKV_GHA_5,CKV_GHA_6,CKV_GHA_7 \
           -o cli -o sarif -o json \
           --output-file-path console,checkov-sarif.sarif,checkov-report.json \
           $CHECKOV_OPTS
@@ -441,6 +458,22 @@ runs:
       if: steps.java.outputs.found == 'true'
       shell: bash
       run: mvn clean compile
+    - name: Restore SonarQube scanner cache
+      # ~/.sonar/cache holds the JRE + analyzer plugins the scanner auto-provisions
+      # from the SonarQube server. Runners are ephemeral, so without this the
+      # SonarQube step re-downloads both every run: ~100s for the JRE plus ~35s+127s
+      # for the plugin sets, dwarfing the analysis itself (measured on this repo's
+      # own CI: 4:40 total, of which ~4:23 was JRE + plugin provisioning vs. ~2s of
+      # actual sensor analysis and ~5s for the quality-gate wait). Keyed per SonarQube
+      # host since plugin sets differ per server; restore-keys falls back across scanner
+      # bumps so a partial hit still saves the JRE download.
+      if: inputs.sonar_url && inputs.sonar_token
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.sonar/cache
+        key: sonar-scanner-${{ runner.os }}-${{ inputs.sonar_url }}
+        restore-keys: |
+          sonar-scanner-${{ runner.os }}-
     - name: SonarQube
       if: inputs.sonar_url && inputs.sonar_token
       # NOSONAR: generic.secrets.security.detected-sonarqube-docs-api-key.detected-sonarqube-docs-api-key
