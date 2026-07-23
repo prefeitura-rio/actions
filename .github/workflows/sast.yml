@@ -72,6 +72,9 @@ on:
         description: Tailscale OAuth secret
         required: true
 
+permissions:
+  contents: read
+
 jobs:
   sast:
     runs-on: ${{ inputs.runs_on }}
