@@ -1,0 +1,20 @@
+rules:
+  - id: python-taint-env-vars-in-logs
+    message: "Aviso de Segurança: Dados originados de 'os.environ' estão sendo impressos nos logs."
+    severity: WARNING
+    languages:
+      - python
+    mode: taint
+
+    pattern-sources:
+      - pattern: os.environ
+      - pattern: os.environ.get(...)
+      - pattern: os.environ.items()
+
+    pattern-sinks:
+      - pattern: print(...)
+      - pattern: $LOG.info(...)
+      - pattern: $LOG.debug(...)
+      - pattern: $LOG.error(...)
+      - pattern: $LOG.warning(...)
+      - pattern: $LOG.log(...)
