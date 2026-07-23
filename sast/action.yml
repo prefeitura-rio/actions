@@ -442,7 +442,7 @@ runs:
       run: mvn clean compile
     - name: Restore SonarQube scanner cache
       if: inputs.sonar_url && inputs.sonar_token
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # NOSONAR(S6702) # v6.1.0
       with:
         path: ~/.sonar/cache
         key: sonar-scanner-${{ runner.os }}-${{ inputs.sonar_url }}
