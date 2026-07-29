@@ -142,12 +142,19 @@ runs:
       run: |
         set -euo pipefail
 
+        # Downloads $2 to $TOOL_DL/$1 unless a copy matching the pinned sha256 $3
+        # is already there (i.e. restored from cache). Returns 0 when it downloaded,
+        # 1 when the cached copy was reused, so callers can skip signature checks on
+        # cache hits. The sha256 verification below runs either way, so a poisoned
+        # cache entry never survives.
         fetch() {
           local name="$1" url="$2" sha="$3" out="$TOOL_DL/$1" downloaded=1
           if [[ ! -f "$out" ]] || ! echo "$sha  $out" | sha256sum -c --status; then
             curl -sfL "$url" -o "$out"
             downloaded=0
           fi
+          # Hard exit, not "set -e": callers invoke fetch in an if-condition, which
+          # disables errexit inside the function, so a mismatch must abort explicitly.
           if ! echo "$sha  $out" | sha256sum -c --status; then
             echo "::error title=SAST::checksum mismatch for $name from $url"
             rm -f "$out"
@@ -409,18 +416,31 @@ runs:
           exit 0
         fi
 
+        # --output-file-path entries map 1:1 to the -o flags, in order. They must be
+        # distinct paths that do not already exist as directories, otherwise checkov
+        # writes results_<format>.<ext> inside them instead.
+        # --soft-fail: findings are gated in the summary step, not here.
+        # --skip-check: these github_actions checks are muted org-wide because their
+        # detection heuristic can't tell a real finding from the standard safe idiom,
+        # so they fire on the majority of legitimate workflows:
         #   CKV_GHA_3 flags any run line containing the raw substrings "curl" and
         #     "secret" (e.g. `curl -H "Authorization: Bearer $MY_SECRET"` sourced from
         #     an env: mapped secret, the recommended-safe pattern). Real interpolation
         #     risk is already covered precisely by CKV_GHA_2 (shell injection), kept on.
         #   CKV_GHA_5 / CKV_GHA_6 flag any docker/build step lacking a later
-        #     `cosign sign` / `cosign ... sbom` string in the same job
-        #   CKV_GHA_7 flags any workflow_dispatch with inputs, which is the standard
+        #     `cosign sign` / `cosign ... sbom` string in the same job, even when the
+        #     image is never pushed (PR-only build) or is signed via another job,
+        #     workflow, or GH-native attestation (actions/attest-build-provenance).
+        #   CKV_GHA_7 flags any workflow_dispatch with inputs, which is the standard,
+        #     intentional way to parameterize a manual run (e.g. environment picker);
+        #     see bridgecrewio/checkov#3839.
+        #   CKV_DOCKER_2 flags when a dockerfile has no HEALTHCHECK, since we use
+        #     k8s, there is no requirement for that.
         # Extend via checkov_opts; --skip-check is cumulative (argparse action=append),
         # so a caller-supplied --skip-check adds to this list instead of replacing it.
         checkov -d . \
           --quiet --compact --soft-fail --skip-download \
-          --skip-check CKV_GHA_3,CKV_GHA_5,CKV_GHA_6,CKV_GHA_7 \
+          --skip-check CKV_GHA_3,CKV_GHA_5,CKV_GHA_6,CKV_GHA_7,CKV_DOCKER_2 \
           -o cli -o sarif -o json \
           --output-file-path console,checkov-sarif.sarif,checkov-report.json \
           $CHECKOV_OPTS
@@ -441,8 +461,16 @@ runs:
       shell: bash
       run: mvn clean compile
     - name: Restore SonarQube scanner cache
+      # ~/.sonar/cache holds the JRE + analyzer plugins the scanner auto-provisions
+      # from the SonarQube server. Runners are ephemeral, so without this the
+      # SonarQube step re-downloads both every run: ~100s for the JRE plus ~35s+127s
+      # for the plugin sets, dwarfing the analysis itself (measured on this repo's
+      # own CI: 4:40 total, of which ~4:23 was JRE + plugin provisioning vs. ~2s of
+      # actual sensor analysis and ~5s for the quality-gate wait). Keyed per SonarQube
+      # host since plugin sets differ per server; restore-keys falls back across scanner
+      # bumps so a partial hit still saves the JRE download.
       if: inputs.sonar_url && inputs.sonar_token
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # NOSONAR(S6702) # v6.1.0
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.sonar/cache
         key: sonar-scanner-${{ runner.os }}-${{ inputs.sonar_url }}
@@ -658,7 +686,11 @@ runs:
           SONAR_ISSUES=$(echo "$RESPONSE" | jq '
               .issues
               | unique_by(.key)
-              | map(select(.rule | contains("external_grype") | not ))
+              # external_* rules are SARIF findings imported from grype/opengrep/
+              # checkov (see sonar.sarifReportPaths above); they are shown in
+              # their own dedicated sections below so excluding them here avoids
+              # listing the same finding twice.
+              | map(select((.rule // "") | startswith("external_") | not ))
           ')
 
           if [ "$(echo "$SONAR_ISSUES" | jq 'length')" -gt 0 ]; then
@@ -714,6 +746,37 @@ runs:
             $fix + " | " + 
             $final_sev + " | " + 
             $loc + " |"
+            ' >> $GITHUB_STEP_SUMMARY
+
+            echo "" >> $GITHUB_STEP_SUMMARY
+        fi
+
+        # opengrep results are surfaced separately from the generic Sonar
+        # Security Findings table above (its external_* rule is excluded
+        # there) so each finding is shown exactly once.
+        OPENGREP_ISSUES=$(jq -c '.results // []' opengrep-report.json)
+        if [ "$(echo "$OPENGREP_ISSUES" | jq 'length')" -gt 0 ]; then
+            echo "### Static Analysis (opengrep)" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Issue | File | Rule | Severity |" >> $GITHUB_STEP_SUMMARY
+            echo "|:---|:---|:---|:---|" >> $GITHUB_STEP_SUMMARY
+
+            echo "$OPENGREP_ISSUES" | jq -r '
+            def map_severity:
+            {
+                "ERROR": "HIGH",
+                "WARNING": "MEDIUM",
+                "INFO": "LOW"
+            }[.] // .;
+
+            .[] |
+            (.extra.metadata.shortlink // "") as $link |
+            (if $link != "" then "[" + .check_id + "](" + $link + ")" else .check_id end) as $rule |
+            (.extra.message | gsub("\\|"; "\\|")) as $msg |
+            "| " + $msg + " | " +
+            .path + ":" + (.start.line | tostring) + " | " +
+            $rule + " | " +
+            (.extra.severity | map_severity) + " |"
             ' >> $GITHUB_STEP_SUMMARY
 
             echo "" >> $GITHUB_STEP_SUMMARY
