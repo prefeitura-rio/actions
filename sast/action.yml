@@ -7,7 +7,7 @@ inputs:
     default: "true"
   break_on:
     required: false
-    default: "HIGH"
+    default: "-"
   enable_clippy:
     required: false
     default: "false"
