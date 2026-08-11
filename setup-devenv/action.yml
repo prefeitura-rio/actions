@@ -1,0 +1,23 @@
+name: Setup devenv
+description: Install Nix, devenv and enable the devenv binary cache.
+
+inputs:
+  cachix_name:
+    description: Cachix binary cache name to enable
+    required: false
+    default: devenv
+
+runs:
+  using: composite
+  steps:
+    - name: Install Nix
+      uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31
+
+    - name: Use devenv binary cache
+      uses: cachix/cachix-action@5f2d7c5294214f71b873db4b969586b980625e71 # v17
+      with:
+        name: ${{ inputs.cachix_name }}
+
+    - name: Install devenv
+      shell: bash
+      run: nix profile add nixpkgs#devenv
