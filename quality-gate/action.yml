@@ -156,8 +156,9 @@ runs:
         echo "$SG_SHA  $SG_OUT" | sha256sum -c --status || {
           echo "::error title=strlint::sha256 mismatch for ast-grep"; rm -f "$SG_OUT"; exit 1
         }
-        unzip -p "$SG_OUT" sg > "$TOOL_BIN/sg"
-        chmod +x "$TOOL_BIN/sg"
+        # Extract the `ast-grep` binary (not the deprecated `sg` alias).
+        unzip -p "$SG_OUT" ast-grep > "$TOOL_BIN/ast-grep"
+        chmod +x "$TOOL_BIN/ast-grep"
 
     - name: "strlint | ast-grep org rules"
       if: inputs.check == 'app:strlint' && steps.lang.outputs.name == 'go'
@@ -166,9 +167,12 @@ runs:
         ACTION_PATH: ${{ github.action_path }}
       run: |
         set -euo pipefail
-        # --config resolves ruleDirs relative to the config file's own location,
-        # so this correctly points at $ACTION_PATH/go/rules/ regardless of cwd.
-        sg scan --config "${ACTION_PATH}/go/sgconfig.yaml"
+        # Generate a temporary sgconfig that uses an absolute path for ruleDirs
+        # so resolution is unambiguous regardless of cwd or ast-grep version.
+        TMP_CFG=$(mktemp --suffix=.yaml)
+        printf 'ruleDirs:\n  - %s/go/rules\n' "${ACTION_PATH}" > "$TMP_CFG"
+        ast-grep scan --config "$TMP_CFG"
+        rm -f "$TMP_CFG"
         echo "Org-wide ast-grep rules passed."
 
     - name: "strlint | ast-grep repo rules"
@@ -179,7 +183,7 @@ runs:
         # Run project-local rules only when the repo ships its own sgconfig.yaml
         # or rules/ directory. Org-wide rules already ran in the previous step.
         if [[ -f sgconfig.yaml || -d rules ]]; then
-          sg scan
+          ast-grep scan
           echo "Repo-local ast-grep rules passed."
         else
           echo "No repo-local sgconfig.yaml or rules/ found — skipping."
@@ -191,7 +195,7 @@ runs:
       run: |
         set -euo pipefail
         if [[ -d tests ]]; then
-          sg test -t tests
+          ast-grep test -t tests
           echo "Repo-local rule tests passed."
         else
           echo "No tests/ directory found — skipping rule tests."
