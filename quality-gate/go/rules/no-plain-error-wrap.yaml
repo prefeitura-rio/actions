@@ -1,0 +1,13 @@
+id: no-plain-error-wrap
+language: Go
+severity: warning
+message: >
+  Wrap errors with %w instead of %v or %s so the original error is preserved
+  for errors.Is / errors.As unwrapping.
+rule:
+  pattern: fmt.Errorf($FORMAT, $ERR)
+constraints:
+  FORMAT:
+    regex: "%[vs]"
+    not:
+      regex: "%w"

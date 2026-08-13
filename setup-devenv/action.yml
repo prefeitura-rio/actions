@@ -1,11 +1,23 @@
 name: Setup devenv
-description: Install Nix, devenv and enable the devenv binary cache.
+description: >
+  Install Nix, devenv, and enable the devenv binary cache.
+  When a devenv.lock is present in the workspace the action installs the exact
+  devenv revision that is pinned there, guaranteeing that CI uses the same
+  devenv version as local development.
 
 inputs:
   cachix_name:
     description: Cachix binary cache name to enable
     required: false
     default: devenv
+  devenv_version:
+    description: >
+      Explicit devenv version to install (e.g. "1.4.0").
+      When set this takes precedence over the revision found in devenv.lock.
+      When omitted the action reads devenv.lock from the workspace; if no lock
+      file is present it falls back to the latest devenv from nixpkgs.
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -18,6 +30,56 @@ runs:
       with:
         name: ${{ inputs.cachix_name }}
 
-    - name: Install devenv
+    - name: Resolve devenv revision
+      id: resolve
+      shell: bash
+      env:
+        DEVENV_VERSION: ${{ inputs.devenv_version }}
+      run: |
+        set -euo pipefail
+
+        if [[ -n "$DEVENV_VERSION" ]]; then
+          # Explicit version takes precedence: derive the tag ref.
+          # devenv tags look like "v1.4.0"; the flake lives at github:cachix/devenv.
+          echo "ref=v${DEVENV_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "source=input"           >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        LOCK_FILE="$GITHUB_WORKSPACE/devenv.lock"
+
+        if [[ -f "$LOCK_FILE" ]]; then
+          REV=$(jq -r '.nodes.devenv.locked.rev // empty' "$LOCK_FILE")
+          if [[ -n "$REV" ]]; then
+            echo "ref=${REV}" >> "$GITHUB_OUTPUT"
+            echo "source=lock" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+        fi
+
+        # No lock file or no devenv node — fall back to nixpkgs channel.
+        echo "ref="            >> "$GITHUB_OUTPUT"
+        echo "source=nixpkgs"  >> "$GITHUB_OUTPUT"
+
+    - name: Install devenv (pinned from devenv.lock)
+      if: steps.resolve.outputs.source == 'lock'
+      shell: bash
+      env:
+        REV: ${{ steps.resolve.outputs.ref }}
+      run: |
+        # devenv.lock stores the rev of github:cachix/devenv; the Nix package
+        # lives inside the repo at src/modules, hence the ?dir= qualifier.
+        nix profile install "github:cachix/devenv/${REV}?dir=src/modules#devenv"
+
+    - name: Install devenv (pinned by explicit version)
+      if: steps.resolve.outputs.source == 'input'
+      shell: bash
+      env:
+        REF: ${{ steps.resolve.outputs.ref }}
+      run: |
+        nix profile install "github:cachix/devenv/${REF}?dir=src/modules#devenv"
+
+    - name: Install devenv (latest from nixpkgs)
+      if: steps.resolve.outputs.source == 'nixpkgs'
       shell: bash
       run: nix profile add nixpkgs#devenv

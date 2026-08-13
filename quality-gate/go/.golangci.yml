@@ -1,0 +1,94 @@
+version: "2"
+
+# Org-standard golangci-lint configuration.
+# This file is bundled with prefeitura-rio/actions/quality-gate and applied to
+# all Go projects via --config. Project repos must not override this file.
+
+run:
+  tests: true
+  modules-download-mode: readonly
+
+output:
+  sort-order:
+    - file
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - bodyclose
+    - unused
+    - ineffassign
+    - gocritic
+    - gocyclo
+    - unconvert
+    - unparam
+    - misspell
+    - whitespace
+    - gosec
+
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - experimental
+        - opinionated
+        - performance
+        - style
+
+    gocyclo:
+      min-complexity: 15
+
+    gosec:
+      excludes:
+        - G104 # errors unhandled — covered by errcheck
+        - G304 # file path provided as taint input — too noisy in practice
+
+    staticcheck:
+      checks: [all]
+
+  exclusions:
+    generated: lax
+
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gocyclo
+          - gosec
+      - path: cmd/
+        linters:
+          - gosec
+
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
