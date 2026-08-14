@@ -3,7 +3,7 @@ name: CI
 # dogfooding
 on:
   push:
-    branches: [master, feat/ignore-checkov]
+    branches: [master, feat/**]
   pull_request:
 
 permissions:
