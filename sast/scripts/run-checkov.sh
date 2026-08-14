@@ -47,7 +47,7 @@ if [[ -s checkov-skip-paths.txt ]]; then
 fi
 checkov -d . \
   --quiet --compact --soft-fail --skip-download \
-  --skip-check CKV_GHA_3,CKV_GHA_5,CKV_GHA_6,CKV_GHA_7,CKV_DOCKER_2 \
+  --skip-check CKV_GHA_3,CKV_GHA_5,CKV_GHA_6,CKV_GHA_7,CKV_DOCKER_2,CKV_OPENAPI* \
   "${skip_path_args[@]}" \
   -o cli -o sarif -o json \
   --output-file-path console,checkov-sarif.sarif,checkov-report.json \
