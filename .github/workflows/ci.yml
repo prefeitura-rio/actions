@@ -20,7 +20,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Run SAST (local action)
-        uses: ./sast@feat/ignore-checkov
+        uses: ./sast
         with:
           sonar_url: ${{ vars.SONARQUBE_URL }}
           sonar_token: ${{ secrets.SONARQUBE_TOKEN }}
