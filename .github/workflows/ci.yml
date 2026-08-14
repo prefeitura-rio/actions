@@ -3,7 +3,7 @@ name: CI
 # dogfooding
 on:
   push:
-    branches: [master]
+    branches: [master, feat/ignore-checkov]
   pull_request:
 
 permissions:
@@ -20,12 +20,12 @@ jobs:
         with:
           fetch-depth: 0
       - name: Run SAST (local action)
-        uses: ./sast
+        uses: ./sast@feat/ignore-checkov
         with:
           sonar_url: ${{ vars.SONARQUBE_URL }}
           sonar_token: ${{ secrets.SONARQUBE_TOKEN }}
           dd_url: ${{ vars.DEFECTDOJO_URL }}
           dd_token: ${{ secrets.DEFECTDOJO_TOKEN }}
-          ts_tags: tag:k8s-operator
+          ts_tags: tag:prefect-cicd
           ts_oauth_client_id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           ts_oauth_secret: ${{ secrets.TS_OAUTH_SECRET }}

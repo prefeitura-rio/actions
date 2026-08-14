@@ -90,16 +90,6 @@ if [[ "$ENABLE_CHECKOV" == "true" ]]; then
   fi
   ln -sf "$TOOL_DIR/venv/bin/checkov" "$TOOL_BIN/checkov"
 
-  # See sast/patches/fix_checkov_module_finder.py: checkov's terraform
-  # module_finder builds excluded_paths_regex by joining the *repr of the
-  # whole excluded_paths list* character-by-character instead of joining
-  # the patterns, so --skip-path silently over-matches with one entry and
-  # frequently crashes checkov outright (re.error: nothing to repeat) with
-  # more. The "Run checkov" step derives --skip-path from the normalized
-  # ignore file, so this must be patched for --skip-path to be usable at
-  # all. Verified against the installed source; fails loudly if a
-  # checkov_version bump changes the surrounding code, rather than
-  # silently shipping a crash-prone --skip-path.
   MODULE_FINDER_PATH=$("$TOOL_DIR/venv/bin/python3" -c \
     "import importlib.util, os; print(os.path.join(os.path.dirname(importlib.util.find_spec('checkov').origin), 'terraform', 'module_loading', 'module_finder.py'))")
   python3 "$GITHUB_ACTION_PATH/patches/fix_checkov_module_finder.py" "$MODULE_FINDER_PATH"
