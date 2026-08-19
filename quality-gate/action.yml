@@ -86,6 +86,27 @@ runs:
         # This enforces that the lockfile is always committed and up to date.
         pnpm install --frozen-lockfile
 
+    # ── 4. Python toolchain (app:format, app:lint, and app:test) ──────────────
+    - name: "python | setup uv"
+      if: steps.lang.outputs.name == 'python' && (inputs.check == 'app:format' || inputs.check == 'app:lint' || inputs.check == 'app:test')
+      uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      with:
+        version: "0.12.5"
+        # Reads the Python version from the .python-version file in the repo root.
+        # All Python projects in the org must provide this file.
+        python-version-file: ".python-version"
+
+    - name: "python | uv sync"
+      if: steps.lang.outputs.name == 'python' && (inputs.check == 'app:format' || inputs.check == 'app:lint' || inputs.check == 'app:test')
+      shell: bash
+      run: |
+        set -euo pipefail
+        # --frozen: fails if uv.lock is out of sync with pyproject.toml, enforcing
+        # that the lockfile is always committed and up to date. Same principle as
+        # pnpm install --frozen-lockfile.
+        # --all-groups: installs the dev dependency group (ruff, basedpyright, pytest…).
+        uv sync --frozen --all-groups
+
     # ══════════════════════════════════════════════════════════════════════════
     # app:format
     # ══════════════════════════════════════════════════════════════════════════
@@ -154,6 +175,17 @@ runs:
         npx --yes prettier@3.5.3 --check .
         echo "prettier: all files are correctly formatted."
 
+    - name: "format | ruff format --check (python)"
+      if: inputs.check == 'app:format' && steps.lang.outputs.name == 'python'
+      shell: bash
+      run: |
+        set -euo pipefail
+        # --check exits with code 1 if any file would be reformatted; it never
+        # writes changes. Formatting is the developer's responsibility locally.
+        # Equivalent to prettier --check for TypeScript.
+        uv run ruff format --check .
+        echo "ruff format: all files are correctly formatted."
+
     # ══════════════════════════════════════════════════════════════════════════
     # app:lint
     # ══════════════════════════════════════════════════════════════════════════
@@ -179,12 +211,36 @@ runs:
         npx --yes oxlint@0.16.7 --config "${ACTION_PATH}/typescript/.oxlintrc.json" .
         echo "oxlint: no issues found."
 
+    - name: "lint | ruff check (python)"
+      if: inputs.check == 'app:lint' && steps.lang.outputs.name == 'python'
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        # Uses the org-wide ruff config shipped with this action at python/ruff.toml,
+        # mirroring the same pattern used for go/.golangci.yml and typescript/.oxlintrc.json.
+        uv run ruff check --config "${ACTION_PATH}/python/ruff.toml" .
+        echo "ruff check: no issues found."
+
+    - name: "lint | basedpyright (python)"
+      if: inputs.check == 'app:lint' && steps.lang.outputs.name == 'python'
+      shell: bash
+      run: |
+        set -euo pipefail
+        # basedpyright reads [tool.basedpyright] from pyproject.toml.
+        # Type checking is placed in app:lint (not app:typecheck) because Python
+        # has no separate compilation step — static analysis and type checking are
+        # the same phase.
+        uv run basedpyright
+        echo "basedpyright: no type errors found."
+
     # ══════════════════════════════════════════════════════════════════════════
     # app:strlint
     # ══════════════════════════════════════════════════════════════════════════
 
     - name: "strlint | install ast-grep"
-      if: inputs.check == 'app:strlint' && (steps.lang.outputs.name == 'go' || steps.lang.outputs.name == 'typescript')
+      if: inputs.check == 'app:strlint' && (steps.lang.outputs.name == 'go' || steps.lang.outputs.name == 'typescript' || steps.lang.outputs.name == 'python')
       shell: bash
       run: |
         set -euo pipefail
@@ -279,6 +335,35 @@ runs:
           echo "No repo-local sgconfig.yaml or rules/ found — skipping."
         fi
 
+    - name: "strlint | ast-grep org rules (python)"
+      if: inputs.check == 'app:strlint' && steps.lang.outputs.name == 'python'
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        # Generate a temporary sgconfig pointing at the Python org rules
+        # with an absolute path, so resolution is unambiguous regardless of cwd.
+        TMP_CFG=$(mktemp --suffix=.yaml)
+        printf 'ruleDirs:\n  - %s/python/rules\n' "${ACTION_PATH}" > "$TMP_CFG"
+        ast-grep scan --config "$TMP_CFG"
+        rm -f "$TMP_CFG"
+        echo "Org-wide Python ast-grep rules passed."
+
+    - name: "strlint | ast-grep repo rules (python)"
+      if: inputs.check == 'app:strlint' && steps.lang.outputs.name == 'python'
+      shell: bash
+      run: |
+        set -euo pipefail
+        # Run project-local rules only when the repo ships its own sgconfig.yaml
+        # or rules/ directory. Org-wide rules already ran in the previous step.
+        if [[ -f sgconfig.yaml || -d rules ]]; then
+          ast-grep scan
+          echo "Repo-local Python ast-grep rules passed."
+        else
+          echo "No repo-local sgconfig.yaml or rules/ found — skipping."
+        fi
+
     # ══════════════════════════════════════════════════════════════════════════
     # app:typecheck
     # ══════════════════════════════════════════════════════════════════════════
@@ -313,6 +398,16 @@ runs:
         # node_modules (including @types/*) were installed in the toolchain section.
         pnpm run typecheck
 
+    - name: "typecheck | no-op (python)"
+      if: inputs.check == 'app:typecheck' && steps.lang.outputs.name == 'python'
+      shell: bash
+      run: |
+        # Python has no separate compilation step. Type checking is performed by
+        # basedpyright inside app:lint. This job still executes (all five CI jobs
+        # are always present in the workflow) but exits 0 with an informational
+        # message so the CI matrix stays consistent across all languages.
+        echo "Python: type checking is covered by basedpyright in app:lint — no separate typecheck step."
+
     # ══════════════════════════════════════════════════════════════════════════
     # app:test
     # ══════════════════════════════════════════════════════════════════════════
@@ -334,3 +429,14 @@ runs:
         # 'vitest run' executes all tests once and exits (non-watch mode).
         # node_modules were installed in the toolchain section above.
         pnpm test
+
+    - name: "test | pytest (python)"
+      if: inputs.check == 'app:test' && steps.lang.outputs.name == 'python'
+      shell: bash
+      run: |
+        set -euo pipefail
+        # --cov=src: measure coverage only for the src/ directory (src-layout standard).
+        # --cov-report=term-missing: prints uncovered line numbers to stdout alongside
+        # the summary table.
+        # Dependencies (pytest, pytest-cov, etc.) were installed in the uv sync step.
+        uv run pytest --cov=src --cov-report=term-missing
