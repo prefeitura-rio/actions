@@ -63,6 +63,29 @@ runs:
         go-version-file: go.mod
         cache: true
 
+    # ── 3. TypeScript toolchain (app:typecheck and app:test only) ──────────────
+    - name: "typescript | setup pnpm"
+      if: steps.lang.outputs.name == 'typescript' && (inputs.check == 'app:typecheck' || inputs.check == 'app:test')
+      uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+
+    - name: "typescript | setup Node.js"
+      if: steps.lang.outputs.name == 'typescript' && (inputs.check == 'app:typecheck' || inputs.check == 'app:test')
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        # Reads the Node.js version from the .node-version file in the repo root.
+        # All TypeScript projects in the org must provide this file.
+        node-version-file: ".node-version"
+        cache: "pnpm"
+
+    - name: "typescript | pnpm install"
+      if: steps.lang.outputs.name == 'typescript' && (inputs.check == 'app:typecheck' || inputs.check == 'app:test')
+      shell: bash
+      run: |
+        set -euo pipefail
+        # --frozen-lockfile: fail if pnpm-lock.yaml is out of sync with package.json.
+        # This enforces that the lockfile is always committed and up to date.
+        pnpm install --frozen-lockfile
+
     # ══════════════════════════════════════════════════════════════════════════
     # app:format
     # ══════════════════════════════════════════════════════════════════════════
@@ -119,6 +142,18 @@ runs:
         fi
         echo "goimports: all import blocks are correctly organised."
 
+    - name: "format | prettier (typescript)"
+      if: inputs.check == 'app:format' && steps.lang.outputs.name == 'typescript'
+      shell: bash
+      run: |
+        set -euo pipefail
+        # npx installs prettier at the exact pinned version using npm's registry
+        # integrity verification. No project node_modules are required.
+        # --check exits with code 1 if any file would be reformatted; it never
+        # writes changes (formatting is the developer's responsibility locally).
+        npx --yes prettier@3.5.3 --check .
+        echo "prettier: all files are correctly formatted."
+
     # ══════════════════════════════════════════════════════════════════════════
     # app:lint
     # ══════════════════════════════════════════════════════════════════════════
@@ -130,12 +165,26 @@ runs:
         version: v2.12.2
         args: --config ${{ github.action_path }}/go/.golangci.yml
 
+    - name: "lint | oxlint (typescript)"
+      if: inputs.check == 'app:lint' && steps.lang.outputs.name == 'typescript'
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        # oxlint is a fast Rust-based linter. npx installs the exact pinned
+        # version; npm's registry verifies integrity automatically.
+        # The org-wide config is shipped with this action at typescript/.oxlintrc.json,
+        # mirroring the same pattern used for go/.golangci.yml.
+        npx --yes oxlint@0.16.7 --config "${ACTION_PATH}/typescript/.oxlintrc.json" .
+        echo "oxlint: no issues found."
+
     # ══════════════════════════════════════════════════════════════════════════
     # app:strlint
     # ══════════════════════════════════════════════════════════════════════════
 
     - name: "strlint | install ast-grep"
-      if: inputs.check == 'app:strlint' && steps.lang.outputs.name == 'go'
+      if: inputs.check == 'app:strlint' && (steps.lang.outputs.name == 'go' || steps.lang.outputs.name == 'typescript')
       shell: bash
       run: |
         set -euo pipefail
@@ -201,6 +250,35 @@ runs:
           echo "No tests/ directory found — skipping rule tests."
         fi
 
+    - name: "strlint | ast-grep org rules (typescript)"
+      if: inputs.check == 'app:strlint' && steps.lang.outputs.name == 'typescript'
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        # Generate a temporary sgconfig pointing at the TypeScript org rules
+        # with an absolute path, so resolution is unambiguous regardless of cwd.
+        TMP_CFG=$(mktemp --suffix=.yaml)
+        printf 'ruleDirs:\n  - %s/typescript/rules\n' "${ACTION_PATH}" > "$TMP_CFG"
+        ast-grep scan --config "$TMP_CFG"
+        rm -f "$TMP_CFG"
+        echo "Org-wide TypeScript ast-grep rules passed."
+
+    - name: "strlint | ast-grep repo rules (typescript)"
+      if: inputs.check == 'app:strlint' && steps.lang.outputs.name == 'typescript'
+      shell: bash
+      run: |
+        set -euo pipefail
+        # Run project-local rules only when the repo ships its own sgconfig.yaml
+        # or rules/ directory. Org-wide rules already ran in the previous step.
+        if [[ -f sgconfig.yaml || -d rules ]]; then
+          ast-grep scan
+          echo "Repo-local TypeScript ast-grep rules passed."
+        else
+          echo "No repo-local sgconfig.yaml or rules/ found — skipping."
+        fi
+
     # ══════════════════════════════════════════════════════════════════════════
     # app:typecheck
     # ══════════════════════════════════════════════════════════════════════════
@@ -226,6 +304,15 @@ runs:
           go build -ldflags="-s -w" -o /dev/null .
         fi
 
+    - name: "typecheck | tsc (typescript)"
+      if: inputs.check == 'app:typecheck' && steps.lang.outputs.name == 'typescript'
+      shell: bash
+      run: |
+        set -euo pipefail
+        # --noEmit: type-check only, no output files. Equivalent to go vet in Go.
+        # node_modules (including @types/*) were installed in the toolchain section.
+        pnpm run typecheck
+
     # ══════════════════════════════════════════════════════════════════════════
     # app:test
     # ══════════════════════════════════════════════════════════════════════════
@@ -238,3 +325,12 @@ runs:
         # -race requires CGO_ENABLED=1; the module-level default is 0 for
         # reproducible static builds so we set it explicitly here only.
         CGO_ENABLED=1 go test -count=1 -race -v ./...
+
+    - name: "test | vitest (typescript)"
+      if: inputs.check == 'app:test' && steps.lang.outputs.name == 'typescript'
+      shell: bash
+      run: |
+        set -euo pipefail
+        # 'vitest run' executes all tests once and exits (non-watch mode).
+        # node_modules were installed in the toolchain section above.
+        pnpm test
