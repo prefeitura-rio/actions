@@ -1,0 +1,16 @@
+id: no-any-assertion
+language: TypeScript
+severity: error
+message: >
+  Avoid 'as any' type assertions. They silence the TypeScript compiler
+  entirely and hide real bugs. Use a more precise type, 'as unknown', or
+  a type guard instead. If suppression is truly necessary, add a comment
+  explaining why.
+rule:
+  pattern: $EXPR as any
+ignores:
+  - "**/*.test.ts"
+  - "**/*.test.tsx"
+  - "**/*.spec.ts"
+  - "**/*.spec.tsx"
+  - "tests/**"

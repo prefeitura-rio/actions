@@ -1,0 +1,20 @@
+id: no-console
+language: TypeScript
+severity: warning
+message: >
+  Avoid console.log / console.warn / console.error in production code.
+  Use a structured logger (e.g. pino, winston) so log levels, formatting,
+  and destinations are controlled centrally.
+rule:
+  any:
+    - pattern: console.log($$$ARGS)
+    - pattern: console.warn($$$ARGS)
+    - pattern: console.error($$$ARGS)
+    - pattern: console.info($$$ARGS)
+    - pattern: console.debug($$$ARGS)
+ignores:
+  - "**/*.test.ts"
+  - "**/*.test.tsx"
+  - "**/*.spec.ts"
+  - "**/*.spec.tsx"
+  - "tests/**"
