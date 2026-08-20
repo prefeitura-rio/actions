@@ -56,7 +56,7 @@ runs:
         fi
 
     # ── 2. Go toolchain ────────────────────────────────────────────────────────
-    - name: Set up Go
+    - name: "go | setup go"
       if: steps.lang.outputs.name == 'go'
       uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
       with:
@@ -64,8 +64,25 @@ runs:
         cache: true
 
     # ── 3. TypeScript toolchain (app:typecheck and app:test only) ──────────────
-    - name: "typescript | setup pnpm"
+    - name: "typescript | detect package manager"
+      id: ts-pm
       if: steps.lang.outputs.name == 'typescript' && (inputs.check == 'app:typecheck' || inputs.check == 'app:test')
+      shell: bash
+      run: |
+        set -euo pipefail
+        # pnpm and npm are both supported. The lockfile in the repo root decides
+        # which one is used; a project must commit exactly one of them.
+        if [[ -f pnpm-lock.yaml ]]; then
+          echo "manager=pnpm" >> "$GITHUB_OUTPUT"
+        elif [[ -f package-lock.json ]]; then
+          echo "manager=npm" >> "$GITHUB_OUTPUT"
+        else
+          echo "::error title=quality-gate::No lockfile found for TypeScript project. Commit pnpm-lock.yaml (pnpm) or package-lock.json (npm)."
+          exit 1
+        fi
+
+    - name: "typescript | setup pnpm"
+      if: steps.lang.outputs.name == 'typescript' && (inputs.check == 'app:typecheck' || inputs.check == 'app:test') && steps.ts-pm.outputs.manager == 'pnpm'
       uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
 
     - name: "typescript | setup Node.js"
@@ -75,16 +92,28 @@ runs:
         # Reads the Node.js version from the .node-version file in the repo root.
         # All TypeScript projects in the org must provide this file.
         node-version-file: ".node-version"
-        cache: "pnpm"
+        # Cache is keyed on the detected package manager: pnpm uses
+        # pnpm-lock.yaml, npm uses package-lock.json.
+        cache: ${{ steps.ts-pm.outputs.manager }}
 
     - name: "typescript | pnpm install"
-      if: steps.lang.outputs.name == 'typescript' && (inputs.check == 'app:typecheck' || inputs.check == 'app:test')
+      if: steps.lang.outputs.name == 'typescript' && (inputs.check == 'app:typecheck' || inputs.check == 'app:test') && steps.ts-pm.outputs.manager == 'pnpm'
       shell: bash
       run: |
         set -euo pipefail
         # --frozen-lockfile: fail if pnpm-lock.yaml is out of sync with package.json.
         # This enforces that the lockfile is always committed and up to date.
         pnpm install --frozen-lockfile
+
+    - name: "typescript | npm ci"
+      if: steps.lang.outputs.name == 'typescript' && (inputs.check == 'app:typecheck' || inputs.check == 'app:test') && steps.ts-pm.outputs.manager == 'npm'
+      shell: bash
+      run: |
+        set -euo pipefail
+        # npm ci is the strict equivalent of pnpm install --frozen-lockfile:
+        # it deletes node_modules and installs exactly what package-lock.json
+        # records, failing if the lockfile is out of sync with package.json.
+        npm ci
 
     # ── 4. Python toolchain (app:format, app:lint, and app:test) ──────────────
     - name: "python | setup uv"
@@ -111,7 +140,7 @@ runs:
     # app:format
     # ══════════════════════════════════════════════════════════════════════════
 
-    - name: "format | install gofumpt + goimports"
+    - name: "format | install gofumpt + goimports (go)"
       if: inputs.check == 'app:format' && steps.lang.outputs.name == 'go'
       shell: bash
       run: |
@@ -137,7 +166,7 @@ runs:
         # goimports v0.35.0 — installed via go install (module proxy guarantees integrity)
         GOBIN="$TOOL_BIN" go install golang.org/x/tools/cmd/goimports@v0.35.0
 
-    - name: "format | gofumpt"
+    - name: "format | gofumpt (go)"
       if: inputs.check == 'app:format' && steps.lang.outputs.name == 'go'
       shell: bash
       run: |
@@ -150,7 +179,7 @@ runs:
         fi
         echo "gofumpt: all files are correctly formatted."
 
-    - name: "format | goimports"
+    - name: "format | goimports (go)"
       if: inputs.check == 'app:format' && steps.lang.outputs.name == 'go'
       shell: bash
       run: |
@@ -190,7 +219,7 @@ runs:
     # app:lint
     # ══════════════════════════════════════════════════════════════════════════
 
-    - name: "lint | golangci-lint"
+    - name: "lint | golangci-lint (go)"
       if: inputs.check == 'app:lint' && steps.lang.outputs.name == 'go'
       uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
       with:
@@ -368,14 +397,14 @@ runs:
     # app:typecheck
     # ══════════════════════════════════════════════════════════════════════════
 
-    - name: "typecheck | go vet"
+    - name: "typecheck | go vet (go)"
       if: inputs.check == 'app:typecheck' && steps.lang.outputs.name == 'go'
       shell: bash
       run: |
         set -euo pipefail
         go vet ./...
 
-    - name: "typecheck | go build"
+    - name: "typecheck | go build (go)"
       if: inputs.check == 'app:typecheck' && steps.lang.outputs.name == 'go'
       shell: bash
       run: |
@@ -392,11 +421,17 @@ runs:
     - name: "typecheck | tsc (typescript)"
       if: inputs.check == 'app:typecheck' && steps.lang.outputs.name == 'typescript'
       shell: bash
+      env:
+        PM: ${{ steps.ts-pm.outputs.manager }}
       run: |
         set -euo pipefail
         # --noEmit: type-check only, no output files. Equivalent to go vet in Go.
         # node_modules (including @types/*) were installed in the toolchain section.
-        pnpm run typecheck
+        if [[ "$PM" == "npm" ]]; then
+          npm run typecheck
+        else
+          pnpm run typecheck
+        fi
 
     - name: "typecheck | no-op (python)"
       if: inputs.check == 'app:typecheck' && steps.lang.outputs.name == 'python'
@@ -412,7 +447,7 @@ runs:
     # app:test
     # ══════════════════════════════════════════════════════════════════════════
 
-    - name: "test | go test"
+    - name: "test | go test (go)"
       if: inputs.check == 'app:test' && steps.lang.outputs.name == 'go'
       shell: bash
       run: |
@@ -424,11 +459,17 @@ runs:
     - name: "test | vitest (typescript)"
       if: inputs.check == 'app:test' && steps.lang.outputs.name == 'typescript'
       shell: bash
+      env:
+        PM: ${{ steps.ts-pm.outputs.manager }}
       run: |
         set -euo pipefail
         # 'vitest run' executes all tests once and exits (non-watch mode).
         # node_modules were installed in the toolchain section above.
-        pnpm test
+        if [[ "$PM" == "npm" ]]; then
+          npm test
+        else
+          pnpm test
+        fi
 
     - name: "test | pytest (python)"
       if: inputs.check == 'app:test' && steps.lang.outputs.name == 'python'
