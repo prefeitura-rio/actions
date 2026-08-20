@@ -192,17 +192,19 @@ runs:
         fi
         echo "goimports: all import blocks are correctly organised."
 
-    - name: "format | prettier (typescript)"
+    - name: "format | oxfmt (typescript)"
       if: inputs.check == 'app:format' && steps.lang.outputs.name == 'typescript'
       shell: bash
       run: |
         set -euo pipefail
-        # npx installs prettier at the exact pinned version using npm's registry
+        # npx installs oxfmt at the exact pinned version using npm's registry
         # integrity verification. No project node_modules are required.
         # --check exits with code 1 if any file would be reformatted; it never
         # writes changes (formatting is the developer's responsibility locally).
-        npx --yes prettier@3.5.3 --check .
-        echo "prettier: all files are correctly formatted."
+        # The org-wide config is read from the project's .oxfmtrc.json (same
+        # options previously used with Prettier; oxfmt is Prettier-compatible).
+        npx --yes oxfmt@0.62.0 --check .
+        echo "oxfmt: all files are correctly formatted."
 
     - name: "format | ruff format --check (python)"
       if: inputs.check == 'app:format' && steps.lang.outputs.name == 'python'
