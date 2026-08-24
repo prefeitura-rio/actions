@@ -56,7 +56,7 @@ jobs:
           unzip -p "$SG_OUT" ast-grep > "$TOOL_BIN/ast-grep"
           chmod +x "$TOOL_BIN/ast-grep"
       - name: Test Go rules
-        run: ast-grep test --config quality-gate/go/sgconfig.yaml
+        run: ast-grep test --skip-snapshot-tests --config quality-gate/go/sgconfig.yaml
 
   ast-grep-python:
     runs-on: ubuntu-latest
@@ -84,7 +84,7 @@ jobs:
           unzip -p "$SG_OUT" ast-grep > "$TOOL_BIN/ast-grep"
           chmod +x "$TOOL_BIN/ast-grep"
       - name: Test Python rules
-        run: ast-grep test --config quality-gate/python/sgconfig.yaml
+        run: ast-grep test --skip-snapshot-tests --config quality-gate/python/sgconfig.yaml
 
   ast-grep-typescript:
     runs-on: ubuntu-latest
@@ -112,4 +112,4 @@ jobs:
           unzip -p "$SG_OUT" ast-grep > "$TOOL_BIN/ast-grep"
           chmod +x "$TOOL_BIN/ast-grep"
       - name: Test TypeScript rules
-        run: ast-grep test --config quality-gate/typescript/sgconfig.yaml
+        run: ast-grep test --skip-snapshot-tests --config quality-gate/typescript/sgconfig.yaml

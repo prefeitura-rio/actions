@@ -1,26 +1,26 @@
 id: no-http-default-client
 valid:
-  - code: |
-      client := &http.Client{Timeout: 10 * time.Second}
-      resp, err := client.Get("https://example.com")
-  - code: |
-      var client http.Client
-      resp, err := client.Post(url, "application/json", body)
-  - code: |
-      transport := &http.Transport{MaxIdleConns: 100}
-      client := &http.Client{Transport: transport}
-      resp, err := client.Head(url)
+  - |
+    client := &http.Client{Timeout: 10 * time.Second}
+    resp, err := client.Get("https://example.com")
+  - |
+    var client http.Client
+    resp, err := client.Post(url, "application/json", body)
+  - |
+    transport := &http.Transport{MaxIdleConns: 100}
+    client := &http.Client{Transport: transport}
+    resp, err := client.Head(url)
 invalid:
-  - code: |
-      resp, err := http.Get("https://example.com")
-  - code: |
-      resp, err := http.Post(url, "application/json", body)
-  - code: |
-      resp, err := http.Head(url)
-  - code: |
-      resp, err := http.PostForm(url, form)
-  - code: |
-      resp, err := http.DefaultClient.Get(url)
-  - code: |
-      client := http.DefaultClient
-      resp, err := client.Get(url)
+  - |
+    resp, err := http.Get("https://example.com")
+  - |
+    resp, err := http.Post(url, "application/json", body)
+  - |
+    resp, err := http.Head(url)
+  - |
+    resp, err := http.PostForm(url, form)
+  - |
+    resp, err := http.DefaultClient.Get(url)
+  - |
+    client := http.DefaultClient
+    resp, err := client.Get(url)

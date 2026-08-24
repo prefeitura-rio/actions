@@ -1,23 +1,23 @@
 id: no-console
 valid:
-  - code: |
-      import pino from "pino";
-      const logger = pino();
-      logger.info("server started on port %d", port);
-  - code: |
-      logger.debug("request headers: %o", headers);
-  - code: |
-      logger.warn("deprecated API call");
-  - code: |
-      logger.error("unhandled rejection: %s", err);
+  - |
+    import pino from "pino";
+    const logger = pino();
+    logger.info("server started on port %d", port);
+  - |
+    logger.debug("request headers: %o", headers);
+  - |
+    logger.warn("deprecated API call");
+  - |
+    logger.error("unhandled rejection: %s", err);
 invalid:
-  - code: |
-      console.log("hello world");
-  - code: |
-      console.error("something broke", err);
-  - code: |
-      console.warn("deprecated");
-  - code: |
-      console.info("debug:", value);
-  - code: |
-      console.debug("trace:", req.url);
+  - |
+    console.log("hello world");
+  - |
+    console.error("something broke", err);
+  - |
+    console.warn("deprecated");
+  - |
+    console.info("debug:", value);
+  - |
+    console.debug("trace:", req.url);

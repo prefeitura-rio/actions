@@ -1,15 +1,15 @@
 id: no-plain-error-wrap
 valid:
-  - code: |
-      return fmt.Errorf("failed to open file: %w", err)
-  - code: |
-      return fmt.Errorf("database connection failed: %w", err)
-  - code: |
-      return fmt.Errorf("unmarshal: %w", err)
+  - |
+    return fmt.Errorf("failed to open file: %w", err)
+  - |
+    return fmt.Errorf("database connection failed: %w", err)
+  - |
+    return fmt.Errorf("unmarshal: %w", err)
 invalid:
-  - code: |
-      return fmt.Errorf("failed to open file: %v", err)
-  - code: |
-      return fmt.Errorf("database connection failed: %s", err)
-  - code: |
-      return fmt.Errorf("decode error: %v", err)
+  - |
+    return fmt.Errorf("failed to open file: %v", err)
+  - |
+    return fmt.Errorf("database connection failed: %s", err)
+  - |
+    return fmt.Errorf("decode error: %v", err)
