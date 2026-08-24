@@ -7,5 +7,5 @@ def process(data: list[int]) -> int:
     total = 0
     for item in data:
         total += item
-    print("processed items:", len(data))
+    exec("pass")
     return total
