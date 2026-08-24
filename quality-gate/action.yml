@@ -77,6 +77,16 @@ runs:
         set -euo pipefail
         if [[ -f pnpm-lock.yaml ]]; then
           echo "manager=pnpm" >> "$GITHUB_OUTPUT"
+          if [[ ! -f package.json ]]; then
+            echo "::error title=quality-gate::pnpm-lock.yaml found but package.json is missing."
+            exit 1
+          fi
+          pnpm_version=$(node -p "const value = require('./package.json').packageManager || ''; value.startsWith('pnpm@') ? value.slice(5) : ''")
+          if [[ -z "$pnpm_version" ]]; then
+            echo "::error title=quality-gate::package.json must declare packageManager as pnpm@<version>."
+            exit 1
+          fi
+          echo "version=$pnpm_version" >> "$GITHUB_OUTPUT"
         elif [[ -f package-lock.json ]]; then
           echo "manager=npm" >> "$GITHUB_OUTPUT"
         else
@@ -87,6 +97,8 @@ runs:
     - name: "typescript | setup pnpm"
       if: steps.lang.outputs.name == 'typescript' && (inputs.check == 'app:typecheck' || inputs.check == 'app:test') && steps.ts-pm.outputs.manager == 'pnpm'
       uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      with:
+        version: ${{ steps.ts-pm.outputs.version }}
 
     - name: "typescript | setup Node.js"
       if: steps.lang.outputs.name == 'typescript' && (inputs.check == 'app:typecheck' || inputs.check == 'app:test')
