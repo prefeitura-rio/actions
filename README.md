@@ -23,11 +23,3 @@ Valid values for `check`: `app:format`, `app:lint`, `app:strlint`, `app:typechec
 
 See [`quality-gate/README.md`](quality-gate/README.md) for full reference.
 
-## Related issues
-
-| Issue | Description |
-|---|---|
-| INFRAVPIA-224 | Epic |
-| INFRAVPIA-227 | Repo templates and quality-gate implementation |
-| INFRAVPIA-229 | CAIO AI check and portaria CLI (CI-008, CI-009) |
-| INFRAVPIA-249 | Tag release workflow for this repo |
