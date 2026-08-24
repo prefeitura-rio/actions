@@ -1,0 +1,29 @@
+id: no-panic
+valid:
+  - |
+    func doSomething() error {
+      return fmt.Errorf("not implemented: %w", ErrUnimplemented)
+    }
+  - |
+    func doSomething() error {
+      if err := doWork(); err != nil {
+        return fmt.Errorf("doWork failed: %w", err)
+      }
+      return nil
+    }
+invalid:
+  - |
+    func doSomething() {
+      panic("not implemented")
+    }
+  - |
+    func process() error {
+      if input == nil {
+        panic("unexpected nil input")
+      }
+      return nil
+    }
+  - |
+    func init() {
+      panic("configuration error")
+    }

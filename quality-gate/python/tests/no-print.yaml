@@ -1,0 +1,17 @@
+id: no-print
+valid:
+  - |
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info("processing started")
+  - |
+    logger.debug("raw data: %s", data)
+  - |
+    logger.warning("disk usage at %d%%", pct)
+invalid:
+  - |
+    print("hello world")
+  - |
+    print(f"result: {value}")
+  - |
+    print("debug:", x, file=sys.stderr)

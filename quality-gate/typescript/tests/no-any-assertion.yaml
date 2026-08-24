@@ -1,0 +1,17 @@
+id: no-any-assertion
+valid:
+  - |
+    const value = input as string;
+  - |
+    const value = input as unknown;
+  - |
+    function process(input: unknown) {
+      return input as Record<string, unknown>;
+    }
+invalid:
+  - |
+    const value = input as any;
+  - |
+    function getLength(input: unknown) {
+      return (input as any).length;
+    }

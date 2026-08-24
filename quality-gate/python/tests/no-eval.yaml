@@ -1,0 +1,17 @@
+id: no-eval
+valid:
+  - |
+    import json
+    data = json.loads(raw_json)
+  - |
+    import ast
+    result = ast.literal_eval(raw_input)
+  - |
+    data = toml.loads(config_text)
+invalid:
+  - |
+    result = eval(raw_input)
+  - |
+    exec(code_string)
+  - |
+    exec("import os; os.system('rm -rf /')")

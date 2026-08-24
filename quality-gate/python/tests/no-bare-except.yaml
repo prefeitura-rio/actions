@@ -1,0 +1,30 @@
+id: no-bare-except
+valid:
+  - |
+    try:
+        process()
+    except ValueError as e:
+        logger.warning("bad input: %s", e)
+  - |
+    try:
+        connect_db()
+    except ConnectionError:
+        retry()
+    except TimeoutError:
+        abort()
+  - |
+    try:
+        parse(data)
+    except Exception as e:
+        raise RuntimeError("parse failed") from e
+invalid:
+  - |
+    try:
+        process()
+    except:
+        pass
+  - |
+    try:
+        do_work()
+    except:
+        log_error()
