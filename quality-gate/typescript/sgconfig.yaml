@@ -1,6 +1,2 @@
-# ast-grep project configuration for the quality-gate org-wide TypeScript rule set.
-# This config is passed via --config when running org rules; it deliberately
-# points only at the rules/ directory inside the action, not at the target
-# repo's own rules/ (those are handled by a separate sg scan invocation).
 ruleDirs:
   - rules

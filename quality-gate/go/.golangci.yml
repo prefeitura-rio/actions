@@ -1,9 +1,5 @@
 version: "2"
 
-# Org-standard golangci-lint configuration.
-# This file is bundled with prefeitura-rio/actions/quality-gate and applied to
-# all Go projects via --config. Project repos must not override this file.
-
 run:
   tests: true
   modules-download-mode: readonly
@@ -47,8 +43,8 @@ linters:
 
     gosec:
       excludes:
-        - G104 # errors unhandled — covered by errcheck
-        - G304 # file path provided as taint input — too noisy in practice
+        - G104
+        - G304
 
     staticcheck:
       checks: [all]

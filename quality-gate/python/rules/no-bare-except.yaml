@@ -1,0 +1,19 @@
+id: no-bare-except
+language: Python
+severity: warning
+message: >
+  Avoid bare 'except:' clauses. They catch everything including
+  KeyboardInterrupt and SystemExit, masking bugs and making debugging harder.
+  Catch a specific exception type: 'except ValueError:' or
+  'except Exception as e:'.
+rule:
+  pattern: |
+    try:
+      $$$TRY
+    except:
+      $$$HANDLER
+ignores:
+  - "tests/**"
+  - "**/*_test.py"
+  - "**/test_*.py"
+  - "**/conftest.py"

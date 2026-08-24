@@ -1,17 +1,6 @@
-# Org-wide ruff configuration for the quality-gate action.
-# This file is used by `ruff check` in the app:lint step.
-# Projects may define their own [tool.ruff] overrides in pyproject.toml;
-# this file sets the org-wide baseline.
-
 line-length = 100
 
 [lint]
-# E: pycodestyle errors
-# F: pyflakes (undefined names, unused imports, etc.)
-# I: isort (import ordering)
-# N: pep8-naming
-# W: pycodestyle warnings
-# UP: pyupgrade (modernise syntax for the minimum Python version)
 select = ["E", "F", "I", "N", "W", "UP"]
 
 [format]

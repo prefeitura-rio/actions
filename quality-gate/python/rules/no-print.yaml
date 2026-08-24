@@ -1,0 +1,14 @@
+id: no-print
+language: Python
+severity: warning
+message: >
+  Avoid print() in production code. Use a structured logger
+  (logging.getLogger(__name__)) so log levels, formatting,
+  and destinations are controlled centrally.
+rule:
+  pattern: print($$$ARGS)
+ignores:
+  - "tests/**"
+  - "**/*_test.py"
+  - "**/test_*.py"
+  - "**/conftest.py"

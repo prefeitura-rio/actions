@@ -1,0 +1,11 @@
+id: no-eval
+language: Python
+severity: error
+message: >
+  Avoid eval() and exec(). They execute arbitrary strings as code and are a
+  security risk. Use json.loads(), ast.literal_eval(), or a purpose-built
+  parser instead.
+rule:
+  any:
+    - pattern: eval($$$ARGS)
+    - pattern: exec($$$ARGS)

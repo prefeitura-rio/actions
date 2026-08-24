@@ -25,7 +25,6 @@ runs:
   using: composite
   steps:
 
-    # ── 0. Validate input ──────────────────────────────────────────────────────
     - name: Validate check input
       shell: bash
       env:
@@ -38,7 +37,6 @@ runs:
           exit 1
         fi
 
-    # ── 1. Detect language ─────────────────────────────────────────────────────
     - name: Detect language
       id: lang
       shell: bash
@@ -55,7 +53,6 @@ runs:
           exit 1
         fi
 
-    # ── 2. Go toolchain ────────────────────────────────────────────────────────
     - name: "go | setup go"
       if: steps.lang.outputs.name == 'go'
       uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
@@ -63,15 +60,12 @@ runs:
         go-version-file: go.mod
         cache: true
 
-    # ── 3. TypeScript toolchain (app:typecheck and app:test only) ──────────────
     - name: "typescript | detect package manager"
       id: ts-pm
       if: steps.lang.outputs.name == 'typescript' && (inputs.check == 'app:typecheck' || inputs.check == 'app:test')
       shell: bash
       run: |
         set -euo pipefail
-        # pnpm and npm are both supported. The lockfile in the repo root decides
-        # which one is used; a project must commit exactly one of them.
         if [[ -f pnpm-lock.yaml ]]; then
           echo "manager=pnpm" >> "$GITHUB_OUTPUT"
         elif [[ -f package-lock.json ]]; then
@@ -89,11 +83,7 @@ runs:
       if: steps.lang.outputs.name == 'typescript' && (inputs.check == 'app:typecheck' || inputs.check == 'app:test')
       uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
       with:
-        # Reads the Node.js version from the .node-version file in the repo root.
-        # All TypeScript projects in the org must provide this file.
         node-version-file: ".node-version"
-        # Cache is keyed on the detected package manager: pnpm uses
-        # pnpm-lock.yaml, npm uses package-lock.json.
         cache: ${{ steps.ts-pm.outputs.manager }}
 
     - name: "typescript | pnpm install"
@@ -101,8 +91,6 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        # --frozen-lockfile: fail if pnpm-lock.yaml is out of sync with package.json.
-        # This enforces that the lockfile is always committed and up to date.
         pnpm install --frozen-lockfile
 
     - name: "typescript | npm ci"
@@ -110,19 +98,13 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        # npm ci is the strict equivalent of pnpm install --frozen-lockfile:
-        # it deletes node_modules and installs exactly what package-lock.json
-        # records, failing if the lockfile is out of sync with package.json.
         npm ci
 
-    # ── 4. Python toolchain (app:format, app:lint, and app:test) ──────────────
     - name: "python | setup uv"
       if: steps.lang.outputs.name == 'python' && (inputs.check == 'app:format' || inputs.check == 'app:lint' || inputs.check == 'app:test')
       uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
       with:
         version: "0.12.5"
-        # Reads the Python version from the .python-version file in the repo root.
-        # All Python projects in the org must provide this file.
         python-version-file: ".python-version"
 
     - name: "python | uv sync"
@@ -130,15 +112,7 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        # --frozen: fails if uv.lock is out of sync with pyproject.toml, enforcing
-        # that the lockfile is always committed and up to date. Same principle as
-        # pnpm install --frozen-lockfile.
-        # --all-groups: installs the dev dependency group (ruff, basedpyright, pytest…).
         uv sync --frozen --all-groups
-
-    # ══════════════════════════════════════════════════════════════════════════
-    # app:format
-    # ══════════════════════════════════════════════════════════════════════════
 
     - name: "format | install gofumpt + goimports (go)"
       if: inputs.check == 'app:format' && steps.lang.outputs.name == 'go'
@@ -151,7 +125,6 @@ runs:
         mkdir -p "$TOOL_BIN" "$TOOL_DL"
         echo "$TOOL_BIN" >> "$GITHUB_PATH"
 
-        # gofumpt v0.8.0 — static binary, sha256-verified
         GOFUMPT_OUT="$TOOL_DL/gofumpt"
         GOFUMPT_SHA="11604bbaf7321abcc2fca2c6a37b7e9198bb1e76e5a86f297c07201e8ab1fda9"
         if [[ ! -f "$GOFUMPT_OUT" ]] || ! echo "$GOFUMPT_SHA  $GOFUMPT_OUT" | sha256sum -c --status; then
@@ -163,7 +136,6 @@ runs:
         }
         install -m 0755 "$GOFUMPT_OUT" "$TOOL_BIN/gofumpt"
 
-        # goimports v0.35.0 — installed via go install (module proxy guarantees integrity)
         GOBIN="$TOOL_BIN" go install golang.org/x/tools/cmd/goimports@v0.35.0
 
     - name: "format | gofumpt (go)"
@@ -197,12 +169,6 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        # npx installs oxfmt at the exact pinned version using npm's registry
-        # integrity verification. No project node_modules are required.
-        # --check exits with code 1 if any file would be reformatted; it never
-        # writes changes (formatting is the developer's responsibility locally).
-        # The org-wide config is read from the project's .oxfmtrc.json (same
-        # options previously used with Prettier; oxfmt is Prettier-compatible).
         npx --yes oxfmt@0.62.0 --check .
         echo "oxfmt: all files are correctly formatted."
 
@@ -211,15 +177,8 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        # --check exits with code 1 if any file would be reformatted; it never
-        # writes changes. Formatting is the developer's responsibility locally.
-        # Equivalent to prettier --check for TypeScript.
         uv run ruff format --check .
         echo "ruff format: all files are correctly formatted."
-
-    # ══════════════════════════════════════════════════════════════════════════
-    # app:lint
-    # ══════════════════════════════════════════════════════════════════════════
 
     - name: "lint | golangci-lint (go)"
       if: inputs.check == 'app:lint' && steps.lang.outputs.name == 'go'
@@ -235,10 +194,6 @@ runs:
         ACTION_PATH: ${{ github.action_path }}
       run: |
         set -euo pipefail
-        # oxlint is a fast Rust-based linter. npx installs the exact pinned
-        # version; npm's registry verifies integrity automatically.
-        # The org-wide config is shipped with this action at typescript/.oxlintrc.json,
-        # mirroring the same pattern used for go/.golangci.yml.
         npx --yes oxlint@0.16.7 --config "${ACTION_PATH}/typescript/.oxlintrc.json" .
         echo "oxlint: no issues found."
 
@@ -249,8 +204,6 @@ runs:
         ACTION_PATH: ${{ github.action_path }}
       run: |
         set -euo pipefail
-        # Uses the org-wide ruff config shipped with this action at python/ruff.toml,
-        # mirroring the same pattern used for go/.golangci.yml and typescript/.oxlintrc.json.
         uv run ruff check --config "${ACTION_PATH}/python/ruff.toml" .
         echo "ruff check: no issues found."
 
@@ -259,16 +212,8 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        # basedpyright reads [tool.basedpyright] from pyproject.toml.
-        # Type checking is placed in app:lint (not app:typecheck) because Python
-        # has no separate compilation step — static analysis and type checking are
-        # the same phase.
         uv run basedpyright
         echo "basedpyright: no type errors found."
-
-    # ══════════════════════════════════════════════════════════════════════════
-    # app:strlint
-    # ══════════════════════════════════════════════════════════════════════════
 
     - name: "strlint | install ast-grep"
       if: inputs.check == 'app:strlint' && (steps.lang.outputs.name == 'go' || steps.lang.outputs.name == 'typescript' || steps.lang.outputs.name == 'python')
@@ -281,7 +226,6 @@ runs:
         mkdir -p "$TOOL_BIN" "$TOOL_DL"
         echo "$TOOL_BIN" >> "$GITHUB_PATH"
 
-        # ast-grep 0.45.1 x86_64-unknown-linux-gnu, sha256-verified
         SG_OUT="$TOOL_DL/sg.zip"
         SG_SHA="76fb6555be6734fb5057dba8d2fb756430f374bb9e1af694cf1ce00e13238d63"
         if [[ ! -f "$SG_OUT" ]] || ! echo "$SG_SHA  $SG_OUT" | sha256sum -c --status; then
@@ -292,7 +236,6 @@ runs:
         echo "$SG_SHA  $SG_OUT" | sha256sum -c --status || {
           echo "::error title=strlint::sha256 mismatch for ast-grep"; rm -f "$SG_OUT"; exit 1
         }
-        # Extract the `ast-grep` binary (not the deprecated `sg` alias).
         unzip -p "$SG_OUT" ast-grep > "$TOOL_BIN/ast-grep"
         chmod +x "$TOOL_BIN/ast-grep"
 
@@ -303,8 +246,6 @@ runs:
         ACTION_PATH: ${{ github.action_path }}
       run: |
         set -euo pipefail
-        # Generate a temporary sgconfig that uses an absolute path for ruleDirs
-        # so resolution is unambiguous regardless of cwd or ast-grep version.
         TMP_CFG=$(mktemp --suffix=.yaml)
         printf 'ruleDirs:\n  - %s/go/rules\n' "${ACTION_PATH}" > "$TMP_CFG"
         ast-grep scan --config "$TMP_CFG"
@@ -316,8 +257,6 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        # Run project-local rules only when the repo ships its own sgconfig.yaml
-        # or rules/ directory. Org-wide rules already ran in the previous step.
         if [[ -f sgconfig.yaml || -d rules ]]; then
           ast-grep scan
           echo "Repo-local ast-grep rules passed."
@@ -344,8 +283,6 @@ runs:
         ACTION_PATH: ${{ github.action_path }}
       run: |
         set -euo pipefail
-        # Generate a temporary sgconfig pointing at the TypeScript org rules
-        # with an absolute path, so resolution is unambiguous regardless of cwd.
         TMP_CFG=$(mktemp --suffix=.yaml)
         printf 'ruleDirs:\n  - %s/typescript/rules\n' "${ACTION_PATH}" > "$TMP_CFG"
         ast-grep scan --config "$TMP_CFG"
@@ -357,8 +294,6 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        # Run project-local rules only when the repo ships its own sgconfig.yaml
-        # or rules/ directory. Org-wide rules already ran in the previous step.
         if [[ -f sgconfig.yaml || -d rules ]]; then
           ast-grep scan
           echo "Repo-local TypeScript ast-grep rules passed."
@@ -373,8 +308,6 @@ runs:
         ACTION_PATH: ${{ github.action_path }}
       run: |
         set -euo pipefail
-        # Generate a temporary sgconfig pointing at the Python org rules
-        # with an absolute path, so resolution is unambiguous regardless of cwd.
         TMP_CFG=$(mktemp --suffix=.yaml)
         printf 'ruleDirs:\n  - %s/python/rules\n' "${ACTION_PATH}" > "$TMP_CFG"
         ast-grep scan --config "$TMP_CFG"
@@ -386,18 +319,12 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        # Run project-local rules only when the repo ships its own sgconfig.yaml
-        # or rules/ directory. Org-wide rules already ran in the previous step.
         if [[ -f sgconfig.yaml || -d rules ]]; then
           ast-grep scan
           echo "Repo-local Python ast-grep rules passed."
         else
           echo "No repo-local sgconfig.yaml or rules/ found — skipping."
         fi
-
-    # ══════════════════════════════════════════════════════════════════════════
-    # app:typecheck
-    # ══════════════════════════════════════════════════════════════════════════
 
     - name: "typecheck | go vet (go)"
       if: inputs.check == 'app:typecheck' && steps.lang.outputs.name == 'go'
@@ -411,9 +338,6 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        # Build every package under cmd/ to verify the project compiles end-to-end.
-        # Output is discarded (/dev/null); nothing is left on the runner.
-        # Falls back to the module root when no cmd/ directory exists.
         if [[ -d cmd ]]; then
           go build -ldflags="-s -w" -o /dev/null ./cmd/...
         else
@@ -427,8 +351,6 @@ runs:
         PM: ${{ steps.ts-pm.outputs.manager }}
       run: |
         set -euo pipefail
-        # --noEmit: type-check only, no output files. Equivalent to go vet in Go.
-        # node_modules (including @types/*) were installed in the toolchain section.
         if [[ "$PM" == "npm" ]]; then
           npm run typecheck
         else
@@ -439,23 +361,13 @@ runs:
       if: inputs.check == 'app:typecheck' && steps.lang.outputs.name == 'python'
       shell: bash
       run: |
-        # Python has no separate compilation step. Type checking is performed by
-        # basedpyright inside app:lint. This job still executes (all five CI jobs
-        # are always present in the workflow) but exits 0 with an informational
-        # message so the CI matrix stays consistent across all languages.
         echo "Python: type checking is covered by basedpyright in app:lint — no separate typecheck step."
-
-    # ══════════════════════════════════════════════════════════════════════════
-    # app:test
-    # ══════════════════════════════════════════════════════════════════════════
 
     - name: "test | go test (go)"
       if: inputs.check == 'app:test' && steps.lang.outputs.name == 'go'
       shell: bash
       run: |
         set -euo pipefail
-        # -race requires CGO_ENABLED=1; the module-level default is 0 for
-        # reproducible static builds so we set it explicitly here only.
         CGO_ENABLED=1 go test -count=1 -race -v ./...
 
     - name: "test | vitest (typescript)"
@@ -465,8 +377,6 @@ runs:
         PM: ${{ steps.ts-pm.outputs.manager }}
       run: |
         set -euo pipefail
-        # 'vitest run' executes all tests once and exits (non-watch mode).
-        # node_modules were installed in the toolchain section above.
         if [[ "$PM" == "npm" ]]; then
           npm test
         else
@@ -478,8 +388,4 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        # --cov=src: measure coverage only for the src/ directory (src-layout standard).
-        # --cov-report=term-missing: prints uncovered line numbers to stdout alongside
-        # the summary table.
-        # Dependencies (pytest, pytest-cov, etc.) were installed in the uv sync step.
         uv run pytest --cov=src --cov-report=term-missing
