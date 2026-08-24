@@ -1,0 +1,251 @@
+name: Quality Gate Tests
+
+on:
+  push:
+    branches: [master, quality-gate]
+  # pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Go pass + fail ────────────────────────────────────────────────────
+  go:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [app:format, app:lint, app:strlint, app:typecheck, app:test]
+        include:
+          - check: app:format
+            fixture: quality-gate/fixtures/go/pass
+            fail: quality-gate/fixtures/go/format-fail
+          - check: app:lint
+            fixture: quality-gate/fixtures/go/pass
+            fail: quality-gate/fixtures/go/lint-fail
+          - check: app:strlint
+            fixture: quality-gate/fixtures/go/pass
+            fail: quality-gate/fixtures/go/strlint-fail
+          - check: app:typecheck
+            fixture: quality-gate/fixtures/go/pass
+            fail: quality-gate/fixtures/go/typecheck-fail
+          - check: app:test
+            fixture: quality-gate/fixtures/go/pass
+            fail: quality-gate/fixtures/go/test-fail
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: "pass | ${{ matrix.check }}"
+        id: go-pass
+        uses: ./quality-gate
+        with:
+          check: ${{ matrix.check }}
+          working-directory: ${{ matrix.fixture }}
+
+      - name: assert pass succeeded
+        run: |
+          [[ "${{ steps.go-pass.outcome }}" == "success" ]] || {
+            echo "::error::Expected pass on ${{ matrix.fixture }} but got ${{ steps.go-pass.outcome }}"
+            exit 1
+          }
+
+      - name: "fail | ${{ matrix.check }}"
+        id: go-fail
+        uses: ./quality-gate
+        with:
+          check: ${{ matrix.check }}
+          working-directory: ${{ matrix.fail }}
+        continue-on-error: true
+
+      - name: assert fail was detected
+        run: |
+          [[ "${{ steps.go-fail.outcome }}" == "failure" ]] || {
+            echo "::error::Expected action to fail on ${{ matrix.fail }} but it succeeded"
+            exit 1
+          }
+
+  # ── Python pass + fail ────────────────────────────────────────────────
+  python:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [app:format, app:lint, app:strlint, app:test]
+        include:
+          - check: app:format
+            fixture: quality-gate/fixtures/python/pass
+            fail: quality-gate/fixtures/python/format-fail
+          - check: app:lint
+            fixture: quality-gate/fixtures/python/pass
+            fail: quality-gate/fixtures/python/lint-fail
+          - check: app:strlint
+            fixture: quality-gate/fixtures/python/pass
+            fail: quality-gate/fixtures/python/strlint-fail
+          - check: app:test
+            fixture: quality-gate/fixtures/python/pass
+            fail: quality-gate/fixtures/python/test-fail
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: "pass | ${{ matrix.check }}"
+        id: py-pass
+        uses: ./quality-gate
+        with:
+          check: ${{ matrix.check }}
+          working-directory: ${{ matrix.fixture }}
+
+      - name: assert pass succeeded
+        run: |
+          [[ "${{ steps.py-pass.outcome }}" == "success" ]] || {
+            echo "::error::Expected pass on ${{ matrix.fixture }} but got ${{ steps.py-pass.outcome }}"
+            exit 1
+          }
+
+      - name: "fail | ${{ matrix.check }}"
+        id: py-fail
+        uses: ./quality-gate
+        with:
+          check: ${{ matrix.check }}
+          working-directory: ${{ matrix.fail }}
+        continue-on-error: true
+
+      - name: assert fail was detected
+        run: |
+          [[ "${{ steps.py-fail.outcome }}" == "failure" ]] || {
+            echo "::error::Expected action to fail on ${{ matrix.fail }} but it succeeded"
+            exit 1
+          }
+
+  # ── TypeScript pass + fail ────────────────────────────────────────────
+  typescript:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [app:format, app:lint, app:strlint, app:typecheck, app:test]
+        include:
+          - check: app:format
+            fixture: quality-gate/fixtures/typescript/pass
+            fail: quality-gate/fixtures/typescript/format-fail
+          - check: app:lint
+            fixture: quality-gate/fixtures/typescript/pass
+            fail: quality-gate/fixtures/typescript/lint-fail
+          - check: app:strlint
+            fixture: quality-gate/fixtures/typescript/pass
+            fail: quality-gate/fixtures/typescript/strlint-fail
+          - check: app:typecheck
+            fixture: quality-gate/fixtures/typescript/pass
+            fail: quality-gate/fixtures/typescript/typecheck-fail
+          - check: app:test
+            fixture: quality-gate/fixtures/typescript/pass
+            fail: quality-gate/fixtures/typescript/test-fail
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: "pass | ${{ matrix.check }}"
+        id: ts-pass
+        uses: ./quality-gate
+        with:
+          check: ${{ matrix.check }}
+          working-directory: ${{ matrix.fixture }}
+
+      - name: assert pass succeeded
+        run: |
+          [[ "${{ steps.ts-pass.outcome }}" == "success" ]] || {
+            echo "::error::Expected pass on ${{ matrix.fixture }} but got ${{ steps.ts-pass.outcome }}"
+            exit 1
+          }
+
+      - name: "fail | ${{ matrix.check }}"
+        id: ts-fail
+        uses: ./quality-gate
+        with:
+          check: ${{ matrix.check }}
+          working-directory: ${{ matrix.fail }}
+        continue-on-error: true
+
+      - name: assert fail was detected
+        run: |
+          [[ "${{ steps.ts-fail.outcome }}" == "failure" ]] || {
+            echo "::error::Expected action to fail on ${{ matrix.fail }} but it succeeded"
+            exit 1
+          }
+
+  # ── Error paths (TST-005) ───────────────────────────────────────────
+  error-invalid-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: run with invalid check
+        id: bad-check
+        uses: ./quality-gate
+        with:
+          check: app:invalid
+        continue-on-error: true
+      - name: assert invalid check was rejected
+        run: |
+          [[ "${{ steps.bad-check.outcome }}" == "failure" ]] || {
+            echo "::error::Expected action to fail on invalid check but it succeeded"
+            exit 1
+          }
+
+  error-no-language:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: run against empty directory
+        id: no-lang
+        uses: ./quality-gate
+        with:
+          check: app:format
+          working-directory: quality-gate/fixtures/error/no-language
+        continue-on-error: true
+      - name: assert no-language error
+        run: |
+          [[ "${{ steps.no-lang.outcome }}" == "failure" ]] || {
+            echo "::error::Expected action to fail on empty directory but it succeeded"
+            exit 1
+          }
+
+  error-ts-no-lockfile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: run typecheck on TS project without lockfile
+        id: no-lockfile
+        uses: ./quality-gate
+        with:
+          check: app:typecheck
+          working-directory: quality-gate/fixtures/error/ts-no-lockfile
+        continue-on-error: true
+      - name: assert lockfile error
+        run: |
+          [[ "${{ steps.no-lockfile.outcome }}" == "failure" ]] || {
+            echo "::error::Expected action to fail on missing lockfile but it succeeded"
+            exit 1
+          }
+
+  error-ts-no-tsconfig:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: run format on package.json without tsconfig.json
+        id: no-tsconfig
+        uses: ./quality-gate
+        with:
+          check: app:format
+          working-directory: quality-gate/fixtures/error/ts-no-tsconfig
+        continue-on-error: true
+      - name: assert no-language error (not TypeScript)
+        run: |
+          [[ "${{ steps.no-tsconfig.outcome }}" == "failure" ]] || {
+            echo "::error::Expected action to fail when tsconfig.json is missing but it succeeded"
+            exit 1
+          }

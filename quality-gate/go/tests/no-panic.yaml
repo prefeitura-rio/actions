@@ -1,0 +1,38 @@
+id: no-panic
+valid:
+  - code: |
+      func doSomething() error {
+        return fmt.Errorf("not implemented: %w", ErrUnimplemented)
+      }
+  - code: |
+      func doSomething() error {
+        if err := doWork(); err != nil {
+          return fmt.Errorf("doWork failed: %w", err)
+        }
+        return nil
+      }
+  - code: |
+      // panic in test files should be allowed
+      panic("not reached")
+    path: "foo_test.go"
+  - code: |
+      func TestSomething(t *testing.T) {
+        panic("intentional crash in test")
+      }
+    path: "pkg/handler_test.go"
+invalid:
+  - code: |
+      func doSomething() {
+        panic("not implemented")
+      }
+  - code: |
+      func process() error {
+        if input == nil {
+          panic("unexpected nil input")
+        }
+        return nil
+      }
+  - code: |
+      func init() {
+        panic("configuration error")
+      }

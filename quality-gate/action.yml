@@ -20,6 +20,12 @@ inputs:
       The quality check to run, in `app:<job>` form.
       Valid values: app:format | app:lint | app:strlint | app:typecheck | app:test
     required: true
+  working-directory:
+    description: >
+      The directory to run quality-gate checks in (relative to the repository root).
+      Useful for monorepos and fixture-based testing.
+    required: false
+    default: "."
 
 runs:
   using: composite
@@ -27,6 +33,7 @@ runs:
 
     - name: Validate check input
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       env:
         CHECK: ${{ inputs.check }}
       run: |
@@ -40,6 +47,7 @@ runs:
     - name: Detect language
       id: lang
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
         if [[ -f go.mod ]]; then
@@ -64,6 +72,7 @@ runs:
       id: ts-pm
       if: steps.lang.outputs.name == 'typescript' && (inputs.check == 'app:typecheck' || inputs.check == 'app:test')
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
         if [[ -f pnpm-lock.yaml ]]; then
@@ -89,6 +98,7 @@ runs:
     - name: "typescript | pnpm install"
       if: steps.lang.outputs.name == 'typescript' && (inputs.check == 'app:typecheck' || inputs.check == 'app:test') && steps.ts-pm.outputs.manager == 'pnpm'
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
         pnpm install --frozen-lockfile
@@ -96,6 +106,7 @@ runs:
     - name: "typescript | npm ci"
       if: steps.lang.outputs.name == 'typescript' && (inputs.check == 'app:typecheck' || inputs.check == 'app:test') && steps.ts-pm.outputs.manager == 'npm'
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
         npm ci
@@ -110,6 +121,7 @@ runs:
     - name: "python | uv sync"
       if: steps.lang.outputs.name == 'python' && (inputs.check == 'app:format' || inputs.check == 'app:lint' || inputs.check == 'app:test')
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
         uv sync --frozen --all-groups
@@ -117,6 +129,7 @@ runs:
     - name: "format | install gofumpt + goimports (go)"
       if: inputs.check == 'app:format' && steps.lang.outputs.name == 'go'
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
 
@@ -141,6 +154,7 @@ runs:
     - name: "format | gofumpt (go)"
       if: inputs.check == 'app:format' && steps.lang.outputs.name == 'go'
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
         UNFORMATTED=$(gofumpt -l .)
@@ -154,6 +168,7 @@ runs:
     - name: "format | goimports (go)"
       if: inputs.check == 'app:format' && steps.lang.outputs.name == 'go'
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
         UNFORMATTED=$(goimports -l .)
@@ -167,6 +182,7 @@ runs:
     - name: "format | oxfmt (typescript)"
       if: inputs.check == 'app:format' && steps.lang.outputs.name == 'typescript'
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
         npx --yes oxfmt@0.62.0 --check .
@@ -175,6 +191,7 @@ runs:
     - name: "format | ruff format --check (python)"
       if: inputs.check == 'app:format' && steps.lang.outputs.name == 'python'
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
         uv run ruff format --check .
@@ -186,10 +203,12 @@ runs:
       with:
         version: v2.12.2
         args: --config ${{ github.action_path }}/go/.golangci.yml
+        working-directory: ${{ inputs.working-directory }}
 
     - name: "lint | oxlint (typescript)"
       if: inputs.check == 'app:lint' && steps.lang.outputs.name == 'typescript'
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       env:
         ACTION_PATH: ${{ github.action_path }}
       run: |
@@ -200,6 +219,7 @@ runs:
     - name: "lint | ruff check (python)"
       if: inputs.check == 'app:lint' && steps.lang.outputs.name == 'python'
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       env:
         ACTION_PATH: ${{ github.action_path }}
       run: |
@@ -210,6 +230,7 @@ runs:
     - name: "lint | basedpyright (python)"
       if: inputs.check == 'app:lint' && steps.lang.outputs.name == 'python'
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
         uv run basedpyright
@@ -218,6 +239,7 @@ runs:
     - name: "strlint | install ast-grep"
       if: inputs.check == 'app:strlint' && (steps.lang.outputs.name == 'go' || steps.lang.outputs.name == 'typescript' || steps.lang.outputs.name == 'python')
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
 
@@ -242,6 +264,7 @@ runs:
     - name: "strlint | ast-grep org rules"
       if: inputs.check == 'app:strlint' && steps.lang.outputs.name == 'go'
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       env:
         ACTION_PATH: ${{ github.action_path }}
       run: |
@@ -255,6 +278,7 @@ runs:
     - name: "strlint | ast-grep repo rules"
       if: inputs.check == 'app:strlint' && steps.lang.outputs.name == 'go'
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
         if [[ -f sgconfig.yaml || -d rules ]]; then
@@ -267,6 +291,7 @@ runs:
     - name: "strlint | ast-grep rule tests"
       if: inputs.check == 'app:strlint' && steps.lang.outputs.name == 'go'
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
         if [[ -d tests ]]; then
@@ -279,6 +304,7 @@ runs:
     - name: "strlint | ast-grep org rules (typescript)"
       if: inputs.check == 'app:strlint' && steps.lang.outputs.name == 'typescript'
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       env:
         ACTION_PATH: ${{ github.action_path }}
       run: |
@@ -292,6 +318,7 @@ runs:
     - name: "strlint | ast-grep repo rules (typescript)"
       if: inputs.check == 'app:strlint' && steps.lang.outputs.name == 'typescript'
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
         if [[ -f sgconfig.yaml || -d rules ]]; then
@@ -304,6 +331,7 @@ runs:
     - name: "strlint | ast-grep org rules (python)"
       if: inputs.check == 'app:strlint' && steps.lang.outputs.name == 'python'
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       env:
         ACTION_PATH: ${{ github.action_path }}
       run: |
@@ -317,6 +345,7 @@ runs:
     - name: "strlint | ast-grep repo rules (python)"
       if: inputs.check == 'app:strlint' && steps.lang.outputs.name == 'python'
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
         if [[ -f sgconfig.yaml || -d rules ]]; then
@@ -329,6 +358,7 @@ runs:
     - name: "typecheck | go vet (go)"
       if: inputs.check == 'app:typecheck' && steps.lang.outputs.name == 'go'
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
         go vet ./...
@@ -336,6 +366,7 @@ runs:
     - name: "typecheck | go build (go)"
       if: inputs.check == 'app:typecheck' && steps.lang.outputs.name == 'go'
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
         if [[ -d cmd ]]; then
@@ -347,6 +378,7 @@ runs:
     - name: "typecheck | tsc (typescript)"
       if: inputs.check == 'app:typecheck' && steps.lang.outputs.name == 'typescript'
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       env:
         PM: ${{ steps.ts-pm.outputs.manager }}
       run: |
@@ -360,12 +392,14 @@ runs:
     - name: "typecheck | no-op (python)"
       if: inputs.check == 'app:typecheck' && steps.lang.outputs.name == 'python'
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       run: |
         echo "Python: type checking is covered by basedpyright in app:lint — no separate typecheck step."
 
     - name: "test | go test (go)"
       if: inputs.check == 'app:test' && steps.lang.outputs.name == 'go'
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
         CGO_ENABLED=1 go test -count=1 -race -v ./...
@@ -373,6 +407,7 @@ runs:
     - name: "test | vitest (typescript)"
       if: inputs.check == 'app:test' && steps.lang.outputs.name == 'typescript'
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       env:
         PM: ${{ steps.ts-pm.outputs.manager }}
       run: |
@@ -386,6 +421,7 @@ runs:
     - name: "test | pytest (python)"
       if: inputs.check == 'app:test' && steps.lang.outputs.name == 'python'
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
         uv run pytest --cov=src --cov-report=term-missing
