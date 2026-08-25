@@ -27,9 +27,22 @@ inputs:
     required: false
     default: "."
 
+outputs:
+  error_message:
+    description: >
+      Human-readable error message set whenever the action exits with a failure.
+      Intended for use in test workflows that need to assert exact error strings.
+    value: ${{ steps.collect-error.outputs.error_message }}
+
 runs:
   using: composite
   steps:
+
+    - name: Init error relay
+      id: init-error-relay
+      shell: bash
+      run: |
+        echo "" > "$RUNNER_TEMP/quality-gate-error.txt"
 
     - name: Validate check input
       shell: bash
@@ -40,7 +53,9 @@ runs:
         set -euo pipefail
         VALID="app:format app:lint app:strlint app:typecheck app:test"
         if ! echo "$VALID" | grep -qw "$CHECK"; then
-          echo "::error title=quality-gate::Invalid check '${CHECK}'. Valid values: ${VALID}"
+          MSG="Invalid check '${CHECK}'. Valid values: ${VALID}"
+          echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
+          echo "::error title=quality-gate::${MSG}"
           exit 1
         fi
 
@@ -57,7 +72,9 @@ runs:
         elif [[ -f package.json && -f tsconfig.json ]]; then
           echo "name=typescript" >> "$GITHUB_OUTPUT"
         else
-          echo "::error title=quality-gate::Could not detect a supported language. Expected go.mod, pyproject.toml, or package.json+tsconfig.json."
+          MSG="Could not detect a supported language. Expected go.mod, pyproject.toml, or package.json+tsconfig.json."
+          echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
+          echo "::error title=quality-gate::${MSG}"
           exit 1
         fi
 
@@ -78,19 +95,25 @@ runs:
         if [[ -f pnpm-lock.yaml ]]; then
           echo "manager=pnpm" >> "$GITHUB_OUTPUT"
           if [[ ! -f package.json ]]; then
-            echo "::error title=quality-gate::pnpm-lock.yaml found but package.json is missing."
+            MSG="pnpm-lock.yaml found but package.json is missing."
+            echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
+            echo "::error title=quality-gate::${MSG}"
             exit 1
           fi
           pnpm_version=$(node -p "const value = require('./package.json').packageManager || ''; value.startsWith('pnpm@') ? value.slice(5) : ''")
           if [[ -z "$pnpm_version" ]]; then
-            echo "::error title=quality-gate::package.json must declare packageManager as pnpm@<version>."
+            MSG="package.json must declare packageManager as pnpm@<version>."
+            echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
+            echo "::error title=quality-gate::${MSG}"
             exit 1
           fi
           echo "version=$pnpm_version" >> "$GITHUB_OUTPUT"
         elif [[ -f package-lock.json ]]; then
           echo "manager=npm" >> "$GITHUB_OUTPUT"
         else
-          echo "::error title=quality-gate::No lockfile found for TypeScript project. Commit pnpm-lock.yaml (pnpm) or package-lock.json (npm)."
+          MSG="No lockfile found for TypeScript project. Commit pnpm-lock.yaml (pnpm) or package-lock.json (npm)."
+          echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
+          echo "::error title=quality-gate::${MSG}"
           exit 1
         fi
 
@@ -160,7 +183,11 @@ runs:
             -o "$GOFUMPT_OUT"
         fi
         echo "$GOFUMPT_SHA  $GOFUMPT_OUT" | sha256sum -c --status || {
-          echo "::error title=format::sha256 mismatch for gofumpt"; rm -f "$GOFUMPT_OUT"; exit 1
+          MSG="sha256 mismatch for gofumpt"
+          echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
+          echo "::error title=format::${MSG}"
+          rm -f "$GOFUMPT_OUT"
+          exit 1
         }
         install -m 0755 "$GOFUMPT_OUT" "$TOOL_BIN/gofumpt"
 
@@ -271,7 +298,11 @@ runs:
             -o "$SG_OUT"
         fi
         echo "$SG_SHA  $SG_OUT" | sha256sum -c --status || {
-          echo "::error title=strlint::sha256 mismatch for ast-grep"; rm -f "$SG_OUT"; exit 1
+          MSG="sha256 mismatch for ast-grep"
+          echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
+          echo "::error title=strlint::${MSG}"
+          rm -f "$SG_OUT"
+          exit 1
         }
         unzip -p "$SG_OUT" ast-grep > "$TOOL_BIN/ast-grep"
         chmod +x "$TOOL_BIN/ast-grep"
@@ -440,3 +471,14 @@ runs:
       run: |
         set -euo pipefail
         uv run pytest --cov=src --cov-report=term-missing
+
+    - name: Collect error message
+      id: collect-error
+      if: always()
+      shell: bash
+      run: |
+        relay="$RUNNER_TEMP/quality-gate-error.txt"
+        if [[ -f "$relay" ]]; then
+          msg=$(cat "$relay")
+          echo "error_message=${msg%$'\n'}" >> "$GITHUB_OUTPUT"
+        fi

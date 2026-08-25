@@ -3,13 +3,11 @@ name: Quality Gate Tests
 on:
   push:
     branches: [master, quality-gate]
-  # pull_request:
 
 permissions:
   contents: read
 
 jobs:
-  # ── Go pass + fail ────────────────────────────────────────────────────
   go:
     runs-on: ubuntu-latest
     strategy:
@@ -65,7 +63,6 @@ jobs:
             exit 1
           }
 
-  # ── Python pass + fail ────────────────────────────────────────────────
   python:
     runs-on: ubuntu-latest
     strategy:
@@ -118,7 +115,6 @@ jobs:
             exit 1
           }
 
-  # ── TypeScript pass + fail ────────────────────────────────────────────
   typescript:
     runs-on: ubuntu-latest
     strategy:
@@ -174,7 +170,6 @@ jobs:
             exit 1
           }
 
-  # ── Error paths (TST-005) ───────────────────────────────────────────
   error-invalid-check:
     runs-on: ubuntu-latest
     steps:
@@ -190,6 +185,14 @@ jobs:
         run: |
           [[ "${{ steps.bad-check.outcome }}" == "failure" ]] || {
             echo "::error::Expected action to fail on invalid check but it succeeded"
+            exit 1
+          }
+      - name: assert exact error message
+        run: |
+          ACTUAL="${{ steps.bad-check.outputs.error_message }}"
+          EXPECTED="Invalid check 'app:invalid'. Valid values: app:format app:lint app:strlint app:typecheck app:test"
+          [[ "$ACTUAL" == "$EXPECTED" ]] || {
+            echo "::error::Wrong error message. Expected: '${EXPECTED}' — Got: '${ACTUAL}'"
             exit 1
           }
 
@@ -211,6 +214,14 @@ jobs:
             echo "::error::Expected action to fail on empty directory but it succeeded"
             exit 1
           }
+      - name: assert exact error message
+        run: |
+          ACTUAL="${{ steps.no-lang.outputs.error_message }}"
+          EXPECTED="Could not detect a supported language. Expected go.mod, pyproject.toml, or package.json+tsconfig.json."
+          [[ "$ACTUAL" == "$EXPECTED" ]] || {
+            echo "::error::Wrong error message. Expected: '${EXPECTED}' — Got: '${ACTUAL}'"
+            exit 1
+          }
 
   error-ts-no-lockfile:
     runs-on: ubuntu-latest
@@ -230,6 +241,14 @@ jobs:
             echo "::error::Expected action to fail on missing lockfile but it succeeded"
             exit 1
           }
+      - name: assert exact error message
+        run: |
+          ACTUAL="${{ steps.no-lockfile.outputs.error_message }}"
+          EXPECTED="No lockfile found for TypeScript project. Commit pnpm-lock.yaml (pnpm) or package-lock.json (npm)."
+          [[ "$ACTUAL" == "$EXPECTED" ]] || {
+            echo "::error::Wrong error message. Expected: '${EXPECTED}' — Got: '${ACTUAL}'"
+            exit 1
+          }
 
   error-ts-no-tsconfig:
     runs-on: ubuntu-latest
@@ -247,5 +266,85 @@ jobs:
         run: |
           [[ "${{ steps.no-tsconfig.outcome }}" == "failure" ]] || {
             echo "::error::Expected action to fail when tsconfig.json is missing but it succeeded"
+            exit 1
+          }
+      - name: assert exact error message
+        run: |
+          ACTUAL="${{ steps.no-tsconfig.outputs.error_message }}"
+          EXPECTED="Could not detect a supported language. Expected go.mod, pyproject.toml, or package.json+tsconfig.json."
+          [[ "$ACTUAL" == "$EXPECTED" ]] || {
+            echo "::error::Wrong error message. Expected: '${EXPECTED}' — Got: '${ACTUAL}'"
+            exit 1
+          }
+
+  error-gofumpt-sha-mismatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Install mock curl (writes garbage to output file)
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          printf '#!/usr/bin/env bash\necho "corrupted" > "${@: -1}"\n' \
+            > "$HOME/.local/bin/curl"
+          chmod +x "$HOME/.local/bin/curl"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: run format on go project with corrupted download
+        id: gofumpt-mismatch
+        uses: ./quality-gate
+        with:
+          check: app:format
+          working-directory: quality-gate/fixtures/go/pass
+        continue-on-error: true
+      - name: assert sha mismatch detected, message correct, file cleaned up
+        run: |
+          [[ "${{ steps.gofumpt-mismatch.outcome }}" == "failure" ]] || {
+            echo "::error::Expected action to fail on gofumpt sha mismatch but it succeeded"
+            exit 1
+          }
+          ACTUAL="${{ steps.gofumpt-mismatch.outputs.error_message }}"
+          EXPECTED="sha256 mismatch for gofumpt"
+          [[ "$ACTUAL" == "$EXPECTED" ]] || {
+            echo "::error::Wrong error message. Expected: '${EXPECTED}' — Got: '${ACTUAL}'"
+            exit 1
+          }
+          [[ ! -f "$HOME/.quality-gate-tools/dl/gofumpt" ]] || {
+            echo "::error::Corrupted gofumpt binary was not deleted after sha mismatch"
+            exit 1
+          }
+
+  error-ast-grep-sha-mismatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Install mock curl (writes garbage to output file)
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          printf '#!/usr/bin/env bash\necho "corrupted" > "${@: -1}"\n' \
+            > "$HOME/.local/bin/curl"
+          chmod +x "$HOME/.local/bin/curl"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: run strlint on go project with corrupted download
+        id: astgrep-mismatch
+        uses: ./quality-gate
+        with:
+          check: app:strlint
+          working-directory: quality-gate/fixtures/go/pass
+        continue-on-error: true
+      - name: assert sha mismatch detected, message correct, file cleaned up
+        run: |
+          [[ "${{ steps.astgrep-mismatch.outcome }}" == "failure" ]] || {
+            echo "::error::Expected action to fail on ast-grep sha mismatch but it succeeded"
+            exit 1
+          }
+          ACTUAL="${{ steps.astgrep-mismatch.outputs.error_message }}"
+          EXPECTED="sha256 mismatch for ast-grep"
+          [[ "$ACTUAL" == "$EXPECTED" ]] || {
+            echo "::error::Wrong error message. Expected: '${EXPECTED}' — Got: '${ACTUAL}'"
+            exit 1
+          }
+          [[ ! -f "$HOME/.quality-gate-tools/dl/sg.zip" ]] || {
+            echo "::error::Corrupted ast-grep archive was not deleted after sha mismatch"
             exit 1
           }
