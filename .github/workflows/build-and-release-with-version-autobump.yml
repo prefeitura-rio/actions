@@ -18,6 +18,10 @@ jobs:
       packages: write
 
     steps:
+      - name: Set dynamic image name (lowercase)
+        run: |
+          IMAGE="ghcr.io/${{ github.repository }}"
+          echo "IMAGE_NAME=${IMAGE,,}" >> "$GITHUB_ENV"
       - name: Calculate next version
         id: version
         run: |
@@ -73,12 +77,20 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set up Docker Buildx
+        if: steps.guard.outputs.skip != 'true'
+        uses: docker/setup-buildx-action@v3
+
       - name: Build and push Docker image
         if: steps.guard.outputs.skip != 'true'
-        run: |
-          TAG="${{ steps.version.outputs.tag }}"
-          docker build -t "$IMAGE_NAME:$TAG" ./src
-          docker push "$IMAGE_NAME:$TAG"
+        uses: docker/build-push-action@v6
+        with:
+          context: ./src
+          push: true
+          tags: ${{ steps.img.outputs.image_name }}:${{ steps.version.outputs.tag }}
+          # GitHub Actions Cache: drastically speeds up builds
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Push Git Tag
         if: steps.guard.outputs.skip != 'true'
