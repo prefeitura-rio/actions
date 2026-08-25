@@ -1,0 +1,89 @@
+name: Build and Release App
+
+on:
+  push:
+    branches:
+      - main
+      - staging
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/app-sala-pref
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Calculate next version
+        id: version
+        run: |
+          LATEST_TAG=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
+          BRANCH="${GITHUB_REF##*/}"
+
+          if [ -z "$LATEST_TAG" ]; then
+            echo "First release: Setting initial version to v1.0.0"
+            HAS_TAG="false"
+            NEXT_VERSION="1.0.0"
+          else
+            HAS_TAG="true"
+            CLEAN_VER="${LATEST_TAG#v}"
+            MAJOR=$(echo "$CLEAN_VER" | cut -d. -f1)
+            MINOR=$(echo "$CLEAN_VER" | cut -d. -f2)
+            PATCH=$(echo "$CLEAN_VER" | cut -d. -f3)
+
+            # Bump patch by 1
+            NEXT_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
+          fi
+
+          if [ "$BRANCH" == "main" ]; then
+            TAG="v$NEXT_VERSION"
+          else
+            TAG="v$NEXT_VERSION-rc.${{ github.run_number }}"
+          fi
+
+          echo "Calculated TAG: $TAG"
+          echo "tag=$TAG"               >> "$GITHUB_OUTPUT"
+          echo "latest_tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
+          echo "has_tag=$HAS_TAG"       >> "$GITHUB_OUTPUT"
+
+      - name: Skip if no app changes since last release
+        id: guard
+        run: |
+          if [ "${{ steps.version.outputs.has_tag }}" == "true" ] && [ "${GITHUB_REF##*/}" == "main" ]; then
+            LAST_TAG="${{ steps.version.outputs.latest_tag }}"
+
+            if ! git diff --name-only "$LAST_TAG" HEAD -- src/ | grep -q .; then
+              echo "No source changes in src/ since $LAST_TAG — skipping build."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Login to GHCR
+        if: steps.guard.outputs.skip != 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        if: steps.guard.outputs.skip != 'true'
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          docker build -t "$IMAGE_NAME:$TAG" ./src
+          docker push "$IMAGE_NAME:$TAG"
+
+      - name: Push Git Tag
+        if: steps.guard.outputs.skip != 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag ${{ steps.version.outputs.tag }}
+          git push origin ${{ steps.version.outputs.tag }}
