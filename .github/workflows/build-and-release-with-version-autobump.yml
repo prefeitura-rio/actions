@@ -1,4 +1,4 @@
-name: Reusable Build and Release
+name: Reusable Build and Release with version autobump
 
 on:
   workflow_call:
@@ -99,7 +99,6 @@ jobs:
         if: steps.guard.outputs.skip != 'true'
         uses: docker/setup-buildx-action@v3
 
-      # Reusable Build & Push Action
       - name: Build and push Docker image
         if: steps.guard.outputs.skip != 'true'
         uses: docker/build-push-action@v6
