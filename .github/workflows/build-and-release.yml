@@ -1,0 +1,123 @@
+name: Reusable Build and Release with version autobump
+
+on:
+  workflow_call:
+    inputs:
+      push:
+        description: "Push image and git tag (set false for CI/PR dry-runs)"
+        required: false
+        type: boolean
+        default: false
+      context:
+        description: "Docker build context path"
+        required: false
+        type: string
+        default: "."
+      dockerfile:
+        description: "Path to Dockerfile (optional, defaults to <context>/Dockerfile)"
+        required: false
+        type: string
+        default: ""
+      image_name:
+        description: "Docker image name (optional, defaults to ghcr.io/<owner>/<repo>)"
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine Image Name
+        id: img
+        run: |
+          if [ -n "${{ inputs.image_name }}" ]; then
+            IMAGE="${{ inputs.image_name }}"
+          else
+            IMAGE="ghcr.io/${{ github.repository }}"
+          fi
+          echo "image_name=${IMAGE,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Calculate next version
+        id: version
+        run: |
+          LATEST_TAG=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
+          BRANCH="${GITHUB_REF##*/}"
+
+          if [ -z "$LATEST_TAG" ]; then
+            echo "First release: Setting initial version to v1.0.0"
+            HAS_TAG="false"
+            NEXT_VERSION="1.0.0"
+          else
+            HAS_TAG="true"
+            CLEAN_VER="${LATEST_TAG#v}"
+            MAJOR=$(echo "$CLEAN_VER" | cut -d. -f1)
+            MINOR=$(echo "$CLEAN_VER" | cut -d. -f2)
+            PATCH=$(echo "$CLEAN_VER" | cut -d. -f3)
+
+            NEXT_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
+          fi
+
+          if [ "$BRANCH" == "main" ]; then
+            TAG="v$NEXT_VERSION"
+          else
+            TAG="v$NEXT_VERSION-rc.${{ github.run_number }}"
+          fi
+
+          echo "tag=$TAG"               >> "$GITHUB_OUTPUT"
+          echo "latest_tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
+          echo "has_tag=$HAS_TAG"       >> "$GITHUB_OUTPUT"
+
+      - name: Skip if no app changes since last release
+        id: guard
+        run: |
+          if [ "${{ steps.version.outputs.has_tag }}" == "true" ] && [ "${GITHUB_REF##*/}" == "main" ]; then
+            LAST_TAG="${{ steps.version.outputs.latest_tag }}"
+
+            if ! git diff --name-only "$LAST_TAG" HEAD -- "${{ inputs.context }}" | grep -q .; then
+              echo "No changes in ${{ inputs.context }} since $LAST_TAG — skipping build."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Login to GHCR
+        if: steps.guard.outputs.skip != 'true' && inputs.push
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        if: steps.guard.outputs.skip != 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Docker image
+        if: steps.guard.outputs.skip != 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile != '' && inputs.dockerfile ||format('{0}/Dockerfile', inputs.context) }}
+          push: ${{ inputs.push }}
+          tags: ${{ steps.img.outputs.image_name }}:${{ steps.version.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Push Git Tag
+        if: steps.guard.outputs.skip != 'true' && inputs.push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag ${{ steps.version.outputs.tag }}
+          git push origin ${{ steps.version.outputs.tag }}
