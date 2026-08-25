@@ -88,7 +88,6 @@ jobs:
           context: ./src
           push: true
           tags: ${{ steps.img.outputs.image_name }}:${{ steps.version.outputs.tag }}
-          # GitHub Actions Cache: drastically speeds up builds
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
