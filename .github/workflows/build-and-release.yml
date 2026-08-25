@@ -28,8 +28,7 @@ jobs:
   build-and-release:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      packages: write
+      contents: read
 
     steps:
       - name: Checkout repository
