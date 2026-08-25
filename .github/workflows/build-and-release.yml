@@ -23,10 +23,15 @@ on:
         required: false
         type: string
         default: ""
+      runs_on:
+        description: "Runner label"
+        required: false
+        type: string
+        default: "ubuntu-latest"
 
 jobs:
   build-and-release:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs_on }}
     permissions:
       contents: write
       packages: write
