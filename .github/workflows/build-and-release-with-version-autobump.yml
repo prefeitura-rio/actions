@@ -1,14 +1,23 @@
-name: Build and Release App
+name: Reusable Build and Release
 
 on:
-  push:
-    branches:
-      - main
-      - staging
-
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/app-sala-pref
+  workflow_call:
+    inputs:
+      context:
+        description: "Docker build context path"
+        required: false
+        type: string
+        default: "."
+      dockerfile:
+        description: "Path to Dockerfile (optional, defaults to <context>/Dockerfile)"
+        required: false
+        type: string
+        default: ""
+      image_name:
+        description: "Docker image name (optional, defaults to ghcr.io/<owner>/<repo>)"
+        required: false
+        type: string
+        default: ""
 
 jobs:
   build-and-release:
@@ -18,10 +27,21 @@ jobs:
       packages: write
 
     steps:
-      - name: Set dynamic image name (lowercase)
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine Image Name
+        id: img
         run: |
-          IMAGE="ghcr.io/${{ github.repository }}"
-          echo "IMAGE_NAME=${IMAGE,,}" >> "$GITHUB_ENV"
+          if [ -n "${{ inputs.image_name }}" ]; then
+            IMAGE="${{ inputs.image_name }}"
+          else
+            IMAGE="ghcr.io/${{ github.repository }}"
+          fi
+          echo "image_name=${IMAGE,,}" >> "$GITHUB_OUTPUT"
+
       - name: Calculate next version
         id: version
         run: |
@@ -39,7 +59,6 @@ jobs:
             MINOR=$(echo "$CLEAN_VER" | cut -d. -f2)
             PATCH=$(echo "$CLEAN_VER" | cut -d. -f3)
 
-            # Bump patch by 1
             NEXT_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
           fi
 
@@ -49,31 +68,30 @@ jobs:
             TAG="v$NEXT_VERSION-rc.${{ github.run_number }}"
           fi
 
-          echo "Calculated TAG: $TAG"
           echo "tag=$TAG"               >> "$GITHUB_OUTPUT"
           echo "latest_tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
           echo "has_tag=$HAS_TAG"       >> "$GITHUB_OUTPUT"
 
+      # Automatically checks diff against the passed context directory
       - name: Skip if no app changes since last release
         id: guard
         run: |
           if [ "${{ steps.version.outputs.has_tag }}" == "true" ] && [ "${GITHUB_REF##*/}" == "main" ]; then
             LAST_TAG="${{ steps.version.outputs.latest_tag }}"
 
-            if ! git diff --name-only "$LAST_TAG" HEAD -- src/ | grep -q .; then
-              echo "No source changes in src/ since $LAST_TAG — skipping build."
+            if ! git diff --name-only "$LAST_TAG" HEAD -- "${{ inputs.context }}" | grep -q .; then
+              echo "No changes in ${{ inputs.context }} since $LAST_TAG — skipping build."
               echo "skip=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
           fi
-
           echo "skip=false" >> "$GITHUB_OUTPUT"
 
       - name: Login to GHCR
         if: steps.guard.outputs.skip != 'true'
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
@@ -81,11 +99,13 @@ jobs:
         if: steps.guard.outputs.skip != 'true'
         uses: docker/setup-buildx-action@v3
 
+      # Reusable Build & Push Action
       - name: Build and push Docker image
         if: steps.guard.outputs.skip != 'true'
         uses: docker/build-push-action@v6
         with:
-          context: ./src
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile != '' && inputs.dockerfile ||format('{0}/Dockerfile', inputs.context) }}
           push: true
           tags: ${{ steps.img.outputs.image_name }}:${{ steps.version.outputs.tag }}
           cache-from: type=gha
