@@ -55,5 +55,5 @@ checkov -d . \
     "${skip_path_args[@]}" \
     -o cli -o sarif -o json \
     --output-file-path console,checkov-sarif.sarif,checkov-report.json \
-    "$CHECKOV_OPTS"
+    ${CHECKOV_OPTS:+"$CHECKOV_OPTS"}
 exit 0
