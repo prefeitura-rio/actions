@@ -4,12 +4,13 @@
 set -eo pipefail
 # SonarQube fails the analysis on a sarifReportPaths entry it cannot read,
 # so checkov-sarif.sarif must exist even when checkov is off or finds nothing.
-echo '{"version":"2.1.0","$schema":"https://json.schemastore.org/sarif-2.1.0.json","runs":[]}' > checkov-sarif.sarif
-echo '{"results":{"failed_checks":[]}}' > checkov-report.json
+# shellcheck disable=SC2016 # single quotes are intentional: literal JSON, no expansion wanted
+echo '{"version":"2.1.0","$schema":"https://json.schemastore.org/sarif-2.1.0.json","runs":[]}' >checkov-sarif.sarif
+echo '{"results":{"failed_checks":[]}}' >checkov-report.json
 
 if [[ "$ENABLE_CHECKOV" != "true" ]]; then
-  echo "checkov disabled, skipping"
-  exit 0
+    echo "checkov disabled, skipping"
+    exit 0
 fi
 
 # --output-file-path entries map 1:1 to the -o flags, in order. They must be
@@ -44,15 +45,15 @@ fi
 # Also action=append, so checkov_opts can add further --skip-path entries.
 skip_path_args=()
 if [[ -s checkov-skip-paths.txt ]]; then
-  while IFS= read -r pattern; do
-    [[ -n "$pattern" ]] && skip_path_args+=(--skip-path "$pattern")
-  done < checkov-skip-paths.txt
+    while IFS= read -r pattern; do
+        [[ -n "$pattern" ]] && skip_path_args+=(--skip-path "$pattern")
+    done <checkov-skip-paths.txt
 fi
 checkov -d . \
-  --quiet --compact --soft-fail --skip-download \
-  --skip-check CKV_GHA_3,CKV_GHA_5,CKV_GHA_6,CKV_GHA_7,CKV_DOCKER_2,CKV_K8S_11,CKV2_K8S_6,CKV_K8S_21,CKV_OPENAPI* \
-  "${skip_path_args[@]}" \
-  -o cli -o sarif -o json \
-  --output-file-path console,checkov-sarif.sarif,checkov-report.json \
-  $CHECKOV_OPTS
+    --quiet --compact --soft-fail --skip-download \
+    --skip-check CKV_GHA_3,CKV_GHA_5,CKV_GHA_6,CKV_GHA_7,CKV_DOCKER_2,CKV_K8S_11,CKV2_K8S_6,CKV_K8S_21,CKV_OPENAPI* \
+    "${skip_path_args[@]}" \
+    -o cli -o sarif -o json \
+    --output-file-path console,checkov-sarif.sarif,checkov-report.json \
+    "$CHECKOV_OPTS"
 exit 0

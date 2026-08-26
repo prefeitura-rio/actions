@@ -78,9 +78,11 @@ jobs:
             TAG="v$NEXT_VERSION-rc.${{ github.run_number }}"
           fi
 
-          echo "tag=$TAG"               >> "$GITHUB_OUTPUT"
-          echo "latest_tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
-          echo "has_tag=$HAS_TAG"       >> "$GITHUB_OUTPUT"
+          {
+            echo "tag=$TAG"
+            echo "latest_tag=$LATEST_TAG"
+            echo "has_tag=$HAS_TAG"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Skip if no app changes since last release
         id: guard

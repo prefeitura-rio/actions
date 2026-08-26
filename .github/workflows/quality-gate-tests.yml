@@ -285,6 +285,7 @@ jobs:
       - name: Install mock curl (writes garbage to output file)
         run: |
           mkdir -p "$HOME/.local/bin"
+          # shellcheck disable=SC2016 # single quotes are intentional: this is the mock script's literal body
           printf '#!/usr/bin/env bash\necho "corrupted" > "${@: -1}"\n' \
             > "$HOME/.local/bin/curl"
           chmod +x "$HOME/.local/bin/curl"
@@ -321,6 +322,7 @@ jobs:
       - name: Install mock curl (writes garbage to output file)
         run: |
           mkdir -p "$HOME/.local/bin"
+          # shellcheck disable=SC2016 # single quotes are intentional: this is the mock script's literal body
           printf '#!/usr/bin/env bash\necho "corrupted" > "${@: -1}"\n' \
             > "$HOME/.local/bin/curl"
           chmod +x "$HOME/.local/bin/curl"

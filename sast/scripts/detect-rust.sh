@@ -4,7 +4,7 @@
 set -eo pipefail
 
 if find . -name Cargo.toml -print -quit | grep -q .; then
-  echo "found=true" >> "$GITHUB_OUTPUT"
+    echo "found=true" >>"$GITHUB_OUTPUT"
 else
-  echo "found=false" >> "$GITHUB_OUTPUT"
+    echo "found=false" >>"$GITHUB_OUTPUT"
 fi

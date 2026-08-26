@@ -4,9 +4,9 @@
 set -eo pipefail
 
 opengrep scan . --sarif-output=all-opengrep-sarif.sarif \
-  --json-output=opengrep-report.json \
-  --config p/default \
-  --config "$GITHUB_ACTION_PATH/opengrep-rules/" \
-  --opengrep-ignore-pattern NOSONAR
-jq -c '.runs[].results |= map(select((.suppressions // [] | map(.kind == "inSource") | any | not)))' all-opengrep-sarif.sarif > opengrep-sarif.sarif
+    --json-output=opengrep-report.json \
+    --config p/default \
+    --config "$GITHUB_ACTION_PATH/opengrep-rules/" \
+    --opengrep-ignore-pattern NOSONAR
+jq -c '.runs[].results |= map(select((.suppressions // [] | map(.kind == "inSource") | any | not)))' all-opengrep-sarif.sarif >opengrep-sarif.sarif
 rm all-opengrep-sarif.sarif

@@ -4,7 +4,7 @@
 set -eo pipefail
 
 if find . -maxdepth 2 -name "pom.xml" -o -name "build.gradle" -o -name "build.gradle.kts" | grep -q .; then
-  echo "found=true" >> "$GITHUB_OUTPUT"
+    echo "found=true" >>"$GITHUB_OUTPUT"
 else
-  echo "found=false" >> "$GITHUB_OUTPUT"
+    echo "found=false" >>"$GITHUB_OUTPUT"
 fi

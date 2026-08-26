@@ -11,4 +11,4 @@ REPORT_TASK_FILE=$(find . -name 'report-task.txt' | head -n1)
 [ -f "$REPORT_TASK_FILE" ] && SONAR_TASK_ID=$(grep 'ceTaskId=' "$REPORT_TASK_FILE" | cut -d'=' -f2)
 [ "" == "$SONAR_TASK_ID" ] && echo "Sonar task ID was not found."
 [ "" != "$SONAR_TASK_ID" ] && echo "Sonar task ID: $SONAR_TASK_ID"
-echo "sonar_task_id=$SONAR_TASK_ID" >> "$GITHUB_OUTPUT"
+echo "sonar_task_id=$SONAR_TASK_ID" >>"$GITHUB_OUTPUT"

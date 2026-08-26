@@ -25,23 +25,30 @@ before applying, so a checkov_version bump either keeps applying cleanly or
 fails loudly here instead of silently leaving the bug (and an unreliable
 --skip-path) in place.
 """
+
 from __future__ import annotations
 
 import sys
 from pathlib import Path
 
-BUGGY = '''excluded_paths_regex = re.compile('|'.join(f"({excluded_paths})")) if excluded_paths else None'''
-FIXED = '''excluded_paths_regex = re.compile('|'.join(f"({p})" for p in excluded_paths)) if excluded_paths else None'''
+BUGGY = """excluded_paths_regex = re.compile('|'.join(f"({excluded_paths})")) if excluded_paths else None"""
+FIXED = """excluded_paths_regex = re.compile('|'.join(f"({p})" for p in excluded_paths)) if excluded_paths else None"""
 
 
 def main() -> int:
     if len(sys.argv) != 2:
-        print("usage: fix_checkov_module_finder.py <path-to-module_finder.py>", file=sys.stderr)
+        print(
+            "usage: fix_checkov_module_finder.py <path-to-module_finder.py>",
+            file=sys.stderr,
+        )
         return 1
 
     target = Path(sys.argv[1])
     if not target.is_file():
-        print(f"::error title=SAST::checkov module_finder.py not found at {target}", file=sys.stderr)
+        print(
+            f"::error title=SAST::checkov module_finder.py not found at {target}",
+            file=sys.stderr,
+        )
         return 1
 
     src = target.read_text()
