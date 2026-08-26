@@ -1,6 +1,6 @@
 id: no-console
 language: TypeScript
-severity: warning
+severity: error
 message: >
   Avoid console.log / console.warn / console.error in production code.
   Use a structured logger (e.g. pino, winston) so log levels, formatting,

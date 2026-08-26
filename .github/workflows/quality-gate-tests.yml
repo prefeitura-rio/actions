@@ -1,13 +1,69 @@
 name: Quality Gate Tests
 
 on:
+  pull_request:
+    branches: [master]
+    paths:
+      - "quality-gate/**"
+      - ".github/workflows/quality-gate.yml"
+      - ".github/workflows/quality-gate-tests.yml"
   push:
-    branches: [master, quality-gate]
+    branches: [master]
+    paths:
+      - "quality-gate/**"
+      - ".github/workflows/quality-gate.yml"
+      - ".github/workflows/quality-gate-tests.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: quality-gate-tests-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
+  reusable-workflow:
+    uses: ./.github/workflows/quality-gate.yml
+    with:
+      project-name: reusable-workflow-smoke
+      working-directory: quality-gate/fixtures/go/pass
+
+  ast-grep-rules:
+    name: ast-grep rules / ${{ matrix.language }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [go, python, typescript]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Install ast-grep
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOOL_BIN="$HOME/.ast-grep/bin"
+          TOOL_DL="$HOME/.ast-grep/dl"
+          mkdir -p "$TOOL_BIN" "$TOOL_DL"
+          echo "$TOOL_BIN" >> "$GITHUB_PATH"
+          SG_OUT="$TOOL_DL/sg.zip"
+          SG_SHA="76fb6555be6734fb5057dba8d2fb756430f374bb9e1af694cf1ce00e13238d63"
+          if [[ ! -f "$SG_OUT" ]] || ! echo "$SG_SHA  $SG_OUT" | sha256sum -c --status; then
+            curl -sfL \
+              "https://github.com/ast-grep/ast-grep/releases/download/0.45.1/app-x86_64-unknown-linux-gnu.zip" \
+              -o "$SG_OUT"
+          fi
+          echo "$SG_SHA  $SG_OUT" | sha256sum -c --status || {
+            echo "::error title=strlint::sha256 mismatch for ast-grep"
+            rm -f "$SG_OUT"
+            exit 1
+          }
+          unzip -p "$SG_OUT" ast-grep > "$TOOL_BIN/ast-grep"
+          chmod +x "$TOOL_BIN/ast-grep"
+      - name: Test ${{ matrix.language }} rules
+        run: ast-grep test --skip-snapshot-tests --config quality-gate/${{ matrix.language }}/sgconfig.yaml
+
   go:
     runs-on: ubuntu-latest
     strategy:
@@ -172,6 +228,14 @@ jobs:
 
   error-invalid-check:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        check:
+          - "app:invalid"
+          - "app.format"
+          - "app:forma."
+          - "app:[f]ormat"
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -179,7 +243,7 @@ jobs:
         id: bad-check
         uses: ./quality-gate
         with:
-          check: app:invalid
+          check: ${{ matrix.check }}
         continue-on-error: true
       - name: assert invalid check was rejected
         run: |
@@ -190,11 +254,164 @@ jobs:
       - name: assert exact error message
         run: |
           ACTUAL="${{ steps.bad-check.outputs.error_message }}"
-          EXPECTED="Invalid check 'app:invalid'. Valid values: app:format app:lint app:strlint app:typecheck app:test"
+          EXPECTED="Invalid check '${{ matrix.check }}'. Valid values: app:format app:lint app:strlint app:typecheck app:test"
           [[ "$ACTUAL" == "$EXPECTED" ]] || {
             echo "::error::Wrong error message. Expected: '${EXPECTED}' — Got: '${ACTUAL}'"
             exit 1
           }
+
+  error-multiple-languages:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: run against ambiguous project root
+        id: multiple-languages
+        uses: ./quality-gate
+        with:
+          check: app:format
+          working-directory: quality-gate/fixtures/error/multiple-languages
+        continue-on-error: true
+      - name: assert ambiguity was rejected
+        run: |
+          [[ "${{ steps.multiple-languages.outcome }}" == "failure" ]] || {
+            echo "::error::Expected action to reject multiple detected languages"
+            exit 1
+          }
+          ACTUAL="${{ steps.multiple-languages.outputs.error_message }}"
+          EXPECTED="Multiple supported languages detected: go python typescript. Run quality-gate once per project with working-directory set to a directory containing exactly one supported language."
+          [[ "$ACTUAL" == "$EXPECTED" ]] || {
+            echo "::error::Wrong error message. Expected: '${EXPECTED}' — Got: '${ACTUAL}'"
+            exit 1
+          }
+
+  error-setup-py-only:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: run against setup.py-only project
+        id: setup-py-only
+        uses: ./quality-gate
+        with:
+          check: app:format
+          working-directory: quality-gate/fixtures/error/setup-py-only
+        continue-on-error: true
+      - name: assert legacy project was rejected
+        run: |
+          [[ "${{ steps.setup-py-only.outcome }}" == "failure" ]] || {
+            echo "::error::Expected action to reject a setup.py-only project"
+            exit 1
+          }
+          ACTUAL="${{ steps.setup-py-only.outputs.error_message }}"
+          EXPECTED="Could not detect a supported language. Expected go.mod, pyproject.toml, or package.json+tsconfig.json."
+          [[ "$ACTUAL" == "$EXPECTED" ]] || {
+            echo "::error::Wrong error message. Expected: '${EXPECTED}' — Got: '${ACTUAL}'"
+            exit 1
+          }
+
+  error-multiple-rule-configs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: run against multiple repository configs
+        id: multiple-configs
+        uses: ./quality-gate
+        with:
+          check: app:strlint
+          working-directory: quality-gate/fixtures/error/multiple-rule-configs
+        continue-on-error: true
+      - name: assert multiple configs were rejected
+        run: |
+          [[ "${{ steps.multiple-configs.outcome }}" == "failure" ]] || {
+            echo "::error::Expected action to reject multiple repository configs"
+            exit 1
+          }
+          ACTUAL="${{ steps.multiple-configs.outputs.error_message }}"
+          EXPECTED="Multiple repo-local ast-grep configs found: .quality-gate/sgconfig.yaml sgconfig.yml. Keep exactly one config."
+          [[ "$ACTUAL" == "$EXPECTED" ]] || {
+            echo "::error::Wrong error message. Expected: '${EXPECTED}' — Got: '${ACTUAL}'"
+            exit 1
+          }
+
+  repo-local-rules:
+    name: repo-local rules / ${{ matrix.language }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [go, python, typescript]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: run repository-local rule fixture
+        id: repo-rule
+        uses: ./quality-gate
+        with:
+          check: app:strlint
+          working-directory: quality-gate/fixtures/${{ matrix.language }}/repo-rule-fail
+        continue-on-error: true
+      - name: assert repository-local violation failed
+        run: |
+          [[ "${{ steps.repo-rule.outcome }}" == "failure" ]] || {
+            echo "::error::Expected repository-local ${{ matrix.language }} rule to fail"
+            exit 1
+          }
+
+  mandatory-policy-rules:
+    name: mandatory policy / ${{ matrix.rule }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: go
+            rule: no-plain-error-wrap
+          - language: go
+            rule: no-http-default-client
+          - language: python
+            rule: no-print
+          - language: python
+            rule: no-bare-except
+          - language: typescript
+            rule: no-console
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: run mandatory policy fixture
+        id: policy-rule
+        uses: ./quality-gate
+        with:
+          check: app:strlint
+          working-directory: quality-gate/fixtures/${{ matrix.language }}/policy-fail/${{ matrix.rule }}
+        continue-on-error: true
+      - name: assert mandatory policy failed
+        run: |
+          [[ "${{ steps.policy-rule.outcome }}" == "failure" ]] || {
+            echo "::error::Expected mandatory policy ${{ matrix.rule }} to fail"
+            exit 1
+          }
+
+  polyglot-project-paths:
+    name: polyglot / ${{ matrix.project }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - project: admin-application
+            path: quality-gate/fixtures/polyglot/applications/admin
+          - project: payments-service
+            path: quality-gate/fixtures/polyglot/services/payments
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: run project-specific quality gate
+        uses: ./quality-gate
+        with:
+          check: app:strlint
+          working-directory: ${{ matrix.path }}
 
   error-no-language:
     runs-on: ubuntu-latest
@@ -285,7 +502,7 @@ jobs:
       - name: Install mock curl (writes garbage to output file)
         run: |
           mkdir -p "$HOME/.local/bin"
-          # shellcheck disable=SC2016 # single quotes are intentional: this is the mock script's literal body
+          # shellcheck disable=SC2016
           printf '#!/usr/bin/env bash\necho "corrupted" > "${@: -1}"\n' \
             > "$HOME/.local/bin/curl"
           chmod +x "$HOME/.local/bin/curl"
@@ -322,7 +539,7 @@ jobs:
       - name: Install mock curl (writes garbage to output file)
         run: |
           mkdir -p "$HOME/.local/bin"
-          # shellcheck disable=SC2016 # single quotes are intentional: this is the mock script's literal body
+          # shellcheck disable=SC2016
           printf '#!/usr/bin/env bash\necho "corrupted" > "${@: -1}"\n' \
             > "$HOME/.local/bin/curl"
           chmod +x "$HOME/.local/bin/curl"

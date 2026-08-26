@@ -1,0 +1,6 @@
+id: no-local-forbidden
+language: TypeScript
+severity: error
+message: Repository-local TypeScript rule was executed.
+rule:
+  pattern: localForbidden()

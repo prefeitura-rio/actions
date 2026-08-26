@@ -1,6 +1,6 @@
 id: no-bare-except
 language: Python
-severity: warning
+severity: error
 message: >
   Avoid bare 'except:' clauses. They catch everything including
   KeyboardInterrupt and SystemExit, masking bugs and making debugging harder.
