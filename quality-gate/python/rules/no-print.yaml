@@ -1,6 +1,6 @@
 id: no-print
 language: Python
-severity: warning
+severity: error
 message: >
   Avoid print() in production code. Use a structured logger
   (logging.getLogger(__name__)) so log levels, formatting,

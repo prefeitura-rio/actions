@@ -1,6 +1,6 @@
 id: no-plain-error-wrap
 language: Go
-severity: warning
+severity: error
 message: >
   Wrap errors with %w instead of %v or %s so the original error is preserved
   for errors.Is / errors.As unwrapping.

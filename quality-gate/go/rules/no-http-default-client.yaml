@@ -1,6 +1,6 @@
 id: no-http-default-client
 language: Go
-severity: warning
+severity: error
 message: >
   Avoid using http.DefaultClient or the package-level http.Get/Post helpers.
   They have no timeouts and can hang forever.

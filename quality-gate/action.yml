@@ -30,8 +30,9 @@ inputs:
 outputs:
   error_message:
     description: >
-      Human-readable error message set whenever the action exits with a failure.
-      Intended for use in test workflows that need to assert exact error strings.
+      Human-readable error message for deterministic action-owned failures.
+      Tool diagnostics remain in the job log and may leave this output empty.
+      Intended for test workflows that need to assert exact setup error strings.
     value: ${{ steps.collect-error.outputs.error_message }}
 
 runs:
@@ -52,12 +53,15 @@ runs:
       run: |
         set -euo pipefail
         VALID="app:format app:lint app:strlint app:typecheck app:test"
-        if ! echo "$VALID" | grep -qw "$CHECK"; then
-          MSG="Invalid check '${CHECK}'. Valid values: ${VALID}"
-          echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
-          echo "::error title=quality-gate::${MSG}"
-          exit 1
-        fi
+        case "$CHECK" in
+          app:format|app:lint|app:strlint|app:typecheck|app:test) ;;
+          *)
+            MSG="Invalid check '${CHECK}'. Valid values: ${VALID}"
+            echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
+            echo "::error title=quality-gate::${MSG}"
+            exit 1
+            ;;
+        esac
 
     - name: Detect language
       id: lang
@@ -65,18 +69,25 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
-        if [[ -f go.mod ]]; then
-          echo "name=go" >> "$GITHUB_OUTPUT"
-        elif [[ -f pyproject.toml || -f setup.py ]]; then
-          echo "name=python" >> "$GITHUB_OUTPUT"
-        elif [[ -f package.json && -f tsconfig.json ]]; then
-          echo "name=typescript" >> "$GITHUB_OUTPUT"
-        else
+        languages=()
+        if [[ -f go.mod ]]; then languages+=(go); fi
+        if [[ -f pyproject.toml ]]; then languages+=(python); fi
+        if [[ -f package.json && -f tsconfig.json ]]; then languages+=(typescript); fi
+
+        if [[ ${#languages[@]} -eq 0 ]]; then
           MSG="Could not detect a supported language. Expected go.mod, pyproject.toml, or package.json+tsconfig.json."
           echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
           echo "::error title=quality-gate::${MSG}"
           exit 1
+        elif [[ ${#languages[@]} -gt 1 ]]; then
+          DETECTED="${languages[*]}"
+          MSG="Multiple supported languages detected: ${DETECTED}. Run quality-gate once per project with working-directory set to a directory containing exactly one supported language."
+          echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
+          echo "::error title=quality-gate::${MSG}"
+          exit 1
         fi
+
+        echo "name=${languages[0]}" >> "$GITHUB_OUTPUT"
 
     - name: "go | setup go"
       if: steps.lang.outputs.name == 'go'
@@ -307,7 +318,7 @@ runs:
         unzip -p "$SG_OUT" ast-grep > "$TOOL_BIN/ast-grep"
         chmod +x "$TOOL_BIN/ast-grep"
 
-    - name: "strlint | ast-grep org rules"
+    - name: "strlint | ast-grep org rules (go)"
       if: inputs.check == 'app:strlint' && steps.lang.outputs.name == 'go'
       shell: bash
       working-directory: ${{ inputs.working-directory }}
@@ -320,32 +331,6 @@ runs:
         ast-grep scan --config "$TMP_CFG"
         rm -f "$TMP_CFG"
         echo "Org-wide ast-grep rules passed."
-
-    - name: "strlint | ast-grep repo rules"
-      if: inputs.check == 'app:strlint' && steps.lang.outputs.name == 'go'
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      run: |
-        set -euo pipefail
-        if [[ -f sgconfig.yaml || -d rules ]]; then
-          ast-grep scan
-          echo "Repo-local ast-grep rules passed."
-        else
-          echo "No repo-local sgconfig.yaml or rules/ found — skipping."
-        fi
-
-    - name: "strlint | ast-grep rule tests"
-      if: inputs.check == 'app:strlint' && steps.lang.outputs.name == 'go'
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      run: |
-        set -euo pipefail
-        if [[ -d tests ]]; then
-          ast-grep test -t tests
-          echo "Repo-local rule tests passed."
-        else
-          echo "No tests/ directory found — skipping rule tests."
-        fi
 
     - name: "strlint | ast-grep org rules (typescript)"
       if: inputs.check == 'app:strlint' && steps.lang.outputs.name == 'typescript'
@@ -361,19 +346,6 @@ runs:
         rm -f "$TMP_CFG"
         echo "Org-wide TypeScript ast-grep rules passed."
 
-    - name: "strlint | ast-grep repo rules (typescript)"
-      if: inputs.check == 'app:strlint' && steps.lang.outputs.name == 'typescript'
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      run: |
-        set -euo pipefail
-        if [[ -f sgconfig.yaml || -d rules ]]; then
-          ast-grep scan
-          echo "Repo-local TypeScript ast-grep rules passed."
-        else
-          echo "No repo-local sgconfig.yaml or rules/ found — skipping."
-        fi
-
     - name: "strlint | ast-grep org rules (python)"
       if: inputs.check == 'app:strlint' && steps.lang.outputs.name == 'python'
       shell: bash
@@ -388,17 +360,39 @@ runs:
         rm -f "$TMP_CFG"
         echo "Org-wide Python ast-grep rules passed."
 
-    - name: "strlint | ast-grep repo rules (python)"
-      if: inputs.check == 'app:strlint' && steps.lang.outputs.name == 'python'
+    - name: "strlint | ast-grep repo rules (${{ steps.lang.outputs.name }})"
+      if: inputs.check == 'app:strlint' && (steps.lang.outputs.name == 'go' || steps.lang.outputs.name == 'typescript' || steps.lang.outputs.name == 'python')
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
-        if [[ -f sgconfig.yaml || -d rules ]]; then
-          ast-grep scan
-          echo "Repo-local Python ast-grep rules passed."
-        else
-          echo "No repo-local sgconfig.yaml or rules/ found — skipping."
+
+        configs=()
+        for config in \
+          .quality-gate/sgconfig.yaml \
+          .quality-gate/sgconfig.yml \
+          sgconfig.yaml \
+          sgconfig.yml; do
+          if [[ -f "$config" ]]; then configs+=("$config"); fi
+        done
+
+        if [[ ${#configs[@]} -eq 0 ]]; then
+          echo "No repo-local ast-grep config found — skipping."
+          exit 0
+        elif [[ ${#configs[@]} -gt 1 ]]; then
+          MSG="Multiple repo-local ast-grep configs found: ${configs[*]}. Keep exactly one config."
+          echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
+          echo "::error title=strlint::${MSG}"
+          exit 1
+        fi
+
+        CONFIG="${configs[0]}"
+        ast-grep scan --config "$CONFIG"
+        echo "Repo-local ast-grep rules passed using ${CONFIG}."
+
+        if [[ "$CONFIG" == .quality-gate/* && -d .quality-gate/tests ]]; then
+          ast-grep test --skip-snapshot-tests --config "$CONFIG"
+          echo "Repo-local ast-grep rule tests passed."
         fi
 
     - name: "typecheck | go vet (go)"

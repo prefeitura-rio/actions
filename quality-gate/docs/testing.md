@@ -11,17 +11,35 @@ flagged. This protects the rules from silently changing behavior when a rule,
 parser, or ast-grep version changes.
 
 The action is run against clean and deliberately broken fixture projects for
-each supported language and quality check. Clean fixtures prove that valid code
-is accepted. Broken fixtures prove that formatting, lint, structural lint,
-typecheck, and test failures are detected. This tests the complete action path,
-including tool setup and language detection, rather than only the shell
-conditions around it.
+each implemented language and quality-check path. Clean fixtures prove that
+valid code is accepted. Broken fixtures prove that formatting, lint, structural
+lint, typecheck, and test failures are detected. Python typecheck is tested as
+the documented no-op because basedpyright runs under lint. These fixtures test
+the complete action path, including tool setup and language detection, rather
+than only the shell conditions around it.
 
-Defensive error scenarios are tested separately. They cover invalid check
-names, unsupported projects, missing TypeScript lockfiles, and corrupted tool
+Defensive error scenarios are tested separately. They cover literal and
+regex-like invalid check names, unsupported projects, ambiguous polyglot roots,
+legacy setup.py-only projects, missing TypeScript lockfiles, and corrupted tool
 downloads. The tests check both that the action fails and that the reported
 message is exact. This keeps configuration errors actionable instead of
 reducing them to an unexplained exit code.
+
+Repository-local structural rules have one failing fixture per language. Each
+organization rule documented as mandatory has its own failing policy fixture,
+proving that every rule independently exits nonzero rather than merely printing
+a warning.
+The passing Go fixture includes an ordinary project `tests/` directory so a
+regression cannot reinterpret application tests as ast-grep rule tests.
+
+A polyglot fixture keeps a TypeScript application and Python service under
+arbitrary nested paths. Separate invocations prove that `working-directory`
+selects each project without relying on names such as frontend, backend, API,
+or library.
+
+The test workflow also calls the repository-local reusable workflow against a
+passing Go fixture. This verifies the five-job orchestration and its
+project-name/working-directory input contract in a real GitHub runner.
 
 The template bootstrap scripts are tested with all eight templates. The tests
 cover successful renaming, repeated execution, invalid input, non-interactive
@@ -29,7 +47,7 @@ use, cancelled confirmation, and the final environment-trust command. This
 protects the first-run experience that creates a developer's project from a
 template.
 
-## Real GitHub Actions Output
+## Historical GitHub Actions Output
 
 The following output was copied from GitHub Actions run 32785747539. Every job
 reported success. The order is the order returned by the GitHub Actions run
@@ -56,9 +74,17 @@ success  go (app:test)
 success  typescript (app:test)
 ```
 
-This run predates the expanded exact-message assertions and checksum-mismatch
-jobs. Those scenarios are intentionally not presented as runner-verified yet;
-their first live result is tracked as a pending testing task in the roadmap.
+This run predates the expanded exact-message assertions, checksum-mismatch
+jobs, local-rule fixtures, ambiguity checks, and mandatory-policy fixtures. It
+is retained as historical evidence rather than a description of the current
+job count.
+
+## Trigger Scope
+
+The self-tests run on pull requests and pushes to `master` only when
+`quality-gate/**`, the reusable quality-gate workflow, or this test workflow
+changes. They can also be started manually. Unrelated changes to other actions
+do not launch the quality-gate fixture matrix.
 
 ## Real Bootstrap Output
 
