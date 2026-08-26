@@ -1,11 +1,9 @@
 name: Security
 
 # dogfooding
-# Full SAST uses organization secrets and therefore runs only after trusted code
-# reaches master, never on PR-controlled or manually selected branch code.
 on:
   push:
-    branches: [master]
+    branches: [master, feat/**]
     paths:
       - ".github/workflows/ci.yml"
       - ".github/workflows/sast.yml"
