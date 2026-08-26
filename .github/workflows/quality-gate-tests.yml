@@ -72,20 +72,20 @@ jobs:
         check: [app:format, app:lint, app:strlint, app:typecheck, app:test]
         include:
           - check: app:format
-            fixture: quality-gate/fixtures/go/pass
-            fail: quality-gate/fixtures/go/format-fail
+            fixture: quality-gate/go/fixtures/pass
+            fail: quality-gate/go/fixtures/format-fail
           - check: app:lint
-            fixture: quality-gate/fixtures/go/pass
-            fail: quality-gate/fixtures/go/lint-fail
+            fixture: quality-gate/go/fixtures/pass
+            fail: quality-gate/go/fixtures/lint-fail
           - check: app:strlint
-            fixture: quality-gate/fixtures/go/pass
-            fail: quality-gate/fixtures/go/strlint-fail
+            fixture: quality-gate/go/fixtures/pass
+            fail: quality-gate/go/fixtures/strlint-fail
           - check: app:typecheck
-            fixture: quality-gate/fixtures/go/pass
-            fail: quality-gate/fixtures/go/typecheck-fail
+            fixture: quality-gate/go/fixtures/pass
+            fail: quality-gate/go/fixtures/typecheck-fail
           - check: app:test
-            fixture: quality-gate/fixtures/go/pass
-            fail: quality-gate/fixtures/go/test-fail
+            fixture: quality-gate/go/fixtures/pass
+            fail: quality-gate/go/fixtures/test-fail
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -127,17 +127,17 @@ jobs:
         check: [app:format, app:lint, app:strlint, app:test]
         include:
           - check: app:format
-            fixture: quality-gate/fixtures/python/pass
-            fail: quality-gate/fixtures/python/format-fail
+            fixture: quality-gate/python/fixtures/pass
+            fail: quality-gate/python/fixtures/format-fail
           - check: app:lint
-            fixture: quality-gate/fixtures/python/pass
-            fail: quality-gate/fixtures/python/lint-fail
+            fixture: quality-gate/python/fixtures/pass
+            fail: quality-gate/python/fixtures/lint-fail
           - check: app:strlint
-            fixture: quality-gate/fixtures/python/pass
-            fail: quality-gate/fixtures/python/strlint-fail
+            fixture: quality-gate/python/fixtures/pass
+            fail: quality-gate/python/fixtures/strlint-fail
           - check: app:test
-            fixture: quality-gate/fixtures/python/pass
-            fail: quality-gate/fixtures/python/test-fail
+            fixture: quality-gate/python/fixtures/pass
+            fail: quality-gate/python/fixtures/test-fail
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -179,20 +179,20 @@ jobs:
         check: [app:format, app:lint, app:strlint, app:typecheck, app:test]
         include:
           - check: app:format
-            fixture: quality-gate/fixtures/typescript/pass
-            fail: quality-gate/fixtures/typescript/format-fail
+            fixture: quality-gate/typescript/fixtures/pass
+            fail: quality-gate/typescript/fixtures/format-fail
           - check: app:lint
-            fixture: quality-gate/fixtures/typescript/pass
-            fail: quality-gate/fixtures/typescript/lint-fail
+            fixture: quality-gate/typescript/fixtures/pass
+            fail: quality-gate/typescript/fixtures/lint-fail
           - check: app:strlint
-            fixture: quality-gate/fixtures/typescript/pass
-            fail: quality-gate/fixtures/typescript/strlint-fail
+            fixture: quality-gate/typescript/fixtures/pass
+            fail: quality-gate/typescript/fixtures/strlint-fail
           - check: app:typecheck
-            fixture: quality-gate/fixtures/typescript/pass
-            fail: quality-gate/fixtures/typescript/typecheck-fail
+            fixture: quality-gate/typescript/fixtures/pass
+            fail: quality-gate/typescript/fixtures/typecheck-fail
           - check: app:test
-            fixture: quality-gate/fixtures/typescript/pass
-            fail: quality-gate/fixtures/typescript/test-fail
+            fixture: quality-gate/typescript/fixtures/pass
+            fail: quality-gate/typescript/fixtures/test-fail
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -512,7 +512,7 @@ jobs:
         uses: ./quality-gate
         with:
           check: app:format
-          working-directory: quality-gate/fixtures/go/pass
+          working-directory: quality-gate/go/fixtures/pass
         continue-on-error: true
       - name: assert sha mismatch detected, message correct, file cleaned up
         run: |
@@ -549,7 +549,7 @@ jobs:
         uses: ./quality-gate
         with:
           check: app:strlint
-          working-directory: quality-gate/fixtures/go/pass
+          working-directory: quality-gate/go/fixtures/pass
         continue-on-error: true
       - name: assert sha mismatch detected, message correct, file cleaned up
         run: |

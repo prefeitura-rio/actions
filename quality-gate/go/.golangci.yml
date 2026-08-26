@@ -9,7 +9,9 @@ output:
     - file
 
 linters:
-  default: none
+  # Strict fallback: enable every golangci-lint linter. Projects with their
+  # own configuration take precedence over this fallback.
+  default: all
   enable:
     - errcheck
     - govet

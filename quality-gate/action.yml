@@ -1,50 +1,27 @@
 name: Quality Gate
-description: >
-  Language-agnostic quality gate. Detects the project language automatically
-  (Go: go.mod · Python: pyproject.toml · TypeScript: package.json+tsconfig.json)
-  and runs the requested check.
-
-  Supported checks (via the `check` input):
-    app:format    — format verification (fail on any diff, never auto-fix in CI)
-    app:lint      — static analysis / linting
-    app:strlint   — structural lint (ast-grep org rules + optional repo rules)
-    app:typecheck — type checking and compilation verification
-    app:test      — unit / integration tests
-
-  All quality tools are installed from pinned, sha256-verified releases.
-  No devenv or Nix dependency is required in the calling workflow.
-
+description: |
+  Language-agnostic quality gate. Detects the project language and dispatches
+  the requested check to the language-specific action.
 inputs:
   check:
-    description: >
-      The quality check to run, in `app:<job>` form.
-      Valid values: app:format | app:lint | app:strlint | app:typecheck | app:test
+    description: |
+      The quality check to run, in app:<job> form. Valid values:
+      app:format | app:lint | app:strlint | app:typecheck | app:test
     required: true
   working-directory:
-    description: >
-      The directory to run quality-gate checks in (relative to the repository root).
-      Useful for monorepos and fixture-based testing.
+    description: The directory to run quality-gate checks in.
     required: false
-    default: "."
-
+    default: .
 outputs:
   error_message:
-    description: >
-      Human-readable error message for deterministic action-owned failures.
-      Tool diagnostics remain in the job log and may leave this output empty.
-      Intended for test workflows that need to assert exact setup error strings.
+    description: Human-readable error message set when the action fails.
     value: ${{ steps.collect-error.outputs.error_message }}
-
 runs:
   using: composite
   steps:
-
     - name: Init error relay
-      id: init-error-relay
       shell: bash
-      run: |
-        echo "" > "$RUNNER_TEMP/quality-gate-error.txt"
-
+      run: echo "" > "$RUNNER_TEMP/quality-gate-error.txt"
     - name: Validate check input
       shell: bash
       working-directory: ${{ inputs.working-directory }}
@@ -53,419 +30,48 @@ runs:
       run: |
         set -euo pipefail
         VALID="app:format app:lint app:strlint app:typecheck app:test"
-        case "$CHECK" in
-          app:format|app:lint|app:strlint|app:typecheck|app:test) ;;
-          *)
-            MSG="Invalid check '${CHECK}'. Valid values: ${VALID}"
-            echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
-            echo "::error title=quality-gate::${MSG}"
-            exit 1
-            ;;
-        esac
-
+        if ! echo "$VALID" | grep -qw "$CHECK"; then
+          MSG="Invalid check '${CHECK}'. Valid values: ${VALID}"
+          echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
+          echo "::error title=quality-gate::${MSG}"
+          exit 1
+        fi
     - name: Detect language
       id: lang
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
-        languages=()
-        if [[ -f go.mod ]]; then languages+=(go); fi
-        if [[ -f pyproject.toml ]]; then languages+=(python); fi
-        if [[ -f package.json && -f tsconfig.json ]]; then languages+=(typescript); fi
-
-        if [[ ${#languages[@]} -eq 0 ]]; then
+        if [[ -f go.mod ]]; then
+          echo "name=go" >> "$GITHUB_OUTPUT"
+        elif [[ -f pyproject.toml || -f setup.py ]]; then
+          echo "name=python" >> "$GITHUB_OUTPUT"
+        elif [[ -f package.json && -f tsconfig.json ]]; then
+          echo "name=typescript" >> "$GITHUB_OUTPUT"
+        else
           MSG="Could not detect a supported language. Expected go.mod, pyproject.toml, or package.json+tsconfig.json."
           echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
           echo "::error title=quality-gate::${MSG}"
           exit 1
-        elif [[ ${#languages[@]} -gt 1 ]]; then
-          DETECTED="${languages[*]}"
-          MSG="Multiple supported languages detected: ${DETECTED}. Run quality-gate once per project with working-directory set to a directory containing exactly one supported language."
-          echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
-          echo "::error title=quality-gate::${MSG}"
-          exit 1
         fi
-
-        echo "name=${languages[0]}" >> "$GITHUB_OUTPUT"
-
-    - name: "go | setup go"
+    - name: Run Go quality gate
       if: steps.lang.outputs.name == 'go'
-      uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+      uses: ${{ github.action_path }}/go
       with:
-        go-version-file: ${{ inputs.working-directory }}/go.mod
-        cache: true
-
-    - name: "typescript | detect package manager"
-      id: ts-pm
-      if: steps.lang.outputs.name == 'typescript' && (inputs.check == 'app:typecheck' || inputs.check == 'app:test')
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      run: |
-        set -euo pipefail
-        if [[ -f pnpm-lock.yaml ]]; then
-          echo "manager=pnpm" >> "$GITHUB_OUTPUT"
-          if [[ ! -f package.json ]]; then
-            MSG="pnpm-lock.yaml found but package.json is missing."
-            echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
-            echo "::error title=quality-gate::${MSG}"
-            exit 1
-          fi
-          pnpm_version=$(node -p "const value = require('./package.json').packageManager || ''; value.startsWith('pnpm@') ? value.slice(5) : ''")
-          if [[ -z "$pnpm_version" ]]; then
-            MSG="package.json must declare packageManager as pnpm@<version>."
-            echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
-            echo "::error title=quality-gate::${MSG}"
-            exit 1
-          fi
-          echo "version=$pnpm_version" >> "$GITHUB_OUTPUT"
-        elif [[ -f package-lock.json ]]; then
-          echo "manager=npm" >> "$GITHUB_OUTPUT"
-        else
-          MSG="No lockfile found for TypeScript project. Commit pnpm-lock.yaml (pnpm) or package-lock.json (npm)."
-          echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
-          echo "::error title=quality-gate::${MSG}"
-          exit 1
-        fi
-
-    - name: "typescript | setup pnpm"
-      if: steps.lang.outputs.name == 'typescript' && (inputs.check == 'app:typecheck' || inputs.check == 'app:test') && steps.ts-pm.outputs.manager == 'pnpm'
-      uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-      with:
-        version: ${{ steps.ts-pm.outputs.version }}
-
-    - name: "typescript | setup Node.js"
-      if: steps.lang.outputs.name == 'typescript' && (inputs.check == 'app:typecheck' || inputs.check == 'app:test')
-      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-      with:
-        node-version-file: "${{ inputs.working-directory }}/.node-version"
-        cache: ${{ steps.ts-pm.outputs.manager }}
-        cache-dependency-path: |
-          ${{ inputs.working-directory }}/pnpm-lock.yaml
-          ${{ inputs.working-directory }}/package-lock.json
-
-    - name: "typescript | pnpm install"
-      if: steps.lang.outputs.name == 'typescript' && (inputs.check == 'app:typecheck' || inputs.check == 'app:test') && steps.ts-pm.outputs.manager == 'pnpm'
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      run: |
-        set -euo pipefail
-        pnpm install --frozen-lockfile
-
-    - name: "typescript | npm ci"
-      if: steps.lang.outputs.name == 'typescript' && (inputs.check == 'app:typecheck' || inputs.check == 'app:test') && steps.ts-pm.outputs.manager == 'npm'
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      run: |
-        set -euo pipefail
-        npm ci
-
-    - name: "python | setup uv"
-      if: steps.lang.outputs.name == 'python' && (inputs.check == 'app:format' || inputs.check == 'app:lint' || inputs.check == 'app:test')
-      uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-      with:
-        version: "0.12.5"
+        check: ${{ inputs.check }}
         working-directory: ${{ inputs.working-directory }}
-
-    - name: "python | uv sync"
-      if: steps.lang.outputs.name == 'python' && (inputs.check == 'app:format' || inputs.check == 'app:lint' || inputs.check == 'app:test')
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      run: |
-        set -euo pipefail
-        uv sync --frozen --all-groups
-
-    - name: "format | install gofumpt + goimports (go)"
-      if: inputs.check == 'app:format' && steps.lang.outputs.name == 'go'
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      run: |
-        set -euo pipefail
-
-        TOOL_BIN="$HOME/.quality-gate-tools/bin"
-        TOOL_DL="$HOME/.quality-gate-tools/dl"
-        mkdir -p "$TOOL_BIN" "$TOOL_DL"
-        echo "$TOOL_BIN" >> "$GITHUB_PATH"
-
-        GOFUMPT_OUT="$TOOL_DL/gofumpt"
-        GOFUMPT_SHA="11604bbaf7321abcc2fca2c6a37b7e9198bb1e76e5a86f297c07201e8ab1fda9"
-        if [[ ! -f "$GOFUMPT_OUT" ]] || ! echo "$GOFUMPT_SHA  $GOFUMPT_OUT" | sha256sum -c --status; then
-          curl -sfL "https://github.com/mvdan/gofumpt/releases/download/v0.8.0/gofumpt_v0.8.0_linux_amd64" \
-            -o "$GOFUMPT_OUT"
-        fi
-        echo "$GOFUMPT_SHA  $GOFUMPT_OUT" | sha256sum -c --status || {
-          MSG="sha256 mismatch for gofumpt"
-          echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
-          echo "::error title=format::${MSG}"
-          rm -f "$GOFUMPT_OUT"
-          exit 1
-        }
-        install -m 0755 "$GOFUMPT_OUT" "$TOOL_BIN/gofumpt"
-
-        GOBIN="$TOOL_BIN" go install golang.org/x/tools/cmd/goimports@v0.35.0
-
-    - name: "format | gofumpt (go)"
-      if: inputs.check == 'app:format' && steps.lang.outputs.name == 'go'
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      run: |
-        set -euo pipefail
-        UNFORMATTED=$(gofumpt -l .)
-        if [[ -n "$UNFORMATTED" ]]; then
-          echo "::error title=format::gofumpt found unformatted files. Run 'gofumpt -w .' locally."
-          echo "$UNFORMATTED" | while read -r f; do echo "  $f"; done
-          exit 1
-        fi
-        echo "gofumpt: all files are correctly formatted."
-
-    - name: "format | goimports (go)"
-      if: inputs.check == 'app:format' && steps.lang.outputs.name == 'go'
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      run: |
-        set -euo pipefail
-        UNFORMATTED=$(goimports -l .)
-        if [[ -n "$UNFORMATTED" ]]; then
-          echo "::error title=format::goimports found files with unorganised imports. Run 'goimports -w .' locally."
-          echo "$UNFORMATTED" | while read -r f; do echo "  $f"; done
-          exit 1
-        fi
-        echo "goimports: all import blocks are correctly organised."
-
-    - name: "format | oxfmt (typescript)"
-      if: inputs.check == 'app:format' && steps.lang.outputs.name == 'typescript'
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      run: |
-        set -euo pipefail
-        npx --yes oxfmt@0.62.0 --check .
-        echo "oxfmt: all files are correctly formatted."
-
-    - name: "format | ruff format --check (python)"
-      if: inputs.check == 'app:format' && steps.lang.outputs.name == 'python'
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      run: |
-        set -euo pipefail
-        uv run ruff format --check .
-        echo "ruff format: all files are correctly formatted."
-
-    - name: "lint | golangci-lint (go)"
-      if: inputs.check == 'app:lint' && steps.lang.outputs.name == 'go'
-      uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+    - name: Run Python quality gate
+      if: steps.lang.outputs.name == 'python'
+      uses: ${{ github.action_path }}/python
       with:
-        version: v2.12.2
-        args: --config ${{ github.action_path }}/go/.golangci.yml
+        check: ${{ inputs.check }}
         working-directory: ${{ inputs.working-directory }}
-
-    - name: "lint | oxlint (typescript)"
-      if: inputs.check == 'app:lint' && steps.lang.outputs.name == 'typescript'
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      env:
-        ACTION_PATH: ${{ github.action_path }}
-      run: |
-        set -euo pipefail
-        npx --yes oxlint@0.16.7 --config "${ACTION_PATH}/typescript/.oxlintrc.json" .
-        echo "oxlint: no issues found."
-
-    - name: "lint | ruff check (python)"
-      if: inputs.check == 'app:lint' && steps.lang.outputs.name == 'python'
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      env:
-        ACTION_PATH: ${{ github.action_path }}
-      run: |
-        set -euo pipefail
-        uv run ruff check --config "${ACTION_PATH}/python/ruff.toml" .
-        echo "ruff check: no issues found."
-
-    - name: "lint | basedpyright (python)"
-      if: inputs.check == 'app:lint' && steps.lang.outputs.name == 'python'
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      run: |
-        set -euo pipefail
-        uv run basedpyright
-        echo "basedpyright: no type errors found."
-
-    - name: "strlint | install ast-grep"
-      if: inputs.check == 'app:strlint' && (steps.lang.outputs.name == 'go' || steps.lang.outputs.name == 'typescript' || steps.lang.outputs.name == 'python')
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      run: |
-        set -euo pipefail
-
-        TOOL_BIN="$HOME/.quality-gate-tools/bin"
-        TOOL_DL="$HOME/.quality-gate-tools/dl"
-        mkdir -p "$TOOL_BIN" "$TOOL_DL"
-        echo "$TOOL_BIN" >> "$GITHUB_PATH"
-
-        SG_OUT="$TOOL_DL/sg.zip"
-        SG_SHA="76fb6555be6734fb5057dba8d2fb756430f374bb9e1af694cf1ce00e13238d63"
-        if [[ ! -f "$SG_OUT" ]] || ! echo "$SG_SHA  $SG_OUT" | sha256sum -c --status; then
-          curl -sfL \
-            "https://github.com/ast-grep/ast-grep/releases/download/0.45.1/app-x86_64-unknown-linux-gnu.zip" \
-            -o "$SG_OUT"
-        fi
-        echo "$SG_SHA  $SG_OUT" | sha256sum -c --status || {
-          MSG="sha256 mismatch for ast-grep"
-          echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
-          echo "::error title=strlint::${MSG}"
-          rm -f "$SG_OUT"
-          exit 1
-        }
-        unzip -p "$SG_OUT" ast-grep > "$TOOL_BIN/ast-grep"
-        chmod +x "$TOOL_BIN/ast-grep"
-
-    - name: "strlint | ast-grep org rules (go)"
-      if: inputs.check == 'app:strlint' && steps.lang.outputs.name == 'go'
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      env:
-        ACTION_PATH: ${{ github.action_path }}
-      run: |
-        set -euo pipefail
-        TMP_CFG=$(mktemp --suffix=.yaml)
-        printf 'ruleDirs:\n  - %s/go/rules\n' "${ACTION_PATH}" > "$TMP_CFG"
-        ast-grep scan --config "$TMP_CFG"
-        rm -f "$TMP_CFG"
-        echo "Org-wide ast-grep rules passed."
-
-    - name: "strlint | ast-grep org rules (typescript)"
-      if: inputs.check == 'app:strlint' && steps.lang.outputs.name == 'typescript'
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      env:
-        ACTION_PATH: ${{ github.action_path }}
-      run: |
-        set -euo pipefail
-        TMP_CFG=$(mktemp --suffix=.yaml)
-        printf 'ruleDirs:\n  - %s/typescript/rules\n' "${ACTION_PATH}" > "$TMP_CFG"
-        ast-grep scan --config "$TMP_CFG"
-        rm -f "$TMP_CFG"
-        echo "Org-wide TypeScript ast-grep rules passed."
-
-    - name: "strlint | ast-grep org rules (python)"
-      if: inputs.check == 'app:strlint' && steps.lang.outputs.name == 'python'
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      env:
-        ACTION_PATH: ${{ github.action_path }}
-      run: |
-        set -euo pipefail
-        TMP_CFG=$(mktemp --suffix=.yaml)
-        printf 'ruleDirs:\n  - %s/python/rules\n' "${ACTION_PATH}" > "$TMP_CFG"
-        ast-grep scan --config "$TMP_CFG"
-        rm -f "$TMP_CFG"
-        echo "Org-wide Python ast-grep rules passed."
-
-    - name: "strlint | ast-grep repo rules (${{ steps.lang.outputs.name }})"
-      if: inputs.check == 'app:strlint' && (steps.lang.outputs.name == 'go' || steps.lang.outputs.name == 'typescript' || steps.lang.outputs.name == 'python')
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      run: |
-        set -euo pipefail
-
-        configs=()
-        for config in \
-          .quality-gate/sgconfig.yaml \
-          .quality-gate/sgconfig.yml \
-          sgconfig.yaml \
-          sgconfig.yml; do
-          if [[ -f "$config" ]]; then configs+=("$config"); fi
-        done
-
-        if [[ ${#configs[@]} -eq 0 ]]; then
-          echo "No repo-local ast-grep config found — skipping."
-          exit 0
-        elif [[ ${#configs[@]} -gt 1 ]]; then
-          MSG="Multiple repo-local ast-grep configs found: ${configs[*]}. Keep exactly one config."
-          echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
-          echo "::error title=strlint::${MSG}"
-          exit 1
-        fi
-
-        CONFIG="${configs[0]}"
-        ast-grep scan --config "$CONFIG"
-        echo "Repo-local ast-grep rules passed using ${CONFIG}."
-
-        if [[ "$CONFIG" == .quality-gate/* && -d .quality-gate/tests ]]; then
-          ast-grep test --skip-snapshot-tests --config "$CONFIG"
-          echo "Repo-local ast-grep rule tests passed."
-        fi
-
-    - name: "typecheck | go vet (go)"
-      if: inputs.check == 'app:typecheck' && steps.lang.outputs.name == 'go'
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      run: |
-        set -euo pipefail
-        go vet ./...
-
-    - name: "typecheck | go build (go)"
-      if: inputs.check == 'app:typecheck' && steps.lang.outputs.name == 'go'
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      run: |
-        set -euo pipefail
-        if [[ -d cmd ]]; then
-          go build -ldflags="-s -w" -o /dev/null ./cmd/...
-        else
-          go build -ldflags="-s -w" -o /dev/null .
-        fi
-
-    - name: "typecheck | tsc (typescript)"
-      if: inputs.check == 'app:typecheck' && steps.lang.outputs.name == 'typescript'
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      env:
-        PM: ${{ steps.ts-pm.outputs.manager }}
-      run: |
-        set -euo pipefail
-        if [[ "$PM" == "npm" ]]; then
-          npm run typecheck
-        else
-          pnpm run typecheck
-        fi
-
-    - name: "typecheck | no-op (python)"
-      if: inputs.check == 'app:typecheck' && steps.lang.outputs.name == 'python'
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      run: |
-        echo "Python: type checking is covered by basedpyright in app:lint — no separate typecheck step."
-
-    - name: "test | go test (go)"
-      if: inputs.check == 'app:test' && steps.lang.outputs.name == 'go'
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      run: |
-        set -euo pipefail
-        CGO_ENABLED=1 go test -count=1 -race -v ./...
-
-    - name: "test | vitest (typescript)"
-      if: inputs.check == 'app:test' && steps.lang.outputs.name == 'typescript'
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      env:
-        PM: ${{ steps.ts-pm.outputs.manager }}
-      run: |
-        set -euo pipefail
-        if [[ "$PM" == "npm" ]]; then
-          npm test
-        else
-          pnpm test
-        fi
-
-    - name: "test | pytest (python)"
-      if: inputs.check == 'app:test' && steps.lang.outputs.name == 'python'
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      run: |
-        set -euo pipefail
-        uv run pytest --cov=src --cov-report=term-missing
-
+    - name: Run TypeScript quality gate
+      if: steps.lang.outputs.name == 'typescript'
+      uses: ${{ github.action_path }}/typescript
+      with:
+        check: ${{ inputs.check }}
+        working-directory: ${{ inputs.working-directory }}
     - name: Collect error message
       id: collect-error
       if: always()

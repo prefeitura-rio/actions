@@ -1,0 +1,130 @@
+name: Quality Gate (Python)
+description: Run quality checks for python.
+inputs:
+  check:
+    description: The quality check to run.
+    required: true
+  working-directory:
+    description: The project directory to check.
+    required: false
+    default: .
+runs:
+  using: composite
+  steps:
+    - name: python | setup uv
+      if: (inputs.check == 'app:format' || inputs.check == 'app:lint' || inputs.check == 'app:typecheck' || inputs.check == 'app:test')
+      uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      with:
+        version: 0.12.5
+        working-directory: ${{ inputs.working-directory }}
+    - name: python | uv sync
+      if: (inputs.check == 'app:format' || inputs.check == 'app:lint' || inputs.check == 'app:test')
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        uv sync --frozen --all-groups
+    - name: format | ruff format --check (python)
+      if: inputs.check == 'app:format'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        uv run ruff format --check .
+        echo "ruff format: all files are correctly formatted."
+    - name: lint | ruff check (python)
+      if: inputs.check == 'app:lint'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        if [[ -f ruff.toml || -f .ruff.toml || ( -f pyproject.toml && grep -q '^\[tool\.ruff' pyproject.toml ) ]]; then
+          uv run ruff check .
+        else
+          uv run ruff check --config "${ACTION_PATH}/python/ruff.toml" .
+        fi
+        echo "ruff check: no issues found."
+    - name: lint | complexipy (python)
+      if: inputs.check == 'app:lint'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        uvx complexipy@7.0.1 .
+        echo "complexipy: no complexity issues found."
+    - name: strlint | install ast-grep
+      if: inputs.check == 'app:strlint'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+
+        TOOL_BIN="$HOME/.quality-gate-tools/bin"
+        TOOL_DL="$HOME/.quality-gate-tools/dl"
+        mkdir -p "$TOOL_BIN" "$TOOL_DL"
+        echo "$TOOL_BIN" >> "$GITHUB_PATH"
+
+        SG_OUT="$TOOL_DL/sg.zip"
+        SG_SHA="76fb6555be6734fb5057dba8d2fb756430f374bb9e1af694cf1ce00e13238d63"
+        if [[ ! -f "$SG_OUT" ]] || ! echo "$SG_SHA  $SG_OUT" | sha256sum -c --status; then
+          curl -sfL \
+            "https://github.com/ast-grep/ast-grep/releases/download/0.45.1/app-x86_64-unknown-linux-gnu.zip" \
+            -o "$SG_OUT"
+        fi
+        echo "$SG_SHA  $SG_OUT" | sha256sum -c --status || {
+          MSG="sha256 mismatch for ast-grep"
+          echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
+          echo "::error title=strlint::${MSG}"
+          rm -f "$SG_OUT"
+          exit 1
+        }
+        unzip -p "$SG_OUT" ast-grep > "$TOOL_BIN/ast-grep"
+        chmod +x "$TOOL_BIN/ast-grep"
+    - name: strlint | ast-grep org rules (python)
+      if: inputs.check == 'app:strlint'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        TMP_CFG=$(mktemp --suffix=.yaml)
+        printf 'ruleDirs:\n  - %s/python/rules\n' "${ACTION_PATH}" > "$TMP_CFG"
+        ast-grep scan --config "$TMP_CFG"
+        rm -f "$TMP_CFG"
+        echo "Org-wide Python ast-grep rules passed."
+    - name: strlint | ast-grep repo rules (python)
+      if: inputs.check == 'app:strlint'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        if [[ -f sgconfig.yaml || -d rules ]]; then
+          ast-grep scan
+          echo "Repo-local Python ast-grep rules passed."
+        else
+          echo "No repo-local sgconfig.yaml or rules/ found — skipping."
+        fi
+    - name: typecheck | ty (python)
+      if: inputs.check == 'app:typecheck'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        if [[ -f ty.toml || ( -f pyproject.toml && grep -q '^\[tool\.ty' pyproject.toml ) ]]; then
+          uvx ty@0.0.74 check .
+        else
+          uvx ty@0.0.74 check --config-file "${ACTION_PATH}/python/ty.toml" .
+        fi
+        echo "ty: no type errors found."
+    - name: test | pytest (python)
+      if: inputs.check == 'app:test'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        uv run pytest --cov=src --cov-report=term-missing
