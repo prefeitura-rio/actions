@@ -23,3 +23,20 @@ Valid values for `check`: `app:format`, `app:lint`, `app:strlint`, `app:typechec
 
 See [`quality-gate/README.md`](quality-gate/README.md) for full reference.
 
+Polyglot and multi-project repositories can call the reusable workflow once per
+explicit project path:
+
+```yaml
+jobs:
+  api-quality:
+    uses: prefeitura-rio/actions/.github/workflows/quality-gate.yml@master
+    with:
+      project-name: api
+      working-directory: services/api
+
+  library-quality:
+    uses: prefeitura-rio/actions/.github/workflows/quality-gate.yml@master
+    with:
+      project-name: library
+      working-directory: libraries/shared
+```
