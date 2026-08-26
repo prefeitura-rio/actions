@@ -1,0 +1,193 @@
+name: Quality Gate (Typescript)
+description: Run quality checks for typescript.
+inputs:
+  check:
+    description: The quality check to run.
+    required: true
+  working-directory:
+    description: The project directory to check.
+    required: false
+    default: .
+runs:
+  using: composite
+  steps:
+    - name: typescript | detect package manager
+      id: ts-pm
+      if: (inputs.check == 'app:typecheck' || inputs.check == 'app:test')
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        if [[ -f pnpm-lock.yaml ]]; then
+          echo "manager=pnpm" >> "$GITHUB_OUTPUT"
+          if [[ ! -f package.json ]]; then
+            MSG="pnpm-lock.yaml found but package.json is missing."
+            echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
+            echo "::error title=quality-gate::${MSG}"
+            exit 1
+          fi
+          pnpm_version=$(node -p "const value = require('./package.json').packageManager || ''; value.startsWith('pnpm@') ? value.slice(5) : ''")
+          if [[ -z "$pnpm_version" ]]; then
+            MSG="package.json must declare packageManager as pnpm@<version>."
+            echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
+            echo "::error title=quality-gate::${MSG}"
+            exit 1
+          fi
+          echo "version=$pnpm_version" >> "$GITHUB_OUTPUT"
+        elif [[ -f package-lock.json ]]; then
+          echo "manager=npm" >> "$GITHUB_OUTPUT"
+        else
+          MSG="No lockfile found for TypeScript project. Commit pnpm-lock.yaml (pnpm) or package-lock.json (npm)."
+          echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
+          echo "::error title=quality-gate::${MSG}"
+          exit 1
+        fi
+    - name: typescript | setup pnpm
+      if: (inputs.check == 'app:typecheck' || inputs.check == 'app:test') && steps.ts-pm.outputs.manager == 'pnpm'
+      uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      with:
+        version: ${{ steps.ts-pm.outputs.version }}
+    - name: typescript | setup Node.js
+      if: (inputs.check == 'app:typecheck' || inputs.check == 'app:test')
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version-file: ${{ inputs.working-directory }}/.node-version
+        cache: ${{ steps.ts-pm.outputs.manager }}
+        cache-dependency-path: |
+          ${{ inputs.working-directory }}/pnpm-lock.yaml
+          ${{ inputs.working-directory }}/package-lock.json
+    - name: typescript | pnpm install
+      if: (inputs.check == 'app:typecheck' || inputs.check == 'app:test') && steps.ts-pm.outputs.manager == 'pnpm'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        pnpm install --frozen-lockfile
+    - name: typescript | npm ci
+      if: (inputs.check == 'app:typecheck' || inputs.check == 'app:test') && steps.ts-pm.outputs.manager == 'npm'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        npm ci
+    - name: format | oxfmt (typescript)
+      if: inputs.check == 'app:format'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        npx --yes oxfmt@0.62.0 --check .
+        echo "oxfmt: all files are correctly formatted."
+    - name: typescript | detect React
+      id: react
+      if: inputs.check == 'app:lint'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        if node -e 'const p = require("./package.json"); const d = {...p.dependencies, ...p.devDependencies, ...p.optionalDependencies}; process.exit(d.react || d["react-dom"] ? 0 : 1)'; then
+          echo "present=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "present=false" >> "$GITHUB_OUTPUT"
+        fi
+    - name: lint | oxlint (typescript)
+      if: inputs.check == 'app:lint'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        if [[ -f .oxlintrc.json || -f .oxlintrc.yaml || -f .oxlintrc.yml || -f oxlint.config.js || -f oxlint.config.mjs || -f oxlint.config.ts ]]; then
+          npx --yes oxlint@0.16.7 .
+        else
+          npx --yes oxlint@0.16.7 --config "${ACTION_PATH}/typescript/.oxlintrc.json" .
+        fi
+        echo "oxlint: no issues found."
+    - name: lint | react-doctor (react)
+      if: inputs.check == 'app:lint' && steps.react.outputs.present == 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        npx --yes react-doctor@0.9.12
+        echo "react-doctor: no issues found."
+    - name: strlint | install ast-grep
+      if: inputs.check == 'app:strlint'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+
+        TOOL_BIN="$HOME/.quality-gate-tools/bin"
+        TOOL_DL="$HOME/.quality-gate-tools/dl"
+        mkdir -p "$TOOL_BIN" "$TOOL_DL"
+        echo "$TOOL_BIN" >> "$GITHUB_PATH"
+
+        SG_OUT="$TOOL_DL/sg.zip"
+        SG_SHA="76fb6555be6734fb5057dba8d2fb756430f374bb9e1af694cf1ce00e13238d63"
+        if [[ ! -f "$SG_OUT" ]] || ! echo "$SG_SHA  $SG_OUT" | sha256sum -c --status; then
+          curl -sfL \
+            "https://github.com/ast-grep/ast-grep/releases/download/0.45.1/app-x86_64-unknown-linux-gnu.zip" \
+            -o "$SG_OUT"
+        fi
+        echo "$SG_SHA  $SG_OUT" | sha256sum -c --status || {
+          MSG="sha256 mismatch for ast-grep"
+          echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
+          echo "::error title=strlint::${MSG}"
+          rm -f "$SG_OUT"
+          exit 1
+        }
+        unzip -p "$SG_OUT" ast-grep > "$TOOL_BIN/ast-grep"
+        chmod +x "$TOOL_BIN/ast-grep"
+    - name: strlint | ast-grep org rules (typescript)
+      if: inputs.check == 'app:strlint'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        TMP_CFG=$(mktemp --suffix=.yaml)
+        printf 'ruleDirs:\n  - %s/typescript/rules\n' "${ACTION_PATH}" > "$TMP_CFG"
+        ast-grep scan --config "$TMP_CFG"
+        rm -f "$TMP_CFG"
+        echo "Org-wide TypeScript ast-grep rules passed."
+    - name: strlint | ast-grep repo rules (typescript)
+      if: inputs.check == 'app:strlint'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        if [[ -f sgconfig.yaml || -d rules ]]; then
+          ast-grep scan
+          echo "Repo-local TypeScript ast-grep rules passed."
+        else
+          echo "No repo-local sgconfig.yaml or rules/ found — skipping."
+        fi
+    - name: typecheck | tsc (typescript)
+      if: inputs.check == 'app:typecheck'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        PM: ${{ steps.ts-pm.outputs.manager }}
+      run: |
+        set -euo pipefail
+        if [[ "$PM" == "npm" ]]; then
+          npm run typecheck
+        else
+          pnpm run typecheck
+        fi
+    - name: test | vitest (typescript)
+      if: inputs.check == 'app:test'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        PM: ${{ steps.ts-pm.outputs.manager }}
+      run: |
+        set -euo pipefail
+        if [[ "$PM" == "npm" ]]; then
+          npm test
+        else
+          pnpm test
+        fi

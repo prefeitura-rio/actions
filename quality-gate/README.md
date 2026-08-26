@@ -4,25 +4,23 @@ Language-agnostic composite GitHub Action that runs a single quality check on
 any Go, Python, or TypeScript project. Detects the project language automatically
 from marker files and executes the appropriate tool for the requested check.
 
-No devenv or Nix dependency is required on the runner.
-
 ---
 
 ## Using the action
 
 ### Input
 
-| Input | Required | Valid values |
-|---|---|---|
-| `check` | yes | `app:format` · `app:lint` · `app:strlint` · `app:typecheck` · `app:test` |
+| Input   | Required | Valid values                                                             |
+| ------- | -------- | ------------------------------------------------------------------------ |
+| `check` | yes      | `app:format` · `app:lint` · `app:strlint` · `app:typecheck` · `app:test` |
 
 ### Language detection
 
-| Marker file | Detected language |
-|---|---|
-| `go.mod` | Go |
-| `pyproject.toml` or `setup.py` | Python |
-| `package.json` + `tsconfig.json` | TypeScript |
+| Marker file                      | Detected language |
+| -------------------------------- | ----------------- |
+| `go.mod`                         | Go                |
+| `pyproject.toml` or `setup.py`   | Python            |
+| `package.json` + `tsconfig.json` | TypeScript        |
 
 If none of these marker files exist the action exits with an error.
 
@@ -34,21 +32,21 @@ If none of these marker files exist the action exits with an error.
 
 Fail on any formatting diff. Never auto-fixes in CI.
 
-| Language | Tool | Version |
-|---|---|---|
-| Go | gofumpt + goimports | v0.8.0 / v0.35.0 |
-| Python | ruff format | via uv (project-pinned) |
-| TypeScript | oxfmt | 0.62.0 (via npx) |
+| Language   | Tool                | Version                 |
+| ---------- | ------------------- | ----------------------- |
+| Go         | gofumpt + goimports | v0.8.0 / v0.35.0        |
+| Python     | ruff format         | via uv (project-pinned) |
+| TypeScript | oxfmt               | 0.62.0 (via npx)        |
 
 ### `app:lint`
 
 Static analysis. Runs on all three languages.
 
-| Language | Tool | Version |
-|---|---|---|
-| Go | golangci-lint | v2.12.2 |
-| Python | ruff check + basedpyright | via uv (project-pinned) |
-| TypeScript | oxlint | 0.16.7 (via npx) |
+| Language   | Tool                      | Version                 |
+| ---------- | ------------------------- | ----------------------- |
+| Go         | golangci-lint             | v2.12.2                 |
+| Python     | ruff check + complexipy   | ruff via uv (project-pinned) · complexipy 7.0.1 (via uvx) |
+| TypeScript | oxlint + react-doctor    | oxlint 0.16.7 (via npx) · react-doctor 0.9.12 (via npx, React projects) |
 
 ### `app:strlint`
 
@@ -67,40 +65,58 @@ ast-grep scan   # uses repo's own sgconfig.yaml
 
 #### Org rules
 
-| Language | Rule ID | Severity | What it catches |
-|---|---|---|---|
-| Go | `no-panic` | error | `panic(...)` outside test files |
-| Go | `no-http-default-client` | warning | `http.DefaultClient`, `http.Get`, `http.Post`, `http.Head`, `http.PostForm` |
-| Go | `no-plain-error-wrap` | warning | `fmt.Errorf("...: %v", err)` instead of `%w` |
-| Python | `no-print` | warning | `print(...)` outside test files |
-| Python | `no-bare-except` | warning | bare `except:` clause (no exception type specified) |
-| Python | `no-eval` | error | `eval(...)` and `exec(...)` |
-| TypeScript | `no-any-assertion` | error | `expr as any` outside test files |
-| TypeScript | `no-console` | warning | `console.log`, `.warn`, `.error`, `.info`, `.debug` |
+| Language   | Rule ID                  | Severity | What it catches                                                             |
+| ---------- | ------------------------ | -------- | --------------------------------------------------------------------------- |
+| Go         | `no-panic`               | error    | `panic(...)` outside test files                                             |
+| Go         | `no-http-default-client` | warning  | `http.DefaultClient`, `http.Get`, `http.Post`, `http.Head`, `http.PostForm` |
+| Go         | `no-plain-error-wrap`    | warning  | `fmt.Errorf("...: %v", err)` instead of `%w`                                |
+| Python     | `no-print`               | warning  | `print(...)` outside test files                                             |
+| Python     | `no-bare-except`         | warning  | bare `except:` clause (no exception type specified)                         |
+| Python     | `no-eval`                | error    | `eval(...)` and `exec(...)`                                                 |
+| TypeScript | `no-any-assertion`       | error    | `expr as any` outside test files                                            |
+| TypeScript | `no-console`             | warning  | `console.log`, `.warn`, `.error`, `.info`, `.debug`                         |
 
 ### `app:typecheck`
 
 Type checking and compilation verification.
 
-| Language | Command | Notes |
-|---|---|---|
-| Go | `go vet ./...` + `go build -o /dev/null` | Builds `./cmd/...` if present, otherwise `.` |
-| Python | _(no-op)_ | basedpyright runs inside `app:lint` |
-| TypeScript | `pnpm run typecheck` / `npm run typecheck` | depends on detected package manager |
+| Language   | Command                                    | Notes                                        |
+| ---------- | ------------------------------------------ | -------------------------------------------- |
+| Go         | `go vet ./...` + `go build -o /dev/null`   | Builds `./cmd/...` if present, otherwise `.` |
+| Python     | `ty check` (strict: all rules at error)     | ty 0.0.74 (via uvx)                          |
+| TypeScript | `pnpm run typecheck` / `npm run typecheck` | depends on detected package manager          |
 
 ### `app:test`
 
 Unit and integration tests.
 
-| Language | Command |
-|---|---|
-| Go | `CGO_ENABLED=1 go test -count=1 -race -v ./...` |
-| Python | `uv run pytest --cov=src --cov-report=term-missing` |
-| TypeScript | `pnpm test` or `npm test` |
+| Language   | Command                                             |
+| ---------- | --------------------------------------------------- |
+| Go         | `CGO_ENABLED=1 go test -count=1 -race -v ./...`     |
+| Python     | `uv run pytest --cov=src --cov-report=term-missing` |
+| TypeScript | `pnpm test` or `npm test`                           |
 
 ---
 
 ## How it works
+
+`action.yml` is the public dispatcher. It validates the check, detects the
+language, and invokes one language-specific composite action:
+
+- `go/action.yml`
+- `python/action.yml`
+- `typescript/action.yml`
+
+Each language action owns its setup and all format, lint, structural lint,
+typecheck, and test commands. Consumers continue to use the root action and do
+not need to change their workflow configuration.
+
+Tool configuration follows this precedence: project configuration is used when
+present; the organization configuration is the fallback when the project does
+not provide one. Organization fallbacks use strict presets: Ruff selects all
+rules, golangci-lint enables all linters, oxlint enables all rules, and ty treats
+all rules as errors. Structural lint runs both organization and project rules,
+with project rules applied last. The action does not modify project files.
 
 ### Tool installation
 
@@ -108,13 +124,18 @@ Binary tools (gofumpt, ast-grep) are downloaded from GitHub releases and verifie
 against a hardcoded sha256 checksum before execution. This prevents tampered
 releases from running on CI runners.
 
-npx-pinned tools (oxfmt, oxlint) are downloaded by npx at the pinned version.
+npx-pinned tools (oxfmt, oxlint, react-doctor) are downloaded by npx at the
+pinned version. react-doctor runs only when the project declares `react` or
+`react-dom`.
 
 Go tools installed via `go install` are pinned by module version (golangci-lint
 installed via the official `golangci-lint-action` which pins by version tag).
 
-Python tools are installed via uv from the project's `pyproject.toml` — no
-additional version pinning in the action itself.
+Most Python tools (ruff, pytest) are installed via uv from the project's
+`pyproject.toml` — no additional version pinning in the action itself.
+ty and complexipy are the exception: they are installed by the action via
+`uvx <tool>@<version>` at a pinned version, independent of the project's own
+dependencies, the same way gofumpt and ast-grep are pinned for Go.
 
 ### TypeScript package manager detection
 

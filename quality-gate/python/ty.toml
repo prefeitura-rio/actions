@@ -1,0 +1,6 @@
+[rules]
+# "all" sets the default severity for every ty rule. Setting it to "error"
+# runs ty in strict mode: every diagnostic (including ones that default to
+# "warn") is treated as an error, and ty exits non-zero on any of them.
+# https://docs.astral.sh/ty/reference/configuration/#rules
+all = "error"

@@ -1,7 +1,12 @@
 line-length = 100
 
 [lint]
-select = ["E", "F", "I", "N", "W", "UP"]
+# Strict fallback: enable every Ruff rule. Projects with their own Ruff
+# configuration take precedence over this fallback.
+select = ["ALL"]
+# Keep the minimal fixtures readable and compatible with pytest while retaining
+# the strict preset for all other rules.
+ignore = ["CPY001", "D100", "D103", "D104", "INP001", "PLR2004", "S101"]
 
 [format]
 quote-style = "double"

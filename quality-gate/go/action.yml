@@ -1,0 +1,183 @@
+name: Quality Gate (Go)
+description: Run quality checks for go.
+inputs:
+  check:
+    description: The quality check to run.
+    required: true
+  working-directory:
+    description: The project directory to check.
+    required: false
+    default: .
+runs:
+  using: composite
+  steps:
+    - name: go | setup go
+      uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+      with:
+        go-version-file: ${{ inputs.working-directory }}/go.mod
+        cache: true
+    - name: format | install gofumpt + goimports (go)
+      if: inputs.check == 'app:format'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+
+        TOOL_BIN="$HOME/.quality-gate-tools/bin"
+        TOOL_DL="$HOME/.quality-gate-tools/dl"
+        mkdir -p "$TOOL_BIN" "$TOOL_DL"
+        echo "$TOOL_BIN" >> "$GITHUB_PATH"
+
+        GOFUMPT_OUT="$TOOL_DL/gofumpt"
+        GOFUMPT_SHA="11604bbaf7321abcc2fca2c6a37b7e9198bb1e76e5a86f297c07201e8ab1fda9"
+        if [[ ! -f "$GOFUMPT_OUT" ]] || ! echo "$GOFUMPT_SHA  $GOFUMPT_OUT" | sha256sum -c --status; then
+          curl -sfL "https://github.com/mvdan/gofumpt/releases/download/v0.8.0/gofumpt_v0.8.0_linux_amd64" \
+            -o "$GOFUMPT_OUT"
+        fi
+        echo "$GOFUMPT_SHA  $GOFUMPT_OUT" | sha256sum -c --status || {
+          MSG="sha256 mismatch for gofumpt"
+          echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
+          echo "::error title=format::${MSG}"
+          rm -f "$GOFUMPT_OUT"
+          exit 1
+        }
+        install -m 0755 "$GOFUMPT_OUT" "$TOOL_BIN/gofumpt"
+
+        GOBIN="$TOOL_BIN" go install golang.org/x/tools/cmd/goimports@v0.35.0
+    - name: format | gofumpt (go)
+      if: inputs.check == 'app:format'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        UNFORMATTED=$(gofumpt -l .)
+        if [[ -n "$UNFORMATTED" ]]; then
+          echo "::error title=format::gofumpt found unformatted files. Run 'gofumpt -w .' locally."
+          echo "$UNFORMATTED" | while read -r f; do echo "  $f"; done
+          exit 1
+        fi
+        echo "gofumpt: all files are correctly formatted."
+    - name: format | goimports (go)
+      if: inputs.check == 'app:format'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        UNFORMATTED=$(goimports -l .)
+        if [[ -n "$UNFORMATTED" ]]; then
+          echo "::error title=format::goimports found files with unorganised imports. Run 'goimports -w .' locally."
+          echo "$UNFORMATTED" | while read -r f; do echo "  $f"; done
+          exit 1
+        fi
+        echo "goimports: all import blocks are correctly organised."
+    - name: go | resolve lint configuration
+      id: go-config
+      if: inputs.check == 'app:lint'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        if [[ -f .golangci.yml || -f .golangci.yaml ]]; then
+          echo 'args=' >> "$GITHUB_OUTPUT"
+        else
+          echo "args=--config ${ACTION_PATH}/go/.golangci.yml" >> "$GITHUB_OUTPUT"
+        fi
+    - name: lint | golangci-lint (go)
+      if: inputs.check == 'app:lint'
+      uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+      with:
+        version: v2.12.2
+        args: ${{ steps.go-config.outputs.args }}
+        working-directory: ${{ inputs.working-directory }}
+    - name: strlint | install ast-grep
+      if: inputs.check == 'app:strlint'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+
+        TOOL_BIN="$HOME/.quality-gate-tools/bin"
+        TOOL_DL="$HOME/.quality-gate-tools/dl"
+        mkdir -p "$TOOL_BIN" "$TOOL_DL"
+        echo "$TOOL_BIN" >> "$GITHUB_PATH"
+
+        SG_OUT="$TOOL_DL/sg.zip"
+        SG_SHA="76fb6555be6734fb5057dba8d2fb756430f374bb9e1af694cf1ce00e13238d63"
+        if [[ ! -f "$SG_OUT" ]] || ! echo "$SG_SHA  $SG_OUT" | sha256sum -c --status; then
+          curl -sfL \
+            "https://github.com/ast-grep/ast-grep/releases/download/0.45.1/app-x86_64-unknown-linux-gnu.zip" \
+            -o "$SG_OUT"
+        fi
+        echo "$SG_SHA  $SG_OUT" | sha256sum -c --status || {
+          MSG="sha256 mismatch for ast-grep"
+          echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
+          echo "::error title=strlint::${MSG}"
+          rm -f "$SG_OUT"
+          exit 1
+        }
+        unzip -p "$SG_OUT" ast-grep > "$TOOL_BIN/ast-grep"
+        chmod +x "$TOOL_BIN/ast-grep"
+    - name: strlint | ast-grep org rules
+      if: inputs.check == 'app:strlint'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        TMP_CFG=$(mktemp --suffix=.yaml)
+        printf 'ruleDirs:\n  - %s/go/rules\n' "${ACTION_PATH}" > "$TMP_CFG"
+        ast-grep scan --config "$TMP_CFG"
+        rm -f "$TMP_CFG"
+        echo "Org-wide ast-grep rules passed."
+    - name: strlint | ast-grep repo rules
+      if: inputs.check == 'app:strlint'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        if [[ -f sgconfig.yaml || -d rules ]]; then
+          ast-grep scan
+          echo "Repo-local ast-grep rules passed."
+        else
+          echo "No repo-local sgconfig.yaml or rules/ found — skipping."
+        fi
+    - name: strlint | ast-grep rule tests
+      if: inputs.check == 'app:strlint'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        if [[ -d tests ]]; then
+          ast-grep test -t tests
+          echo "Repo-local rule tests passed."
+        else
+          echo "No tests/ directory found — skipping rule tests."
+        fi
+    - name: typecheck | go vet (go)
+      if: inputs.check == 'app:typecheck'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        go vet ./...
+    - name: typecheck | go build (go)
+      if: inputs.check == 'app:typecheck'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        if [[ -d cmd ]]; then
+          go build -ldflags="-s -w" -o /dev/null ./cmd/...
+        else
+          go build -ldflags="-s -w" -o /dev/null .
+        fi
+    - name: test | go test (go)
+      if: inputs.check == 'app:test'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        CGO_ENABLED=1 go test -count=1 -race -v ./...
