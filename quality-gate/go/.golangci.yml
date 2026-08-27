@@ -69,6 +69,9 @@ linters:
       - path: cmd/
         linters:
           - gosec
+      - linters:
+          - wsl
+          - wsl_v5
 
     paths:
       - third_party$

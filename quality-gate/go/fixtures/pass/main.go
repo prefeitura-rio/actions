@@ -19,7 +19,6 @@ func main() {
 
 	ctx := context.Background()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://example.com", http.NoBody)
-
 	if err != nil {
 		log.Println("error:", err)
 
@@ -34,6 +33,5 @@ func main() {
 	}
 
 	defer resp.Body.Close()
-
 	log.Println("status:", resp.StatusCode)
 }
