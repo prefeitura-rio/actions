@@ -111,19 +111,19 @@ runs:
         fi
     - name: Run Go quality gate
       if: steps.lang.outputs.name == 'go'
-      uses: ${{ github.action_path }}/go
+      uses: $/quality-gate/go
       with:
         check: ${{ inputs.check }}
         working-directory: ${{ inputs.working-directory }}
     - name: Run Python quality gate
       if: steps.lang.outputs.name == 'python'
-      uses: ${{ github.action_path }}/python
+      uses: $/quality-gate/python
       with:
         check: ${{ inputs.check }}
         working-directory: ${{ inputs.working-directory }}
     - name: Run TypeScript quality gate
       if: steps.lang.outputs.name == 'typescript'
-      uses: ${{ github.action_path }}/typescript
+      uses: $/quality-gate/typescript
       with:
         check: ${{ inputs.check }}
         working-directory: ${{ inputs.working-directory }}
