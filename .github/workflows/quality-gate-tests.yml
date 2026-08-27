@@ -306,7 +306,7 @@ jobs:
           working-directory: ${{ matrix.fixture }}
       - name: assert single language detected
         run: |
-          LANGS="${{ steps.detect.outputs.languages }}"
+          LANGS='${{ steps.detect.outputs.languages }}'
           EXPECTED='${{ matrix.expected }}'
           [[ "$LANGS" == "$EXPECTED" ]] || {
             echo "::error::Expected '${EXPECTED}' — Got '${LANGS}'"
@@ -326,7 +326,7 @@ jobs:
           working-directory: quality-gate/fixtures/error/multiple-languages
       - name: assert multiple languages detected
         run: |
-          LANGS="${{ steps.detect.outputs.languages }}"
+          LANGS='${{ steps.detect.outputs.languages }}'
           # jq sort to normalize order
           ACTUAL=$(echo "$LANGS" | jq -S .)
           EXPECTED=$(echo '["go","python","typescript"]' | jq -S .)

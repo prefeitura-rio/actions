@@ -23,14 +23,18 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
-        uv sync --frozen --all-groups
+        if [[ -f pyproject.toml ]]; then
+          uv sync --frozen --all-groups
+        else
+          echo "::warning::No pyproject.toml found — skipping uv sync"
+        fi
     - name: format | ruff format --check (python)
       if: inputs.check == 'app:format'
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
-        uv run ruff format --check .
+        uvx ruff@latest format --check .
         echo "ruff format: all files are correctly formatted."
     - name: lint | ruff check (python)
       if: inputs.check == 'app:lint'
@@ -90,8 +94,12 @@ runs:
         ACTION_PATH: ${{ github.action_path }}
       run: |
         set -euo pipefail
+        echo "::debug::ACTION_PATH=${ACTION_PATH}"
+        echo "::debug::ruleDir=${ACTION_PATH}/python/rules"
+        echo "::debug::dir_exists=$(test -d "${ACTION_PATH}/python/rules" && echo yes || echo no)"
         TMP_CFG=$(mktemp --suffix=.yaml)
         printf 'ruleDirs:\n  - %s/python/rules\n' "${ACTION_PATH}" > "$TMP_CFG"
+        cat "$TMP_CFG"
         ast-grep scan --config "$TMP_CFG"
         rm -f "$TMP_CFG"
         echo "Org-wide Python ast-grep rules passed."
