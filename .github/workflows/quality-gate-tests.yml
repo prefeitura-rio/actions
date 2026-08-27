@@ -27,7 +27,7 @@ jobs:
     uses: ./.github/workflows/quality-gate.yml
     with:
       project-name: reusable-workflow-smoke
-      working-directory: quality-gate/fixtures/go/pass
+      working-directory: quality-gate/go/fixtures/pass
 
   ast-grep-rules:
     name: ast-grep rules / ${{ matrix.language }}
@@ -236,6 +236,7 @@ jobs:
           - "app.format"
           - "app:forma."
           - "app:[f]ormat"
+          - "app:detect"
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -254,84 +255,175 @@ jobs:
       - name: assert exact error message
         run: |
           ACTUAL="${{ steps.bad-check.outputs.error_message }}"
-          EXPECTED="Invalid check '${{ matrix.check }}'. Valid values: app:format app:lint app:strlint app:typecheck app:test"
+          EXPECTED="Invalid check '${{ matrix.check }}'. Valid values: app:format app:lint app:strlint app:typecheck app:test detect-only"
           [[ "$ACTUAL" == "$EXPECTED" ]] || {
             echo "::error::Wrong error message. Expected: '${EXPECTED}' — Got: '${ACTUAL}'"
             exit 1
           }
 
-  error-multiple-languages:
+  setup-py-success:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - name: run against ambiguous project root
-        id: multiple-languages
-        uses: ./quality-gate
-        with:
-          check: app:format
-          working-directory: quality-gate/fixtures/error/multiple-languages
-        continue-on-error: true
-      - name: assert ambiguity was rejected
-        run: |
-          [[ "${{ steps.multiple-languages.outcome }}" == "failure" ]] || {
-            echo "::error::Expected action to reject multiple detected languages"
-            exit 1
-          }
-          ACTUAL="${{ steps.multiple-languages.outputs.error_message }}"
-          EXPECTED="Multiple supported languages detected: go python typescript. Run quality-gate once per project with working-directory set to a directory containing exactly one supported language."
-          [[ "$ACTUAL" == "$EXPECTED" ]] || {
-            echo "::error::Wrong error message. Expected: '${EXPECTED}' — Got: '${ACTUAL}'"
-            exit 1
-          }
-
-  error-setup-py-only:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - name: run against setup.py-only project
-        id: setup-py-only
+      - name: run format on setup.py-only project
+        id: setup-py
         uses: ./quality-gate
         with:
           check: app:format
           working-directory: quality-gate/fixtures/error/setup-py-only
-        continue-on-error: true
-      - name: assert legacy project was rejected
+      - name: assert setup.py project was accepted
         run: |
-          [[ "${{ steps.setup-py-only.outcome }}" == "failure" ]] || {
-            echo "::error::Expected action to reject a setup.py-only project"
-            exit 1
-          }
-          ACTUAL="${{ steps.setup-py-only.outputs.error_message }}"
-          EXPECTED="Could not detect a supported language. Expected go.mod, pyproject.toml, or package.json+tsconfig.json."
-          [[ "$ACTUAL" == "$EXPECTED" ]] || {
-            echo "::error::Wrong error message. Expected: '${EXPECTED}' — Got: '${ACTUAL}'"
+          [[ "${{ steps.setup-py.outcome }}" == "success" ]] || {
+            echo "::error::Expected success on setup.py-only project but got ${{ steps.setup-py.outcome }}"
             exit 1
           }
 
-  error-multiple-rule-configs:
+  detect-single-language:
+    name: detect-single / ${{ matrix.language }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: go
+            fixture: quality-gate/go/fixtures/pass
+            expected: '["go"]'
+          - language: python
+            fixture: quality-gate/python/fixtures/pass
+            expected: '["python"]'
+          - language: typescript
+            fixture: quality-gate/typescript/fixtures/pass
+            expected: '["typescript"]'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: detect ${{ matrix.language }} project
+        id: detect
+        uses: ./quality-gate
+        with:
+          check: detect-only
+          working-directory: ${{ matrix.fixture }}
+      - name: assert single language detected
+        run: |
+          LANGS="${{ steps.detect.outputs.languages }}"
+          EXPECTED='${{ matrix.expected }}'
+          [[ "$LANGS" == "$EXPECTED" ]] || {
+            echo "::error::Expected '${EXPECTED}' — Got '${LANGS}'"
+            exit 1
+          }
+
+  detect-multi-language:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - name: run against multiple repository configs
-        id: multiple-configs
+      - name: detect multi-language directory
+        id: detect
         uses: ./quality-gate
         with:
-          check: app:strlint
-          working-directory: quality-gate/fixtures/error/multiple-rule-configs
-        continue-on-error: true
-      - name: assert multiple configs were rejected
+          check: detect-only
+          working-directory: quality-gate/fixtures/error/multiple-languages
+      - name: assert multiple languages detected
         run: |
-          [[ "${{ steps.multiple-configs.outcome }}" == "failure" ]] || {
-            echo "::error::Expected action to reject multiple repository configs"
+          LANGS="${{ steps.detect.outputs.languages }}"
+          # jq sort to normalize order
+          ACTUAL=$(echo "$LANGS" | jq -S .)
+          EXPECTED=$(echo '["go","python","typescript"]' | jq -S .)
+          [[ "$ACTUAL" == "$EXPECTED" ]] || {
+            echo "::error::Expected '${EXPECTED}' — Got '${ACTUAL}'"
             exit 1
           }
-          ACTUAL="${{ steps.multiple-configs.outputs.error_message }}"
-          EXPECTED="Multiple repo-local ast-grep configs found: .quality-gate/sgconfig.yaml sgconfig.yml. Keep exactly one config."
-          [[ "$ACTUAL" == "$EXPECTED" ]] || {
-            echo "::error::Wrong error message. Expected: '${EXPECTED}' — Got: '${ACTUAL}'"
+
+  detect-no-language:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: detect empty directory
+        id: detect
+        uses: ./quality-gate
+        with:
+          check: detect-only
+          working-directory: quality-gate/fixtures/error/no-language
+        continue-on-error: true
+      - name: assert no-language error
+        run: |
+          [[ "${{ steps.detect.outcome }}" == "failure" ]] || {
+            echo "::error::Expected action to fail on empty directory but it succeeded"
+            exit 1
+          }
+
+  language-override-rejected:
+    name: language-override-rejected / ${{ matrix.language }}-on-${{ matrix.project }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: python
+            project: go
+            fixture: quality-gate/go/fixtures/pass
+          - language: typescript
+            project: go
+            fixture: quality-gate/go/fixtures/pass
+          - language: go
+            project: python
+            fixture: quality-gate/python/fixtures/pass
+          - language: typescript
+            project: python
+            fixture: quality-gate/python/fixtures/pass
+          - language: go
+            project: typescript
+            fixture: quality-gate/typescript/fixtures/pass
+          - language: python
+            project: typescript
+            fixture: quality-gate/typescript/fixtures/pass
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: request ${{ matrix.language }} on ${{ matrix.project }} project
+        id: override
+        uses: ./quality-gate
+        with:
+          check: app:format
+          working-directory: ${{ matrix.fixture }}
+          language: ${{ matrix.language }}
+        continue-on-error: true
+      - name: assert override was rejected
+        run: |
+          [[ "${{ steps.override.outcome }}" == "failure" ]] || {
+            echo "::error::Expected failure when requesting ${{ matrix.language }} on ${{ matrix.project }} project"
+            exit 1
+          }
+
+  language-override-accepted:
+    name: language-override-accepted / ${{ matrix.language }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: go
+            fixture: quality-gate/go/fixtures/pass
+          - language: python
+            fixture: quality-gate/python/fixtures/pass
+          - language: typescript
+            fixture: quality-gate/typescript/fixtures/pass
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: request ${{ matrix.language }} on ${{ matrix.language }} project
+        id: override
+        uses: ./quality-gate
+        with:
+          check: app:format
+          working-directory: ${{ matrix.fixture }}
+          language: ${{ matrix.language }}
+      - name: assert override succeeded
+        run: |
+          [[ "${{ steps.override.outcome }}" == "success" ]] || {
+            echo "::error::Expected success when requesting ${{ matrix.language }} on ${{ matrix.language }} project"
             exit 1
           }
 

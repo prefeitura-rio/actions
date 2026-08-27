@@ -3,16 +3,27 @@
 Language-agnostic composite GitHub Action that runs a single quality check on
 any Go, Python, or TypeScript project. Detects the project language automatically
 from marker files and executes the appropriate tool for the requested check.
+Supports polyglot repositories — detects all present languages and runs checks
+for each in parallel via matrix.
 
 ---
 
 ## Using the action
 
-### Input
+### Inputs
 
-| Input   | Required | Valid values                                                             |
-| ------- | -------- | ------------------------------------------------------------------------ |
-| `check` | yes      | `app:format` · `app:lint` · `app:strlint` · `app:typecheck` · `app:test` |
+| Input      | Required | Valid values                                                             |
+| ---------- | -------- | ------------------------------------------------------------------------ |
+| `check`    | yes      | `app:format` · `app:lint` · `app:strlint` · `app:typecheck` · `app:test` · `detect-only` |
+| `working-directory` | no  | Directory to run checks in (default: `.`)                               |
+| `language` | no       | Explicit language override: `go`, `python`, `typescript`                 |
+
+### Outputs
+
+| Output        | Description |
+| ------------- | ----------- |
+| `error_message` | Human-readable error message set when the action fails. |
+| `languages`   | JSON array of detected languages (e.g. `["go","typescript"]`). Set only when `check: detect-only`. |
 
 ### Language detection
 
@@ -24,9 +35,24 @@ from marker files and executes the appropriate tool for the requested check.
 
 If none of these marker files exist the action exits with an error.
 
+When `check: detect-only`, the action outputs all detected languages as a JSON
+array via the `languages` output. This enables the reusable workflow to matrix
+over languages for parallel execution.
+
+When `check` is a normal check (e.g. `app:format`) and multiple languages are
+detected, the action exits with an error unless `language` is provided. Use
+`detect-only` to enumerate languages, then call the action once per language.
+
 ---
 
 ## Check reference
+
+### `detect-only`
+
+Detect all supported languages in the working directory. Outputs a JSON array
+via the `languages` output. Does not run any quality checks.
+
+Example output: `["go","python","typescript"]`
 
 ### `app:format`
 
@@ -53,7 +79,7 @@ Static analysis. Runs on all three languages.
 Structural lint using ast-grep. Runs in two passes:
 
 1. **Org rules** — bundled with the action, always applied.
-2. **Repo-local rules** — detected at runtime from a `.quality-gate/` directory or root `sgconfig.yaml` in the consuming repo.
+2. **Repo-local rules** — detected at runtime from a `sgconfig.yaml` or `rules/` directory in the consuming repo.
 
 ```bash
 # Pass 1 — org rules (always runs)
@@ -101,7 +127,7 @@ Unit and integration tests.
 ## How it works
 
 `action.yml` is the public dispatcher. It validates the check, detects the
-language, and invokes one language-specific composite action:
+language(s), and invokes one language-specific composite action:
 
 - `go/action.yml`
 - `python/action.yml`
@@ -110,6 +136,10 @@ language, and invokes one language-specific composite action:
 Each language action owns its setup and all format, lint, structural lint,
 typecheck, and test commands. Consumers continue to use the root action and do
 not need to change their workflow configuration.
+
+For polyglot repositories, the reusable workflow (`quality-gate.yml`) uses
+`detect-only` to enumerate all languages, then matrices over them so that
+Go, Python, and TypeScript checks run in parallel.
 
 Tool configuration follows this precedence: project configuration is used when
 present; the organization configuration is the fallback when the project does
@@ -148,17 +178,10 @@ If neither is present it exits with an error.
 
 Repositories can define their own structural lint rules alongside the org rules.
 
-1. Create a `.quality-gate/` directory at the repo root (or at the project root
-   for multi-project repos).
-2. Add a `sgconfig.yaml` inside it:
-
-```yaml
-ruleDirs:
-  - rules
-```
-
-3. Add rule files under `.quality-gate/rules/` following the ast-grep rule format.
-4. The action picks them up automatically — no configuration needed.
+1. Create a `sgconfig.yaml` at the project root (or in a `.quality-gate/`
+   directory for multi-project repos).
+2. Add rule files under `rules/` following the ast-grep rule format.
+3. The action picks them up automatically — no configuration needed.
 
 Org rules always run first. Repo-local rules are additive — they extend, never
 replace, the org ruleset.
@@ -166,6 +189,8 @@ replace, the org ruleset.
 ---
 
 ## Complete workflow example
+
+Single-language project:
 
 ```yaml
 name: Quality Gate
@@ -217,4 +242,109 @@ jobs:
       - uses: prefeitura-rio/actions/quality-gate@master
         with:
           check: app:test
+```
+
+Polyglot project (Go + TypeScript, auto-detected):
+
+```yaml
+name: Quality Gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  format:
+    needs: detect
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ${{ fromJson(needs.detect.outputs.languages) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: prefeitura-rio/actions/quality-gate@master
+        with:
+          check: app:format
+          language: ${{ matrix.language }}
+
+  lint:
+    needs: detect
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ${{ fromJson(needs.detect.outputs.languages) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: prefeitura-rio/actions/quality-gate@master
+        with:
+          check: app:lint
+          language: ${{ matrix.language }}
+
+  strlint:
+    needs: detect
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ${{ fromJson(needs.detect.outputs.languages) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: prefeitura-rio/actions/quality-gate@master
+        with:
+          check: app:strlint
+          language: ${{ matrix.language }}
+
+  typecheck:
+    needs: detect
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ${{ fromJson(needs.detect.outputs.languages) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: prefeitura-rio/actions/quality-gate@master
+        with:
+          check: app:typecheck
+          language: ${{ matrix.language }}
+
+  test:
+    needs: [detect, format, lint, strlint, typecheck]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ${{ fromJson(needs.detect.outputs.languages) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: prefeitura-rio/actions/quality-gate@master
+        with:
+          check: app:test
+          language: ${{ matrix.language }}
+
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      languages: ${{ steps.detect.outputs.languages }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: prefeitura-rio/actions/quality-gate@master
+        id: detect
+        with:
+          check: detect-only
+```
+
+Or use the reusable workflow:
+
+```yaml
+jobs:
+  quality:
+    uses: prefeitura-rio/actions/.github/workflows/quality-gate.yml@master
+    with:
+      project-name: my-project
+      working-directory: .
 ```
