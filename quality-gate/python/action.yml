@@ -94,12 +94,8 @@ runs:
         ACTION_PATH: ${{ github.action_path }}
       run: |
         set -euo pipefail
-        echo "::debug::ACTION_PATH=${ACTION_PATH}"
-        echo "::debug::ruleDir=${ACTION_PATH}/python/rules"
-        echo "::debug::dir_exists=$(test -d "${ACTION_PATH}/python/rules" && echo yes || echo no)"
         TMP_CFG=$(mktemp --suffix=.yaml)
-        printf 'ruleDirs:\n  - %s/python/rules\n' "${ACTION_PATH}" > "$TMP_CFG"
-        cat "$TMP_CFG"
+        printf 'ruleDirs:\n  - %s/rules\n' "${ACTION_PATH}" > "$TMP_CFG"
         ast-grep scan --config "$TMP_CFG"
         rm -f "$TMP_CFG"
         echo "Org-wide Python ast-grep rules passed."
