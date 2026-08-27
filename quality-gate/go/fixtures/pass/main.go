@@ -7,16 +7,19 @@ import (
 	"time"
 )
 
+const timeoutSeconds = 10
+
 func main() {
 	client := &http.Client{
-		Timeout:       10 * time.Second,
+		Timeout:       timeoutSeconds * time.Second,
 		Transport:     nil,
 		CheckRedirect: nil,
 		Jar:           nil,
 	}
 
 	ctx := context.Background()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://example.com", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://example.com", http.NoBody)
+
 	if err != nil {
 		log.Println("error:", err)
 
@@ -31,5 +34,6 @@ func main() {
 	}
 
 	defer resp.Body.Close()
+
 	log.Println("status:", resp.StatusCode)
 }
