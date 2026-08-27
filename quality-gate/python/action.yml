@@ -108,6 +108,9 @@ runs:
         if [[ -f sgconfig.yaml || -d rules ]]; then
           ast-grep scan
           echo "Repo-local Python ast-grep rules passed."
+        elif [[ -f .quality-gate/sgconfig.yaml || -d .quality-gate/rules ]]; then
+          ast-grep scan --config .quality-gate/sgconfig.yaml
+          echo "Repo-local Python ast-grep rules passed."
         else
           echo "No repo-local sgconfig.yaml or rules/ found — skipping."
         fi
