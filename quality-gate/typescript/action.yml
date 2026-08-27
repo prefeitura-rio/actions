@@ -101,7 +101,7 @@ runs:
         if [[ -f .oxlintrc.json || -f .oxlintrc.yaml || -f .oxlintrc.yml || -f oxlint.config.js || -f oxlint.config.mjs || -f oxlint.config.ts ]]; then
           npx --yes oxlint@0.16.7 .
         else
-          npx --yes oxlint@0.16.7 --config "${ACTION_PATH}/typescript/.oxlintrc.json" .
+          npx --yes oxlint@0.16.7 --config "${ACTION_PATH}/.oxlintrc.json" .
         fi
         echo "oxlint: no issues found."
     - name: lint | react-doctor (react)

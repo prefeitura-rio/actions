@@ -82,7 +82,7 @@ runs:
         if [[ -f .golangci.yml || -f .golangci.yaml ]]; then
           echo 'args=' >> "$GITHUB_OUTPUT"
         else
-          echo "args=--config ${ACTION_PATH}/go/.golangci.yml" >> "$GITHUB_OUTPUT"
+          echo "args=--config ${ACTION_PATH}/.golangci.yml" >> "$GITHUB_OUTPUT"
         fi
     - name: lint | golangci-lint (go)
       if: inputs.check == 'app:lint'
