@@ -44,7 +44,9 @@ runs:
         ACTION_PATH: ${{ github.action_path }}
       run: |
         set -euo pipefail
-        if [[ -f ruff.toml || -f .ruff.toml || ( -f pyproject.toml && grep -q '^\[tool\.ruff' pyproject.toml ) ]]; then
+        if [[ -f ruff.toml || -f .ruff.toml ]]; then
+          uv run ruff check .
+        elif [[ -f pyproject.toml ]] && grep -q '^\[tool\.ruff' pyproject.toml; then
           uv run ruff check .
         else
           uv run ruff check --config "${ACTION_PATH}/ruff.toml" .
