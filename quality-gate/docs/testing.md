@@ -23,47 +23,41 @@ project detection, and the quality command, rather than only isolated shell
 conditions.
 
 Defensive error scenarios are tested separately. They cover invalid check
-names, unsupported projects, missing TypeScript lockfiles, and corrupted tool
-downloads. The tests check both that the action fails and that the reported
-message is exact. This keeps configuration errors actionable instead of
-reducing them to an unexplained exit code.
+names, unsupported projects, missing TypeScript lockfiles, corrupted tool
+downloads, and language override validation. The tests check both that the
+action fails and that the reported message is exact. This keeps configuration
+errors actionable instead of reducing them to an unexplained exit code.
 
-The template bootstrap scripts are tested with all eight templates. The tests
-cover successful renaming, repeated execution, invalid input, non-interactive
-use, cancelled confirmation, and the final environment-trust command. This
-protects the first-run experience that creates a developer's project from a
-template.
+Multi-language detection is tested with `detect-only` checks on single-language
+and polyglot directories, verifying that the correct JSON array is output.
+Language override validation is tested by requesting a language that doesn't
+match the project's markers (rejected) and by requesting the correct language
+(explicit override accepted).
 
-## Real GitHub Actions Output
+## Test jobs overview
 
-The following output was copied from GitHub Actions run 32785747539. Every job
-reported success. The order is the order returned by the GitHub Actions run
-summary.
-
-```text
-success  error-no-language
-success  go (app:lint)
-success  go (app:typecheck)
-success  python (app:strlint)
-success  typescript (app:typecheck)
-success  go (app:strlint)
-success  error-ts-no-tsconfig
-success  error-invalid-check
-success  python (app:test)
-success  go (app:format)
-success  python (app:format)
-success  error-ts-no-lockfile
-success  python (app:lint)
-success  typescript (app:lint)
-success  typescript (app:strlint)
-success  typescript (app:format)
-success  go (app:test)
-success  typescript (app:test)
-```
-
-This run predates the expanded exact-message assertions and checksum-mismatch
-jobs. Those scenarios are intentionally not presented as runner-verified yet;
-their first live result is tracked as a pending testing task in the roadmap.
+| Job | What it tests |
+|-----|---------------|
+| `reusable-workflow` | End-to-end smoke test of the reusable workflow on a Go project |
+| `ast-grep-rules` | ast-grep rule correctness for Go, Python, TypeScript |
+| `go` | All 5 checks (format, lint, strlint, typecheck, test) pass/fail for Go |
+| `python` | All 4 checks (format, lint, strlint, test) pass/fail for Python |
+| `typescript` | All 5 checks pass/fail for TypeScript |
+| `error-invalid-check` | Invalid check names are rejected with exact error message |
+| `setup-py-success` | `setup.py`-only project is accepted as Python |
+| `detect-single-language` | `detect-only` returns correct JSON for Go, Python, TypeScript |
+| `detect-multi-language` | `detect-only` returns all 3 languages for polyglot directory |
+| `detect-no-language` | `detect-only` fails on empty directory |
+| `language-override-rejected` | Explicit `language` input is validated against detected markers |
+| `language-override-accepted` | Explicit `language` input works when it matches |
+| `repo-local-rules` | Repository-local ast-grep rules are detected and enforced |
+| `mandatory-policy-rules` | Mandatory org rules (no-panic, no-eval, etc.) fail on violations |
+| `polyglot-project-paths` | Polyglot subdirectories route to correct language action |
+| `error-no-language` | Empty directory fails with expected error |
+| `error-ts-no-lockfile` | TypeScript without lockfile fails with expected error |
+| `error-ts-no-tsconfig` | package.json without tsconfig.json fails (not detected as TypeScript) |
+| `error-gofumpt-sha-mismatch` | Corrupted gofumpt download triggers sha256 error + cleanup |
+| `error-ast-grep-sha-mismatch` | Corrupted ast-grep download triggers sha256 error + cleanup |
 
 ## How to Read a Failure
 

@@ -82,7 +82,7 @@ runs:
         if [[ -f .golangci.yml || -f .golangci.yaml ]]; then
           echo 'args=' >> "$GITHUB_OUTPUT"
         else
-          echo "args=--config ${ACTION_PATH}/go/.golangci.yml" >> "$GITHUB_OUTPUT"
+          echo "args=--config ${ACTION_PATH}/.golangci.yml" >> "$GITHUB_OUTPUT"
         fi
     - name: lint | golangci-lint (go)
       if: inputs.check == 'app:lint'
@@ -128,7 +128,7 @@ runs:
       run: |
         set -euo pipefail
         TMP_CFG=$(mktemp --suffix=.yaml)
-        printf 'ruleDirs:\n  - %s/go/rules\n' "${ACTION_PATH}" > "$TMP_CFG"
+        printf 'ruleDirs:\n  - %s/rules\n' "${ACTION_PATH}" > "$TMP_CFG"
         ast-grep scan --config "$TMP_CFG"
         rm -f "$TMP_CFG"
         echo "Org-wide ast-grep rules passed."
@@ -140,6 +140,9 @@ runs:
         set -euo pipefail
         if [[ -f sgconfig.yaml || -d rules ]]; then
           ast-grep scan
+          echo "Repo-local ast-grep rules passed."
+        elif [[ -f .quality-gate/sgconfig.yaml || -d .quality-gate/rules ]]; then
+          ast-grep scan --config .quality-gate/sgconfig.yaml
           echo "Repo-local ast-grep rules passed."
         else
           echo "No repo-local sgconfig.yaml or rules/ found — skipping."

@@ -6,16 +6,28 @@ inputs:
   check:
     description: |
       The quality check to run, in app:<job> form. Valid values:
-      app:format | app:lint | app:strlint | app:typecheck | app:test
+      app:format | app:lint | app:strlint | app:typecheck | app:test | detect-only
     required: true
   working-directory:
     description: The directory to run quality-gate checks in.
     required: false
     default: .
+  language:
+    description: |
+      Explicit language override (go, python, typescript).
+      When provided, skips file-based detection and uses this value directly.
+      When omitted, detection runs from marker files (go.mod, pyproject.toml,
+      setup.py, package.json+tsconfig.json).
+    required: false
 outputs:
   error_message:
     description: Human-readable error message set when the action fails.
     value: ${{ steps.collect-error.outputs.error_message }}
+  languages:
+    description: |
+      JSON array of detected languages, e.g. ["go","typescript"].
+      Set only when check is detect-only. Empty for normal checks.
+    value: ${{ steps.lang.outputs.languages }}
 runs:
   using: composite
   steps:
@@ -29,8 +41,8 @@ runs:
         CHECK: ${{ inputs.check }}
       run: |
         set -euo pipefail
-        VALID="app:format app:lint app:strlint app:typecheck app:test"
-        if ! echo "$VALID" | grep -qw "$CHECK"; then
+        VALID="app:format app:lint app:strlint app:typecheck app:test detect-only"
+        if ! echo "$VALID" | grep -Fqw "$CHECK"; then
           MSG="Invalid check '${CHECK}'. Valid values: ${VALID}"
           echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
           echo "::error title=quality-gate::${MSG}"
@@ -40,35 +52,78 @@ runs:
       id: lang
       shell: bash
       working-directory: ${{ inputs.working-directory }}
+      env:
+        LANGUAGE: ${{ inputs.language }}
+        CHECK: ${{ inputs.check }}
       run: |
         set -euo pipefail
-        if [[ -f go.mod ]]; then
-          echo "name=go" >> "$GITHUB_OUTPUT"
-        elif [[ -f pyproject.toml || -f setup.py ]]; then
-          echo "name=python" >> "$GITHUB_OUTPUT"
-        elif [[ -f package.json && -f tsconfig.json ]]; then
-          echo "name=typescript" >> "$GITHUB_OUTPUT"
+
+        # --- detect-only mode: output all languages as JSON array ---
+        if [[ "$CHECK" == "detect-only" ]]; then
+          detected=()
+          if [[ -f go.mod ]]; then detected+=("go"); fi
+          if [[ -f pyproject.toml || -f setup.py ]]; then detected+=("python"); fi
+          if [[ -f package.json && -f tsconfig.json ]]; then detected+=("typescript"); fi
+
+          if [[ ${#detected[@]} -eq 0 ]]; then
+            MSG="Could not detect a supported language. Expected go.mod, pyproject.toml, or package.json+tsconfig.json."
+            echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
+            echo "::error title=quality-gate::${MSG}"
+            exit 1
+          fi
+
+          printf 'languages=%s\n' \
+            "$(printf '%s\n' "${detected[@]}" | jq -R . | jq -sc .)" \
+            >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        # --- normal check mode ---
+        detected=()
+        if [[ -f go.mod ]]; then detected+=("go"); fi
+        if [[ -f pyproject.toml || -f setup.py ]]; then detected+=("python"); fi
+        if [[ -f package.json && -f tsconfig.json ]]; then detected+=("typescript"); fi
+
+        if [[ -n "$LANGUAGE" ]]; then
+          # Caller provided explicit language — validate against detected markers
+          if [[ ! " ${detected[*]} " =~ " ${LANGUAGE} " ]]; then
+            MSG="Requested language '${LANGUAGE}' not detected in project. Detected: ${detected[*]:-none}."
+            echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
+            echo "::error title=quality-gate::${MSG}"
+            exit 1
+          fi
+          echo "name=${LANGUAGE}" >> "$GITHUB_OUTPUT"
         else
-          MSG="Could not detect a supported language. Expected go.mod, pyproject.toml, or package.json+tsconfig.json."
-          echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
-          echo "::error title=quality-gate::${MSG}"
-          exit 1
+          # Auto-detect: exactly one → use it; multiple → error with hint
+          if [[ ${#detected[@]} -eq 0 ]]; then
+            MSG="Could not detect a supported language. Expected go.mod, pyproject.toml, or package.json+tsconfig.json."
+            echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
+            echo "::error title=quality-gate::${MSG}"
+            exit 1
+          elif [[ ${#detected[@]} -gt 1 ]]; then
+            DETECTED="${detected[*]}"
+            MSG="Multiple supported languages detected: ${DETECTED}. Run quality-gate once per language, or use the detect-only check to enumerate languages."
+            echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
+            echo "::error title=quality-gate::${MSG}"
+            exit 1
+          fi
+          echo "name=${detected[0]}" >> "$GITHUB_OUTPUT"
         fi
     - name: Run Go quality gate
       if: steps.lang.outputs.name == 'go'
-      uses: ${{ github.action_path }}/go
+      uses: $/quality-gate/go
       with:
         check: ${{ inputs.check }}
         working-directory: ${{ inputs.working-directory }}
     - name: Run Python quality gate
       if: steps.lang.outputs.name == 'python'
-      uses: ${{ github.action_path }}/python
+      uses: $/quality-gate/python
       with:
         check: ${{ inputs.check }}
         working-directory: ${{ inputs.working-directory }}
     - name: Run TypeScript quality gate
       if: steps.lang.outputs.name == 'typescript'
-      uses: ${{ github.action_path }}/typescript
+      uses: $/quality-gate/typescript
       with:
         check: ${{ inputs.check }}
         working-directory: ${{ inputs.working-directory }}

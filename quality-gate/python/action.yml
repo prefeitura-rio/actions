@@ -23,14 +23,18 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
-        uv sync --frozen --all-groups
+        if [[ -f pyproject.toml ]]; then
+          uv sync --frozen --all-groups
+        else
+          echo "::warning::No pyproject.toml found — skipping uv sync"
+        fi
     - name: format | ruff format --check (python)
       if: inputs.check == 'app:format'
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
-        uv run ruff format --check .
+        uvx ruff@latest format --check .
         echo "ruff format: all files are correctly formatted."
     - name: lint | ruff check (python)
       if: inputs.check == 'app:lint'
@@ -40,10 +44,12 @@ runs:
         ACTION_PATH: ${{ github.action_path }}
       run: |
         set -euo pipefail
-        if [[ -f ruff.toml || -f .ruff.toml || ( -f pyproject.toml && grep -q '^\[tool\.ruff' pyproject.toml ) ]]; then
+        if [[ -f ruff.toml || -f .ruff.toml ]]; then
+          uv run ruff check .
+        elif [[ -f pyproject.toml ]] && grep -q '^\[tool\.ruff' pyproject.toml; then
           uv run ruff check .
         else
-          uv run ruff check --config "${ACTION_PATH}/python/ruff.toml" .
+          uv run ruff check --config "${ACTION_PATH}/ruff.toml" .
         fi
         echo "ruff check: no issues found."
     - name: lint | complexipy (python)
@@ -91,7 +97,7 @@ runs:
       run: |
         set -euo pipefail
         TMP_CFG=$(mktemp --suffix=.yaml)
-        printf 'ruleDirs:\n  - %s/python/rules\n' "${ACTION_PATH}" > "$TMP_CFG"
+        printf 'ruleDirs:\n  - %s/rules\n' "${ACTION_PATH}" > "$TMP_CFG"
         ast-grep scan --config "$TMP_CFG"
         rm -f "$TMP_CFG"
         echo "Org-wide Python ast-grep rules passed."
@@ -103,6 +109,9 @@ runs:
         set -euo pipefail
         if [[ -f sgconfig.yaml || -d rules ]]; then
           ast-grep scan
+          echo "Repo-local Python ast-grep rules passed."
+        elif [[ -f .quality-gate/sgconfig.yaml || -d .quality-gate/rules ]]; then
+          ast-grep scan --config .quality-gate/sgconfig.yaml
           echo "Repo-local Python ast-grep rules passed."
         else
           echo "No repo-local sgconfig.yaml or rules/ found — skipping."
@@ -118,7 +127,7 @@ runs:
         if [[ -f ty.toml || ( -f pyproject.toml && grep -q '^\[tool\.ty' pyproject.toml ) ]]; then
           uvx ty@0.0.74 check .
         else
-          uvx ty@0.0.74 check --config-file "${ACTION_PATH}/python/ty.toml" .
+          uvx ty@0.0.74 check --config-file "${ACTION_PATH}/ty.toml" .
         fi
         echo "ty: no type errors found."
     - name: test | pytest (python)

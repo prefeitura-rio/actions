@@ -16,53 +16,95 @@ permissions:
   contents: read
 
 jobs:
-  format:
-    name: ${{ inputs.project-name }} / Format
+  detect:
+    name: ${{ inputs.project-name }} / Detect
     runs-on: ubuntu-latest
+    outputs:
+      languages: ${{ steps.detect.outputs.languages }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: prefeitura-rio/actions/quality-gate@master
+        id: detect
+        with:
+          check: detect-only
+          working-directory: ${{ inputs.working-directory }}
+
+  format:
+    name: ${{ inputs.project-name }} / Format / ${{ matrix.language }}
+    needs: detect
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ${{ fromJson(needs.detect.outputs.languages) }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: prefeitura-rio/actions/quality-gate@master
         with:
           check: app:format
           working-directory: ${{ inputs.working-directory }}
+          language: ${{ matrix.language }}
 
   lint:
-    name: ${{ inputs.project-name }} / Lint
+    name: ${{ inputs.project-name }} / Lint / ${{ matrix.language }}
+    needs: detect
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ${{ fromJson(needs.detect.outputs.languages) }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: prefeitura-rio/actions/quality-gate@master
         with:
           check: app:lint
           working-directory: ${{ inputs.working-directory }}
+          language: ${{ matrix.language }}
 
   strlint:
-    name: ${{ inputs.project-name }} / Structural Lint
+    name: ${{ inputs.project-name }} / Structural Lint / ${{ matrix.language }}
+    needs: detect
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ${{ fromJson(needs.detect.outputs.languages) }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: prefeitura-rio/actions/quality-gate@master
         with:
           check: app:strlint
           working-directory: ${{ inputs.working-directory }}
+          language: ${{ matrix.language }}
 
   typecheck:
-    name: ${{ inputs.project-name }} / Type Check
+    name: ${{ inputs.project-name }} / Type Check / ${{ matrix.language }}
+    needs: detect
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ${{ fromJson(needs.detect.outputs.languages) }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: prefeitura-rio/actions/quality-gate@master
         with:
           check: app:typecheck
           working-directory: ${{ inputs.working-directory }}
+          language: ${{ matrix.language }}
 
   test:
-    name: ${{ inputs.project-name }} / Test
-    needs: [format, lint, strlint, typecheck]
+    name: ${{ inputs.project-name }} / Test / ${{ matrix.language }}
+    needs: [detect, format, lint, strlint, typecheck]
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ${{ fromJson(needs.detect.outputs.languages) }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: prefeitura-rio/actions/quality-gate@master
         with:
           check: app:test
           working-directory: ${{ inputs.working-directory }}
+          language: ${{ matrix.language }}

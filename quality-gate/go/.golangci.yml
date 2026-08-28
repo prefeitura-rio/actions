@@ -69,6 +69,10 @@ linters:
       - path: cmd/
         linters:
           - gosec
+      - path: '\.go$'
+        linters:
+          - wsl
+          - wsl_v5
 
     paths:
       - third_party$

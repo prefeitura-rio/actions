@@ -101,7 +101,7 @@ runs:
         if [[ -f .oxlintrc.json || -f .oxlintrc.yaml || -f .oxlintrc.yml || -f oxlint.config.js || -f oxlint.config.mjs || -f oxlint.config.ts ]]; then
           npx --yes oxlint@0.16.7 .
         else
-          npx --yes oxlint@0.16.7 --config "${ACTION_PATH}/typescript/.oxlintrc.json" .
+          npx --yes oxlint@0.16.7 --config "${ACTION_PATH}/.oxlintrc.json" .
         fi
         echo "oxlint: no issues found."
     - name: lint | react-doctor (react)
@@ -149,7 +149,7 @@ runs:
       run: |
         set -euo pipefail
         TMP_CFG=$(mktemp --suffix=.yaml)
-        printf 'ruleDirs:\n  - %s/typescript/rules\n' "${ACTION_PATH}" > "$TMP_CFG"
+        printf 'ruleDirs:\n  - %s/rules\n' "${ACTION_PATH}" > "$TMP_CFG"
         ast-grep scan --config "$TMP_CFG"
         rm -f "$TMP_CFG"
         echo "Org-wide TypeScript ast-grep rules passed."
@@ -161,6 +161,9 @@ runs:
         set -euo pipefail
         if [[ -f sgconfig.yaml || -d rules ]]; then
           ast-grep scan
+          echo "Repo-local TypeScript ast-grep rules passed."
+        elif [[ -f .quality-gate/sgconfig.yaml || -d .quality-gate/rules ]]; then
+          ast-grep scan --config .quality-gate/sgconfig.yaml
           echo "Repo-local TypeScript ast-grep rules passed."
         else
           echo "No repo-local sgconfig.yaml or rules/ found — skipping."
