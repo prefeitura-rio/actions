@@ -113,9 +113,15 @@ jobs:
         continue-on-error: true
 
       - name: assert fail was detected
+        env:
+          ERROR_MESSAGE: ${{ steps.go-fail.outputs.error_message }}
         run: |
           [[ "${{ steps.go-fail.outcome }}" == "failure" ]] || {
             echo "::error::Expected action to fail on ${{ matrix.fail }} but it succeeded"
+            exit 1
+          }
+          [[ -n "$ERROR_MESSAGE" ]] || {
+            echo "::error::Expected a diagnostic error message for ${{ matrix.fail }}"
             exit 1
           }
 
@@ -165,9 +171,15 @@ jobs:
         continue-on-error: true
 
       - name: assert fail was detected
+        env:
+          ERROR_MESSAGE: ${{ steps.py-fail.outputs.error_message }}
         run: |
           [[ "${{ steps.py-fail.outcome }}" == "failure" ]] || {
             echo "::error::Expected action to fail on ${{ matrix.fail }} but it succeeded"
+            exit 1
+          }
+          [[ -n "$ERROR_MESSAGE" ]] || {
+            echo "::error::Expected a diagnostic error message for ${{ matrix.fail }}"
             exit 1
           }
 
@@ -220,9 +232,15 @@ jobs:
         continue-on-error: true
 
       - name: assert fail was detected
+        env:
+          ERROR_MESSAGE: ${{ steps.ts-fail.outputs.error_message }}
         run: |
           [[ "${{ steps.ts-fail.outcome }}" == "failure" ]] || {
             echo "::error::Expected action to fail on ${{ matrix.fail }} but it succeeded"
+            exit 1
+          }
+          [[ -n "$ERROR_MESSAGE" ]] || {
+            echo "::error::Expected a diagnostic error message for ${{ matrix.fail }}"
             exit 1
           }
 
