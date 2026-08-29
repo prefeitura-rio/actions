@@ -38,9 +38,11 @@ runs:
         relay="$RUNNER_TEMP/quality-gate-error.txt"
         log="$RUNNER_TEMP/quality-gate-output.log"
         bash_env="$RUNNER_TEMP/quality-gate-bash-env"
+        success="$RUNNER_TEMP/quality-gate-success"
 
         : > "$relay"
         : > "$log"
+        rm -f "$success"
         cat > "$bash_env" <<'EOF'
         exec > >(tee -a "$RUNNER_TEMP/quality-gate-output.log") 2>&1
         trap 'status=$?; if [[ "$status" -ne 0 ]]; then { printf "Command failed (exit %s): %s\n\nRecent output:\n" "$status" "$BASH_COMMAND"; tail -n 80 "$RUNNER_TEMP/quality-gate-output.log" || true; } > "$RUNNER_TEMP/quality-gate-error.txt"; fi; exit "$status"' ERR
@@ -139,18 +141,20 @@ runs:
       with:
         check: ${{ inputs.check }}
         working-directory: ${{ inputs.working-directory }}
+    - name: Mark quality gate success
+      shell: bash
+      run: touch "$RUNNER_TEMP/quality-gate-success"
     - name: Collect error message
       id: collect-error
       if: always()
       shell: bash
-      env:
-        QUALITY_GATE_FAILED: ${{ failure() }}
       run: |
         set -euo pipefail
         relay="$RUNNER_TEMP/quality-gate-error.txt"
+        success="$RUNNER_TEMP/quality-gate-success"
         if [[ -s "$relay" ]]; then
           msg="$relay"
-        elif [[ "$QUALITY_GATE_FAILED" == "true" ]]; then
+        elif [[ ! -f "$success" ]]; then
           printf "Quality gate '%s' failed. See the failed quality-gate step logs for details.\n" "${{ inputs.check }}" > "$relay"
           msg="$relay"
         else
@@ -171,16 +175,16 @@ runs:
       shell: bash
       env:
         CHECK: ${{ inputs.check }}
-        QUALITY_GATE_FAILED: ${{ failure() }}
         ERROR_MESSAGE: ${{ steps.collect-error.outputs.error_message }}
       run: |
         set -euo pipefail
+        success="$RUNNER_TEMP/quality-gate-success"
         {
           echo "### Quality Gate: $CHECK"
-          if [[ "$QUALITY_GATE_FAILED" == "true" ]]; then
-            echo "Outcome: failure"
-          else
+          if [[ -f "$success" ]]; then
             echo "Outcome: success"
+          else
+            echo "Outcome: failure"
           fi
           echo "Error:"
           if [[ -n "$ERROR_MESSAGE" ]]; then
