@@ -44,8 +44,18 @@ runs:
         : > "$log"
         rm -f "$success"
         cat > "$bash_env" <<'EOF'
+        quality_gate_capture_failure() {
+          local status=$?
+          if [[ "$status" -ne 0 ]]; then
+            {
+              printf "Command failed (exit %s): %s\n\nRecent output:\n" "$status" "$BASH_COMMAND"
+              sed -E $'s/\033\\[[0-9;]*[[:alpha:]]//g' "$RUNNER_TEMP/quality-gate-output.log" | tail -n 80 || true
+            } > "$RUNNER_TEMP/quality-gate-error.txt"
+          fi
+          exit "$status"
+        }
         exec > >(tee -a "$RUNNER_TEMP/quality-gate-output.log") 2>&1
-        trap 'status=$?; if [[ "$status" -ne 0 ]]; then { printf "Command failed (exit %s): %s\n\nRecent output:\n" "$status" "$BASH_COMMAND"; tail -n 80 "$RUNNER_TEMP/quality-gate-output.log" || true; } > "$RUNNER_TEMP/quality-gate-error.txt"; fi; exit "$status"' ERR
+        trap quality_gate_capture_failure ERR
         EOF
         echo "BASH_ENV=$bash_env" >> "$GITHUB_ENV"
     - name: Validate check input
@@ -188,7 +198,14 @@ runs:
           fi
           echo "Error:"
           if [[ -n "$ERROR_MESSAGE" ]]; then
+            echo
+            echo '<details>'
+            echo '<summary>Failure details</summary>'
+            echo
+            echo '```text'
             printf '%s\n' "$ERROR_MESSAGE"
+            echo '```'
+            echo '</details>'
           else
             echo "None"
           fi

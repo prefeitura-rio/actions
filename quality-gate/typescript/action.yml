@@ -47,6 +47,20 @@ runs:
       uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       with:
         version: ${{ steps.ts-pm.outputs.version }}
+    - name: typescript | validate Node.js version file
+      if: (inputs.check == 'app:typecheck' || inputs.check == 'app:test')
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        CHECK: ${{ inputs.check }}
+      run: |
+        set -euo pipefail
+        if [[ ! -f .node-version ]]; then
+          MSG="Missing .node-version for TypeScript $CHECK check. Add the Node.js major version used by the project."
+          echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
+          echo "::error title=quality-gate::${MSG}"
+          exit 1
+        fi
     - name: typescript | setup Node.js
       if: (inputs.check == 'app:typecheck' || inputs.check == 'app:test')
       uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
