@@ -248,23 +248,67 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        check: [app:format, app:lint, app:strlint, app:typecheck, app:test]
         include:
-          - check: app:format
+          - framework: typescript
+            check: app:format
             fixture: quality-gate/typescript/fixtures/pass
             fail: quality-gate/typescript/fixtures/format-fail
-          - check: app:lint
+          - framework: typescript
+            check: app:lint
             fixture: quality-gate/typescript/fixtures/pass
             fail: quality-gate/typescript/fixtures/lint-fail
-          - check: app:strlint
+          - framework: typescript
+            check: app:strlint
             fixture: quality-gate/typescript/fixtures/pass
             fail: quality-gate/typescript/fixtures/strlint-fail
-          - check: app:typecheck
+          - framework: typescript
+            check: app:typecheck
             fixture: quality-gate/typescript/fixtures/pass
             fail: quality-gate/typescript/fixtures/typecheck-fail
-          - check: app:test
+          - framework: typescript
+            check: app:test
             fixture: quality-gate/typescript/fixtures/pass
             fail: quality-gate/typescript/fixtures/test-fail
+          - framework: vue
+            check: app:format
+            fixture: quality-gate/typescript/fixtures/vue/pass
+            fail: quality-gate/typescript/fixtures/vue/format-fail
+          - framework: vue
+            check: app:lint
+            fixture: quality-gate/typescript/fixtures/vue/pass
+            fail: quality-gate/typescript/fixtures/vue/lint-fail
+          - framework: vue
+            check: app:strlint
+            fixture: quality-gate/typescript/fixtures/vue/pass
+            fail: quality-gate/typescript/fixtures/vue/strlint-fail
+          - framework: vue
+            check: app:typecheck
+            fixture: quality-gate/typescript/fixtures/vue/pass
+            fail: quality-gate/typescript/fixtures/vue/typecheck-fail
+          - framework: vue
+            check: app:test
+            fixture: quality-gate/typescript/fixtures/vue/pass
+            fail: quality-gate/typescript/fixtures/vue/test-fail
+          - framework: nuxt
+            check: app:format
+            fixture: quality-gate/typescript/fixtures/nuxt/pass
+            fail: quality-gate/typescript/fixtures/nuxt/format-fail
+          - framework: nuxt
+            check: app:lint
+            fixture: quality-gate/typescript/fixtures/nuxt/pass
+            fail: quality-gate/typescript/fixtures/nuxt/lint-fail
+          - framework: nuxt
+            check: app:strlint
+            fixture: quality-gate/typescript/fixtures/nuxt/pass
+            fail: quality-gate/typescript/fixtures/nuxt/strlint-fail
+          - framework: nuxt
+            check: app:typecheck
+            fixture: quality-gate/typescript/fixtures/nuxt/pass
+            fail: quality-gate/typescript/fixtures/nuxt/typecheck-fail
+          - framework: nuxt
+            check: app:test
+            fixture: quality-gate/typescript/fixtures/nuxt/pass
+            fail: quality-gate/typescript/fixtures/nuxt/test-fail
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -308,6 +352,7 @@ jobs:
         if: matrix.check == 'app:format'
         env:
           ERROR_MESSAGE: ${{ steps.ts-fail.outputs.error_message }}
+          EXPECTED_FILE: ${{ matrix.framework == 'typescript' && 'src/app.ts' || matrix.framework == 'vue' && 'src/App.vue' || 'nuxt.config.ts' }}
         run: |
           [[ "$ERROR_MESSAGE" == *"oxfmt found formatting differences in"* ]] || {
             echo "::error::Expected Oxfmt details in the format failure"
@@ -317,12 +362,12 @@ jobs:
             echo "::error::Expected an Oxfmt formatting diff in the format failure"
             exit 1
           }
-          [[ "$ERROR_MESSAGE" == *"Fix locally with: npx --yes --loglevel=error oxfmt@0.62.0 --write ."* ]] || {
+          [[ "$ERROR_MESSAGE" == *"Fix locally with: npx --yes --loglevel=error oxfmt@0.66.0 --write ."* ]] || {
             echo "::error::Expected Oxfmt remediation command in the format failure"
             exit 1
           }
-          [[ "$ERROR_MESSAGE" == *"src/app.ts"* ]] || {
-            echo "::error::Expected the unformatted TypeScript file in the format failure"
+          [[ "$ERROR_MESSAGE" == *"$EXPECTED_FILE"* ]] || {
+            echo "::error::Expected the unformatted $EXPECTED_FILE file in the format failure"
             exit 1
           }
           [[ "$ERROR_MESSAGE" != *"Command failed (exit 1): FILES="* ]] || {
@@ -406,6 +451,14 @@ jobs:
             expected: '["python"]'
           - language: typescript
             fixture: quality-gate/typescript/fixtures/pass
+            expected: '["typescript"]'
+          - language: typescript
+            framework: vue
+            fixture: quality-gate/typescript/fixtures/vue/pass
+            expected: '["typescript"]'
+          - language: typescript
+            framework: nuxt
+            fixture: quality-gate/typescript/fixtures/nuxt/pass
             expected: '["typescript"]'
     steps:
       - name: Checkout

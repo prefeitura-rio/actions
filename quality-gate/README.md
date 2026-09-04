@@ -3,6 +3,8 @@
 Language-agnostic composite GitHub Action that runs a single quality check on
 any Go, Python, or TypeScript project. Detects the project language automatically
 from marker files and executes the appropriate tool for the requested check.
+Vue and Nuxt projects are handled as TypeScript frameworks without separate
+workflow jobs.
 Supports polyglot repositories — detects all present languages and runs checks
 for each in parallel via matrix.
 
@@ -31,7 +33,7 @@ for each in parallel via matrix.
 | -------------------------------- | ----------------- |
 | `go.mod`                         | Go                |
 | `pyproject.toml` or `setup.py`   | Python            |
-| `package.json` + `tsconfig.json` | TypeScript        |
+| `package.json` + `tsconfig.json` | TypeScript (including Vue/Nuxt) |
 
 If none of these marker files exist the action exits with an error.
 
@@ -62,7 +64,7 @@ Fail on any formatting diff. Never auto-fixes in CI.
 | ---------- | ------------------- | ----------------------- |
 | Go         | gofumpt + goimports | v0.8.0 / v0.35.0        |
 | Python     | ruff format         | 0.16.4 (via uvx)        |
-| TypeScript | oxfmt               | 0.62.0 (via npx)        |
+| TypeScript | oxfmt               | 0.66.0 (via npx)        |
 
 When formatting fails, the summary lists the affected files, includes a unified
 formatting diff explaining the required changes, and provides the exact command
@@ -86,7 +88,7 @@ Static analysis. Runs on all three languages.
 | ---------- | ------------------------- | ----------------------- |
 | Go         | golangci-lint             | v2.12.2                 |
 | Python     | ruff check + complexipy   | ruff via uv (project-pinned) · complexipy 7.0.1 (via uvx) |
-| TypeScript | oxlint + react-doctor    | oxlint 0.16.7 (via npx) · react-doctor 0.9.12 (via npx, React projects) |
+| TypeScript | oxlint + react-doctor    | oxlint 1.81.0 (via npx) · react-doctor 0.9.12 (via npx, React projects) |
 
 ### `app:strlint`
 
@@ -124,7 +126,7 @@ Type checking and compilation verification.
 | ---------- | ------------------------------------------ | -------------------------------------------- |
 | Go         | `go vet ./...` + `go build -o /dev/null`   | Builds `./cmd/...` if present, otherwise `.` |
 | Python     | `ty check` (strict: all rules at error)     | ty 0.0.74 (via uvx)                          |
-| TypeScript | `pnpm run typecheck` / `npm run typecheck` | depends on detected package manager          |
+| TypeScript | `pnpm run typecheck` / `npm run typecheck` | project script; Vue falls back to `vue-tsc`, Nuxt to `nuxt typecheck` |
 
 ### `app:test`
 
@@ -158,9 +160,12 @@ Go, Python, and TypeScript checks run in parallel.
 Tool configuration follows this precedence: project configuration is used when
 present; the organization configuration is the fallback when the project does
 not provide one. Organization fallbacks use strict presets: Ruff selects all
-rules, golangci-lint enables all linters, oxlint enables all rules, and ty treats
-all rules as errors. Structural lint runs both organization and project rules,
-with project rules applied last. The action does not modify project files.
+rules, golangci-lint enables all linters, oxlint enables correctness rules plus
+the explicit organization policy rules, and ty treats all rules as errors.
+Structural lint runs both organization and project rules, with project rules
+applied last. For Vue and Nuxt, organization TypeScript rules also run inside
+`<script lang="ts">` blocks in `.vue` files. The action does not modify project
+files.
 
 ### Tool installation
 
@@ -169,7 +174,8 @@ against a hardcoded sha256 checksum before execution. This prevents tampered
 releases from running on CI runners.
 
 npx-pinned tools (oxfmt, oxlint, react-doctor) are downloaded by npx at the
-pinned version. react-doctor runs only when the project declares `react` or
+pinned version. Oxlint's Vue plugin is enabled by the organization fallback
+configuration. react-doctor runs only when the project declares `react` or
 `react-dom`.
 
 Go tools installed via `go install` are pinned by module version (golangci-lint
@@ -185,6 +191,22 @@ dependencies, the same way gofumpt and ast-grep are pinned for Go.
 
 The action detects `pnpm-lock.yaml` or `package-lock.json` at the repo root.
 If neither is present it exits with an error.
+
+### TypeScript framework detection
+
+The TypeScript action detects frontend frameworks internally after TypeScript
+detection. Nuxt detection takes precedence over Vue detection.
+
+| Framework | Detection | Framework-specific behavior |
+| --------- | --------- | ---------------------------- |
+| Vue | `vue` dependency or `.vue` files | Vue-aware Oxlint rules, `.vue` formatting, and `vue-tsc --noEmit` fallback |
+| Nuxt | `nuxt` dependency or `nuxt.config.*` | Vue-aware Oxlint rules, `.vue` formatting, and `nuxt typecheck` fallback |
+
+Both frameworks continue to report as `typescript` to the root dispatcher and
+reusable workflow. An existing `scripts.typecheck` command remains
+authoritative; framework commands are used only when that script is absent.
+Projects using the fallback must declare `vue-tsc` and `typescript` in their
+development dependencies.
 
 ---
 

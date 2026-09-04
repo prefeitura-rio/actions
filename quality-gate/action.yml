@@ -1,7 +1,8 @@
 name: Quality Gate
 description: |
   Language-agnostic quality gate. Detects the project language and dispatches
-  the requested check to the language-specific action.
+  the requested check to the language-specific action. Vue and Nuxt projects
+  use the TypeScript action with framework-aware checks.
 inputs:
   check:
     description: |
@@ -17,7 +18,8 @@ inputs:
       Explicit language override (go, python, typescript).
       When provided, skips file-based detection and uses this value directly.
       When omitted, detection runs from marker files (go.mod, pyproject.toml,
-      setup.py, package.json+tsconfig.json).
+      setup.py, package.json+tsconfig.json). Vue and Nuxt remain TypeScript
+      projects for dispatch and workflow matrix purposes.
     required: false
 outputs:
   error_message:
