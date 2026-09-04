@@ -188,6 +188,8 @@ Ruff formatting uses the action-pinned `uvx ruff@0.16.4`. Other Python tools
 ty and complexipy are the exception: they are installed by the action via
 `uvx <tool>@<version>` at a pinned version, independent of the project's own
 dependencies, the same way gofumpt and ast-grep are pinned for Go.
+The action does not pass a complexity threshold; complexipy uses its default or
+the consuming project's configuration.
 
 ### TypeScript package manager detection
 

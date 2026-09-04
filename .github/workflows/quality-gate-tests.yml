@@ -170,6 +170,11 @@ jobs:
           - check: app:lint
             fixture: quality-gate/python/fixtures/pass
             fail: quality-gate/python/fixtures/lint-fail
+            failure_kind: ruff
+          - check: app:lint
+            fixture: quality-gate/python/fixtures/pass
+            fail: quality-gate/python/fixtures/complexity-fail
+            failure_kind: complexipy
           - check: app:strlint
             fixture: quality-gate/python/fixtures/pass
             fail: quality-gate/python/fixtures/strlint-fail
@@ -212,6 +217,20 @@ jobs:
           }
           [[ -n "$ERROR_MESSAGE" ]] || {
             echo "::error::Expected a diagnostic error message for ${{ matrix.fail }}"
+            exit 1
+          }
+
+      - name: assert complexipy failure
+        if: matrix.failure_kind == 'complexipy'
+        env:
+          ERROR_MESSAGE: ${{ steps.py-fail.outputs.error_message }}
+        run: |
+          [[ "$ERROR_MESSAGE" == *"calculate_total"* ]] || {
+            echo "::error::Expected the complexipy failure to identify calculate_total"
+            exit 1
+          }
+          [[ "$ERROR_MESSAGE" == *"FAILED"* ]] || {
+            echo "::error::Expected complexipy to report the function as failed"
             exit 1
           }
 
