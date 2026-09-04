@@ -92,31 +92,27 @@ runs:
         NPM_CONFIG_LOGLEVEL: error
       run: |
         set -euo pipefail
-        if CHECK_OUTPUT=$(npx --yes --loglevel=error oxfmt@0.62.0 --check . 2>&1); then
+        STDERR_FILE=$(mktemp)
+        if FILES=$(npx --yes --loglevel=error oxfmt@0.62.0 --list-different . 2>"$STDERR_FILE"); then
           OXFMT_STATUS=0
         else
           OXFMT_STATUS=$?
         fi
 
-        FILES=$(printf '%s\n' "$CHECK_OUTPUT" | awk '
-          / \([0-9]+ms\)$/ {
-            file = $0
-            sub(/ \([0-9]+ms\)$/, "", file)
-            print file
-          }
-        ')
-
-        if [[ "$OXFMT_STATUS" -ne 0 && -z "$FILES" ]]; then
-          printf '%s\n' "$CHECK_OUTPUT"
+        if [[ "$OXFMT_STATUS" -gt 1 || ( "$OXFMT_STATUS" -eq 1 && -z "$FILES" ) ]]; then
           {
             echo "oxfmt could not complete the formatting check."
             echo
-            echo "See the failed step logs for command output."
-            echo "Fix locally with: npx --yes oxfmt@0.62.0 --write ."
+            echo "Formatter output:"
+            cat "$STDERR_FILE"
+            echo
+            echo "Fix locally with: npx --yes --loglevel=error oxfmt@0.62.0 --write ."
           } > "$RUNNER_TEMP/quality-gate-error.txt"
           echo "::error title=format::oxfmt could not complete the formatting check."
+          rm -f "$STDERR_FILE"
           exit "$OXFMT_STATUS"
         fi
+        rm -f "$STDERR_FILE"
 
         if [[ "$OXFMT_STATUS" -eq 0 ]]; then
           echo "oxfmt: all files are correctly formatted."
@@ -124,18 +120,47 @@ runs:
         fi
 
         FILE_COUNT=$(printf '%s\n' "$FILES" | awk 'NF { count++ } END { print count + 0 }')
-        printf '%s\n' "$CHECK_OUTPUT"
+        DIFF_FILE=$(mktemp)
+        TEMP_DIRS=()
+        ORIGINAL_FILES=()
+        TEMP_FILES=()
+
+        while IFS= read -r file; do
+          [[ -z "$file" || ! -f "$file" ]] && continue
+          temp_dir=$(mktemp -d "$(dirname "$file")/.quality-gate-format.XXXXXX")
+          temp_file="$temp_dir/$(basename "$file")"
+          cp "$file" "$temp_file"
+          TEMP_DIRS+=("$temp_dir")
+          ORIGINAL_FILES+=("$file")
+          TEMP_FILES+=("$temp_file")
+        done <<< "$FILES"
+
+        if [[ ${#TEMP_FILES[@]} -gt 0 ]]; then
+          npx --yes --loglevel=error oxfmt@0.62.0 --write "${TEMP_FILES[@]}" >/dev/null 2>&1 || true
+          for index in "${!TEMP_FILES[@]}"; do
+            diff -u \
+              --label "${ORIGINAL_FILES[$index]} (current)" \
+              --label "${ORIGINAL_FILES[$index]} (formatted)" \
+              "${ORIGINAL_FILES[$index]}" "${TEMP_FILES[$index]}" >> "$DIFF_FILE" || true
+          done
+        fi
+
         {
           echo "oxfmt found formatting differences in $FILE_COUNT file(s)."
           echo
           echo "Files requiring formatting:"
-          printf '%s\n' "$FILES" | while IFS= read -r file; do
-            [[ -n "$file" ]] && echo "- $file"
-          done
+          printf '%s\n' "${ORIGINAL_FILES[@]}" | while IFS= read -r file; do echo "- $file"; done
           echo
-          echo "See the failed step logs for command output."
-          echo "Fix locally with: npx --yes oxfmt@0.62.0 --write ."
+          echo "Formatting diff:"
+          cat "$DIFF_FILE"
+          echo
+          echo "Fix locally with: npx --yes --loglevel=error oxfmt@0.62.0 --write ."
         } > "$RUNNER_TEMP/quality-gate-error.txt"
+
+        for temp_dir in "${TEMP_DIRS[@]}"; do
+          rm -rf "$temp_dir"
+        done
+        rm -f "$DIFF_FILE"
 
         echo "::error title=format::oxfmt found formatting differences in $FILE_COUNT file(s)."
         exit 1

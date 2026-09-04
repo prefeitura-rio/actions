@@ -216,16 +216,9 @@ runs:
           else
             echo "Outcome: failure"
           fi
-          echo "Failure details:"
+          echo "Error:"
           if [[ -n "$ERROR_MESSAGE" ]]; then
-            echo
-            echo '<details>'
-            echo '<summary>Failure details</summary>'
-            echo
-            echo '```text'
             printf '%s\n' "$ERROR_MESSAGE"
-            echo '```'
-            echo '</details>'
           else
             echo "None"
           fi

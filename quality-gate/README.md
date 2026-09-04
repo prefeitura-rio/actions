@@ -61,12 +61,12 @@ Fail on any formatting diff. Never auto-fixes in CI.
 | Language   | Tool                | Version                 |
 | ---------- | ------------------- | ----------------------- |
 | Go         | gofumpt + goimports | v0.8.0 / v0.35.0        |
-| Python     | ruff format         | via uv (project-pinned) |
+| Python     | ruff format         | 0.16.4 (via uvx)        |
 | TypeScript | oxfmt               | 0.62.0 (via npx)        |
 
-When formatting fails, the summary stays concise: it lists the affected files and
-the command to apply the fix locally. Formatter command output remains available
-in the failed step logs. Go reports separate `gofumpt` and `goimports` failures so
+When formatting fails, the summary lists the affected files, includes the unified
+formatting diff explaining the required changes, and provides the exact command
+to apply the fix locally. Go reports separate `gofumpt` and `goimports` failures so
 the correct formatter command is clear.
 
 Quality-gate summaries use friendly check and language names, such as `Quality
@@ -170,8 +170,8 @@ pinned version. react-doctor runs only when the project declares `react` or
 Go tools installed via `go install` are pinned by module version (golangci-lint
 installed via the official `golangci-lint-action` which pins by version tag).
 
-Most Python tools (ruff, pytest) are installed via uv from the project's
-`pyproject.toml` — no additional version pinning in the action itself.
+Ruff formatting uses the action-pinned `uvx ruff@0.16.4`. Other Python tools
+(ruff check, pytest) are installed via uv from the project's `pyproject.toml`.
 ty and complexipy are the exception: they are installed by the action via
 `uvx <tool>@<version>` at a pinned version, independent of the project's own
 dependencies, the same way gofumpt and ast-grep are pinned for Go.

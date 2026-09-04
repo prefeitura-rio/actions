@@ -134,6 +134,10 @@ jobs:
             echo "::error::Expected gofumpt details in the format failure"
             exit 1
           }
+          [[ "$ERROR_MESSAGE" == *"Formatting diff:"* ]] || {
+            echo "::error::Expected a gofumpt formatting diff in the format failure"
+            exit 1
+          }
           [[ "$ERROR_MESSAGE" == *"Fix locally with: gofumpt -w ."* ]] || {
             echo "::error::Expected gofumpt remediation command in the format failure"
             exit 1
@@ -218,7 +222,11 @@ jobs:
             echo "::error::Expected Ruff format details in the format failure"
             exit 1
           }
-          [[ "$ERROR_MESSAGE" == *"Fix locally with: uvx ruff@latest format ."* ]] || {
+          [[ "$ERROR_MESSAGE" == *"Formatting diff:"* ]] || {
+            echo "::error::Expected a Ruff formatting diff in the format failure"
+            exit 1
+          }
+          [[ "$ERROR_MESSAGE" == *"Fix locally with: uvx ruff@0.16.4 format ."* ]] || {
             echo "::error::Expected Ruff remediation command in the format failure"
             exit 1
           }
@@ -305,7 +313,11 @@ jobs:
             echo "::error::Expected Oxfmt details in the format failure"
             exit 1
           }
-          [[ "$ERROR_MESSAGE" == *"Fix locally with: npx --yes oxfmt@0.62.0 --write ."* ]] || {
+          [[ "$ERROR_MESSAGE" == *"Formatting diff:"* ]] || {
+            echo "::error::Expected an Oxfmt formatting diff in the format failure"
+            exit 1
+          }
+          [[ "$ERROR_MESSAGE" == *"Fix locally with: npx --yes --loglevel=error oxfmt@0.62.0 --write ."* ]] || {
             echo "::error::Expected Oxfmt remediation command in the format failure"
             exit 1
           }

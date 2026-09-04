@@ -52,6 +52,7 @@ runs:
         set -euo pipefail
         UNFORMATTED=$(gofumpt -l .)
         if [[ -n "$UNFORMATTED" ]]; then
+          DIFF=$(gofumpt -d . || true)
           printf '%s\n' "$UNFORMATTED"
           {
             echo "gofumpt found unformatted files."
@@ -59,7 +60,9 @@ runs:
             echo "Files requiring formatting:"
             echo "$UNFORMATTED" | while read -r f; do echo "- $f"; done
             echo
-            echo "See the failed step logs for command output."
+            echo "Formatting diff:"
+            printf '%s\n' "$DIFF"
+            echo
             echo "Fix locally with: gofumpt -w ."
           } > "$RUNNER_TEMP/quality-gate-error.txt"
           echo "::error title=format::gofumpt found unformatted files."
@@ -74,6 +77,7 @@ runs:
         set -euo pipefail
         UNFORMATTED=$(goimports -l .)
         if [[ -n "$UNFORMATTED" ]]; then
+          DIFF=$(goimports -d . || true)
           printf '%s\n' "$UNFORMATTED"
           {
             echo "goimports found files with unorganised imports."
@@ -81,7 +85,9 @@ runs:
             echo "Files requiring import organisation:"
             echo "$UNFORMATTED" | while read -r f; do echo "- $f"; done
             echo
-            echo "See the failed step logs for command output."
+            echo "Formatting diff:"
+            printf '%s\n' "$DIFF"
+            echo
             echo "Fix locally with: goimports -w ."
           } > "$RUNNER_TEMP/quality-gate-error.txt"
           echo "::error title=format::goimports found files with unorganised imports."

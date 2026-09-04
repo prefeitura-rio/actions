@@ -34,28 +34,40 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
-        if CHECK_OUTPUT=$(uvx ruff@latest format --check . 2>&1); then
+        if CHECK_OUTPUT=$(uvx ruff@0.16.4 format --check . 2>&1); then
           echo "ruff format: all files are correctly formatted."
           exit 0
         fi
 
         FILES=$(printf '%s\n' "$CHECK_OUTPUT" | awk '
-          /Would reformat:/ { print $NF }
+          /^Would reformat: / { sub(/^Would reformat: /, ""); print }
           /^  --> / { file = $2; sub(/:.*/, "", file); print file }
         ' | sort -u)
+        if [[ -z "$FILES" ]]; then
+          {
+            echo "ruff format could not complete the formatting check."
+            echo
+            echo "Formatter output:"
+            printf '%s\n' "$CHECK_OUTPUT"
+            echo
+            echo "Fix locally with: uvx ruff@0.16.4 format ."
+          } > "$RUNNER_TEMP/quality-gate-error.txt"
+          echo "::error title=format::ruff format could not complete the formatting check."
+          exit 1
+        fi
+
+        DIFF=$(uvx ruff@0.16.4 format --diff . 2>&1 || true)
         printf '%s\n' "$CHECK_OUTPUT"
         {
           echo "ruff format found formatting differences."
           echo
           echo "Files requiring formatting:"
-          if [[ -n "$FILES" ]]; then
-            printf '%s\n' "$FILES" | while IFS= read -r file; do echo "- $file"; done
-          else
-            echo "- See formatter output in the failed step logs."
-          fi
+          printf '%s\n' "$FILES" | while IFS= read -r file; do echo "- $file"; done
           echo
-          echo "See the failed step logs for command output."
-          echo "Fix locally with: uvx ruff@latest format ."
+          echo "Formatting diff:"
+          printf '%s\n' "$DIFF"
+          echo
+          echo "Fix locally with: uvx ruff@0.16.4 format ."
         } > "$RUNNER_TEMP/quality-gate-error.txt"
         echo "::error title=format::ruff format found formatting differences."
         exit 1
