@@ -8,6 +8,10 @@ inputs:
     description: The project directory to check.
     required: false
     default: .
+outputs:
+  framework:
+    description: Detected frontend framework, or none for a plain TypeScript project.
+    value: ${{ steps.ts-framework.outputs.name }}
 runs:
   using: composite
   steps:
@@ -130,6 +134,19 @@ runs:
       run: |
         set -euo pipefail
         npm ci
+    - name: typescript | prepare Nuxt
+      if: inputs.check == 'app:test' && steps.ts-framework.outputs.name == 'nuxt'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        PM: ${{ steps.ts-pm.outputs.manager }}
+      run: |
+        set -euo pipefail
+        if [[ "$PM" == "npm" ]]; then
+          npm exec --no -- nuxt prepare
+        else
+          pnpm exec nuxt prepare
+        fi
     - name: format | oxfmt (typescript)
       if: inputs.check == 'app:format'
       shell: bash

@@ -26,6 +26,7 @@ for each in parallel via matrix.
 | ------------- | ----------- |
 | `error_message` | Human-readable error message set when the action fails. |
 | `languages`   | JSON array of detected languages (e.g. `["go","typescript"]`). Set only when `check: detect-only`. |
+| `summary_name` | Friendly check, language, and framework name used in the job summary, such as `Format (Typescript)` or `Format (Typescript - Vue)`. |
 
 ### Language detection
 
@@ -73,9 +74,10 @@ the complete formatter output remains in the failed step logs. Go reports
 separate `gofumpt` and `goimports` failures so the correct formatter command is
 clear.
 
-Quality-gate summaries use friendly check and language names, such as `Quality
-Gate: Lint (Typescript)` and `Quality Gate: Format (Python)`. Detection and setup
-failures fall back to the raw check name when a language is not available.
+Quality-gate summaries use friendly check, language, and framework names, such as
+`Quality Gate: Lint (Typescript)`, `Quality Gate: Format (Typescript - Vue)`, and
+`Quality Gate: Format (Python)`. Detection and setup failures fall back to the
+raw check name when a language is not available.
 The summary reads diagnostics from a runner temporary file, avoiding process
 environment limits for large formatter reports. The `error_message` output is
 bounded to 64 KiB for downstream step usage.
@@ -207,6 +209,9 @@ reusable workflow. An existing `scripts.typecheck` command remains
 authoritative; framework commands are used only when that script is absent.
 Projects using the fallback must declare `vue-tsc` and `typescript` in their
 development dependencies.
+
+When a framework is detected, the job summary identifies it while preserving the
+TypeScript language identity: `Typescript - Vue` or `Typescript - Nuxt`.
 
 ---
 

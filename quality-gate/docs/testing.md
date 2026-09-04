@@ -43,7 +43,7 @@ match the project's markers (rejected) and by requesting the correct language
 | `ast-grep-rules` | ast-grep rule correctness for Go, Python, TypeScript |
 | `go` | All 5 checks (format, lint, strlint, typecheck, test) pass/fail for Go |
 | `python` | All 4 checks (format, lint, strlint, test) pass/fail for Python |
-| `typescript` | All 5 checks pass/fail for TypeScript, Vue, and Nuxt fixtures |
+| `typescript` | All 5 checks pass/fail for TypeScript, Vue, and Nuxt fixtures, including framework-aware summary names |
 | `error-invalid-check` | Invalid check names are rejected with exact error message |
 | `setup-py-success` | `setup.py`-only project is accepted as Python |
 | `detect-single-language` | `detect-only` returns correct JSON for Go, Python, TypeScript, Vue, and Nuxt |

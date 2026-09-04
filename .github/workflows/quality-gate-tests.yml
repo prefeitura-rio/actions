@@ -147,11 +147,13 @@ jobs:
             exit 1
           }
 
-      - name: assert friendly quality-gate summary name
+      - name: assert friendly quality-gate summary output
         if: matrix.check == 'app:format'
+        env:
+          SUMMARY_NAME: ${{ steps.go-pass.outputs.summary_name }}
         run: |
-          grep -Fq "### Quality Gate: Format (Go)" "$GITHUB_STEP_SUMMARY" || {
-            echo "::error::Expected the Go format summary to use its friendly name"
+          [[ "$SUMMARY_NAME" == "Format (Go)" ]] || {
+            echo "::error::Expected the Go format output to use its friendly name"
             exit 1
           }
 
@@ -235,11 +237,13 @@ jobs:
             exit 1
           }
 
-      - name: assert friendly quality-gate summary name
+      - name: assert friendly quality-gate summary output
         if: matrix.check == 'app:format'
+        env:
+          SUMMARY_NAME: ${{ steps.py-pass.outputs.summary_name }}
         run: |
-          grep -Fq "### Quality Gate: Format (Python)" "$GITHUB_STEP_SUMMARY" || {
-            echo "::error::Expected the Python format summary to use its friendly name"
+          [[ "$SUMMARY_NAME" == "Format (Python)" ]] || {
+            echo "::error::Expected the Python format output to use its friendly name"
             exit 1
           }
 
@@ -375,11 +379,19 @@ jobs:
             exit 1
           }
 
-      - name: assert friendly quality-gate summary name
+      - name: assert friendly quality-gate summary output
         if: matrix.check == 'app:format'
+        env:
+          SUMMARY_NAME: ${{ steps.ts-pass.outputs.summary_name }}
+          FRAMEWORK: ${{ matrix.framework }}
         run: |
-          grep -Fq "### Quality Gate: Format (Typescript)" "$GITHUB_STEP_SUMMARY" || {
-            echo "::error::Expected the TypeScript format summary to use its friendly name"
+          case "$FRAMEWORK" in
+            vue) EXPECTED_SUMMARY="Format (Typescript - Vue)" ;;
+            nuxt) EXPECTED_SUMMARY="Format (Typescript - Nuxt)" ;;
+            *) EXPECTED_SUMMARY="Format (Typescript)" ;;
+          esac
+          [[ "$SUMMARY_NAME" == "$EXPECTED_SUMMARY" ]] || {
+            echo "::error::Expected '$EXPECTED_SUMMARY' but got '$SUMMARY_NAME'"
             exit 1
           }
 
