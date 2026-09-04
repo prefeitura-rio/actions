@@ -1,7 +1,8 @@
 name: Quality Gate
 description: |
   Language-agnostic quality gate. Detects the project language and dispatches
-  the requested check to the language-specific action.
+  the requested check to the language-specific action. Vue and Nuxt projects
+  use the TypeScript action with framework-aware checks.
 inputs:
   check:
     description: |
@@ -17,7 +18,8 @@ inputs:
       Explicit language override (go, python, typescript).
       When provided, skips file-based detection and uses this value directly.
       When omitted, detection runs from marker files (go.mod, pyproject.toml,
-      setup.py, package.json+tsconfig.json).
+      setup.py, package.json+tsconfig.json). Vue and Nuxt remain TypeScript
+      projects for dispatch and workflow matrix purposes.
     required: false
 outputs:
   error_message:
@@ -28,6 +30,9 @@ outputs:
       JSON array of detected languages, e.g. ["go","typescript"].
       Set only when check is detect-only. Empty for normal checks.
     value: ${{ steps.lang.outputs.languages }}
+  summary_name:
+    description: Friendly check, language, and framework name used in the job summary.
+    value: ${{ steps.summary.outputs.name }}
 runs:
   using: composite
   steps:
@@ -146,6 +151,7 @@ runs:
         check: ${{ inputs.check }}
         working-directory: ${{ inputs.working-directory }}
     - name: Run TypeScript quality gate
+      id: typescript
       if: steps.lang.outputs.name == 'typescript'
       uses: $/quality-gate/typescript
       with:
@@ -189,11 +195,13 @@ runs:
         fi
         echo "BASH_ENV=" >> "$GITHUB_ENV"
     - name: Write quality gate summary
+      id: summary
       if: always()
       shell: bash
       env:
         CHECK: ${{ inputs.check }}
         LANGUAGE: ${{ steps.lang.outputs.name }}
+        FRAMEWORK: ${{ steps.typescript.outputs.framework }}
       run: |
         set -euo pipefail
         success="$RUNNER_TEMP/quality-gate-success"
@@ -208,7 +216,13 @@ runs:
         case "$LANGUAGE" in
           go) LANGUAGE_NAME="Go" ;;
           python) LANGUAGE_NAME="Python" ;;
-          typescript) LANGUAGE_NAME="Typescript" ;;
+          typescript)
+            case "$FRAMEWORK" in
+              vue) LANGUAGE_NAME="Typescript - Vue" ;;
+              nuxt) LANGUAGE_NAME="Typescript - Nuxt" ;;
+              *) LANGUAGE_NAME="Typescript" ;;
+            esac
+            ;;
           *) LANGUAGE_NAME="" ;;
         esac
         if [[ -n "$LANGUAGE_NAME" && "$CHECK" != "detect-only" ]]; then
@@ -216,6 +230,7 @@ runs:
         else
           SUMMARY_NAME="$CHECK_NAME"
         fi
+        echo "name=$SUMMARY_NAME" >> "$GITHUB_OUTPUT"
         {
           echo "### Quality Gate: $SUMMARY_NAME"
           if [[ -f "$success" ]]; then

@@ -147,11 +147,13 @@ jobs:
             exit 1
           }
 
-      - name: assert friendly quality-gate summary name
+      - name: assert friendly quality-gate summary output
         if: matrix.check == 'app:format'
+        env:
+          SUMMARY_NAME: ${{ steps.go-pass.outputs.summary_name }}
         run: |
-          grep -Fq "### Quality Gate: Format (Go)" "$GITHUB_STEP_SUMMARY" || {
-            echo "::error::Expected the Go format summary to use its friendly name"
+          [[ "$SUMMARY_NAME" == "Format (Go)" ]] || {
+            echo "::error::Expected the Go format output to use its friendly name"
             exit 1
           }
 
@@ -168,6 +170,11 @@ jobs:
           - check: app:lint
             fixture: quality-gate/python/fixtures/pass
             fail: quality-gate/python/fixtures/lint-fail
+            failure_kind: ruff
+          - check: app:lint
+            fixture: quality-gate/python/fixtures/pass
+            fail: quality-gate/python/fixtures/complexity-fail
+            failure_kind: complexipy
           - check: app:strlint
             fixture: quality-gate/python/fixtures/pass
             fail: quality-gate/python/fixtures/strlint-fail
@@ -213,6 +220,20 @@ jobs:
             exit 1
           }
 
+      - name: assert complexipy failure
+        if: matrix.failure_kind == 'complexipy'
+        env:
+          ERROR_MESSAGE: ${{ steps.py-fail.outputs.error_message }}
+        run: |
+          [[ "$ERROR_MESSAGE" == *"calculate_total"* ]] || {
+            echo "::error::Expected the complexipy failure to identify calculate_total"
+            exit 1
+          }
+          [[ "$ERROR_MESSAGE" == *"FAILED"* ]] || {
+            echo "::error::Expected complexipy to report the function as failed"
+            exit 1
+          }
+
       - name: assert format failure is actionable
         if: matrix.check == 'app:format'
         env:
@@ -235,11 +256,13 @@ jobs:
             exit 1
           }
 
-      - name: assert friendly quality-gate summary name
+      - name: assert friendly quality-gate summary output
         if: matrix.check == 'app:format'
+        env:
+          SUMMARY_NAME: ${{ steps.py-pass.outputs.summary_name }}
         run: |
-          grep -Fq "### Quality Gate: Format (Python)" "$GITHUB_STEP_SUMMARY" || {
-            echo "::error::Expected the Python format summary to use its friendly name"
+          [[ "$SUMMARY_NAME" == "Format (Python)" ]] || {
+            echo "::error::Expected the Python format output to use its friendly name"
             exit 1
           }
 
@@ -248,23 +271,67 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        check: [app:format, app:lint, app:strlint, app:typecheck, app:test]
         include:
-          - check: app:format
+          - framework: typescript
+            check: app:format
             fixture: quality-gate/typescript/fixtures/pass
             fail: quality-gate/typescript/fixtures/format-fail
-          - check: app:lint
+          - framework: typescript
+            check: app:lint
             fixture: quality-gate/typescript/fixtures/pass
             fail: quality-gate/typescript/fixtures/lint-fail
-          - check: app:strlint
+          - framework: typescript
+            check: app:strlint
             fixture: quality-gate/typescript/fixtures/pass
             fail: quality-gate/typescript/fixtures/strlint-fail
-          - check: app:typecheck
+          - framework: typescript
+            check: app:typecheck
             fixture: quality-gate/typescript/fixtures/pass
             fail: quality-gate/typescript/fixtures/typecheck-fail
-          - check: app:test
+          - framework: typescript
+            check: app:test
             fixture: quality-gate/typescript/fixtures/pass
             fail: quality-gate/typescript/fixtures/test-fail
+          - framework: vue
+            check: app:format
+            fixture: quality-gate/typescript/fixtures/vue/pass
+            fail: quality-gate/typescript/fixtures/vue/format-fail
+          - framework: vue
+            check: app:lint
+            fixture: quality-gate/typescript/fixtures/vue/pass
+            fail: quality-gate/typescript/fixtures/vue/lint-fail
+          - framework: vue
+            check: app:strlint
+            fixture: quality-gate/typescript/fixtures/vue/pass
+            fail: quality-gate/typescript/fixtures/vue/strlint-fail
+          - framework: vue
+            check: app:typecheck
+            fixture: quality-gate/typescript/fixtures/vue/pass
+            fail: quality-gate/typescript/fixtures/vue/typecheck-fail
+          - framework: vue
+            check: app:test
+            fixture: quality-gate/typescript/fixtures/vue/pass
+            fail: quality-gate/typescript/fixtures/vue/test-fail
+          - framework: nuxt
+            check: app:format
+            fixture: quality-gate/typescript/fixtures/nuxt/pass
+            fail: quality-gate/typescript/fixtures/nuxt/format-fail
+          - framework: nuxt
+            check: app:lint
+            fixture: quality-gate/typescript/fixtures/nuxt/pass
+            fail: quality-gate/typescript/fixtures/nuxt/lint-fail
+          - framework: nuxt
+            check: app:strlint
+            fixture: quality-gate/typescript/fixtures/nuxt/pass
+            fail: quality-gate/typescript/fixtures/nuxt/strlint-fail
+          - framework: nuxt
+            check: app:typecheck
+            fixture: quality-gate/typescript/fixtures/nuxt/pass
+            fail: quality-gate/typescript/fixtures/nuxt/typecheck-fail
+          - framework: nuxt
+            check: app:test
+            fixture: quality-gate/typescript/fixtures/nuxt/pass
+            fail: quality-gate/typescript/fixtures/nuxt/test-fail
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -308,6 +375,7 @@ jobs:
         if: matrix.check == 'app:format'
         env:
           ERROR_MESSAGE: ${{ steps.ts-fail.outputs.error_message }}
+          EXPECTED_FILE: ${{ matrix.framework == 'typescript' && 'src/app.ts' || matrix.framework == 'vue' && 'src/App.vue' || 'nuxt.config.ts' }}
         run: |
           [[ "$ERROR_MESSAGE" == *"oxfmt found formatting differences in"* ]] || {
             echo "::error::Expected Oxfmt details in the format failure"
@@ -317,12 +385,12 @@ jobs:
             echo "::error::Expected an Oxfmt formatting diff in the format failure"
             exit 1
           }
-          [[ "$ERROR_MESSAGE" == *"Fix locally with: npx --yes --loglevel=error oxfmt@0.62.0 --write ."* ]] || {
+          [[ "$ERROR_MESSAGE" == *"Fix locally with: npx --yes --loglevel=error oxfmt@0.66.0 --write ."* ]] || {
             echo "::error::Expected Oxfmt remediation command in the format failure"
             exit 1
           }
-          [[ "$ERROR_MESSAGE" == *"src/app.ts"* ]] || {
-            echo "::error::Expected the unformatted TypeScript file in the format failure"
+          [[ "$ERROR_MESSAGE" == *"$EXPECTED_FILE"* ]] || {
+            echo "::error::Expected the unformatted $EXPECTED_FILE file in the format failure"
             exit 1
           }
           [[ "$ERROR_MESSAGE" != *"Command failed (exit 1): FILES="* ]] || {
@@ -330,11 +398,19 @@ jobs:
             exit 1
           }
 
-      - name: assert friendly quality-gate summary name
+      - name: assert friendly quality-gate summary output
         if: matrix.check == 'app:format'
+        env:
+          SUMMARY_NAME: ${{ steps.ts-pass.outputs.summary_name }}
+          FRAMEWORK: ${{ matrix.framework }}
         run: |
-          grep -Fq "### Quality Gate: Format (Typescript)" "$GITHUB_STEP_SUMMARY" || {
-            echo "::error::Expected the TypeScript format summary to use its friendly name"
+          case "$FRAMEWORK" in
+            vue) EXPECTED_SUMMARY="Format (Typescript - Vue)" ;;
+            nuxt) EXPECTED_SUMMARY="Format (Typescript - Nuxt)" ;;
+            *) EXPECTED_SUMMARY="Format (Typescript)" ;;
+          esac
+          [[ "$SUMMARY_NAME" == "$EXPECTED_SUMMARY" ]] || {
+            echo "::error::Expected '$EXPECTED_SUMMARY' but got '$SUMMARY_NAME'"
             exit 1
           }
 
@@ -406,6 +482,14 @@ jobs:
             expected: '["python"]'
           - language: typescript
             fixture: quality-gate/typescript/fixtures/pass
+            expected: '["typescript"]'
+          - language: typescript
+            framework: vue
+            fixture: quality-gate/typescript/fixtures/vue/pass
+            expected: '["typescript"]'
+          - language: typescript
+            framework: nuxt
+            fixture: quality-gate/typescript/fixtures/nuxt/pass
             expected: '["typescript"]'
     steps:
       - name: Checkout

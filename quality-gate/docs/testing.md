@@ -13,14 +13,15 @@ parser, or ast-grep version changes.
 The action is run against clean and deliberately broken fixture projects for
 each supported language and quality check. Language fixtures live beside their
 action in `quality-gate/go/fixtures/`, `quality-gate/python/fixtures/`, and
-`quality-gate/typescript/fixtures/`. Shared detection and validation fixtures
+`quality-gate/typescript/fixtures/`. The TypeScript fixtures include plain
+TypeScript, Vue, and Nuxt projects. Shared detection and validation fixtures
 remain in `quality-gate/fixtures/error/`. Clean fixtures prove that valid code
 is accepted. Broken fixtures prove that formatting, lint, structural lint,
 typecheck, and test failures are detected. This tests the complete action path,
 including language detection, dispatch from the root action, language-specific
-action setup, configuration precedence, strict organization fallbacks, React
-project detection, and the quality command, rather than only isolated shell
-conditions.
+action setup, configuration precedence, strict organization fallbacks, React,
+Vue, and Nuxt framework detection, Vue SFC handling, and the quality command,
+rather than only isolated shell conditions.
 
 Defensive error scenarios are tested separately. They cover invalid check
 names, unsupported projects, missing TypeScript lockfiles, corrupted tool
@@ -42,10 +43,10 @@ match the project's markers (rejected) and by requesting the correct language
 | `ast-grep-rules` | ast-grep rule correctness for Go, Python, TypeScript |
 | `go` | All 5 checks (format, lint, strlint, typecheck, test) pass/fail for Go |
 | `python` | All 4 checks (format, lint, strlint, test) pass/fail for Python |
-| `typescript` | All 5 checks pass/fail for TypeScript |
+| `typescript` | All 5 checks pass/fail for TypeScript, Vue, and Nuxt fixtures, including framework-aware summary names |
 | `error-invalid-check` | Invalid check names are rejected with exact error message |
 | `setup-py-success` | `setup.py`-only project is accepted as Python |
-| `detect-single-language` | `detect-only` returns correct JSON for Go, Python, TypeScript |
+| `detect-single-language` | `detect-only` returns correct JSON for Go, Python, TypeScript, Vue, and Nuxt |
 | `detect-multi-language` | `detect-only` returns all 3 languages for polyglot directory |
 | `detect-no-language` | `detect-only` fails on empty directory |
 | `language-override-rejected` | Explicit `language` input is validated against detected markers |
