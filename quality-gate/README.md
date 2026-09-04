@@ -64,6 +64,11 @@ Fail on any formatting diff. Never auto-fixes in CI.
 | Python     | ruff format         | via uv (project-pinned) |
 | TypeScript | oxfmt               | 0.62.0 (via npx)        |
 
+When formatting fails, the summary includes the affected files, formatter output,
+available formatting diffs, and the command to apply the fix locally. Go reports
+separate `gofumpt` and `goimports` failures so the correct formatter command is
+clear.
+
 ### `app:lint`
 
 Static analysis. Runs on all three languages.

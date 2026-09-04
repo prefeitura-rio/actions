@@ -196,7 +196,7 @@ runs:
           else
             echo "Outcome: failure"
           fi
-          echo "Error:"
+          echo "Failure details:"
           if [[ -n "$ERROR_MESSAGE" ]]; then
             echo
             echo '<details>'

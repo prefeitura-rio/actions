@@ -63,5 +63,7 @@ match the project's markers (rejected) and by requesting the correct language
 
 For the quality checks, a failure identifies the language, check, and fixture
 that produced it. Error-path failures also show the expected and actual error
-message. The final totals show whether the complete suite passed or whether
-one or more checks require investigation.
+message. Formatter failures additionally verify that the summary identifies the
+formatter, affected files, and a local remediation command. The final totals
+show whether the complete suite passed or whether one or more checks require
+investigation.

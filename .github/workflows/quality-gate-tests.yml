@@ -125,6 +125,27 @@ jobs:
             exit 1
           }
 
+      - name: assert format failure is actionable
+        if: matrix.check == 'app:format'
+        env:
+          ERROR_MESSAGE: ${{ steps.go-fail.outputs.error_message }}
+        run: |
+          [[ "$ERROR_MESSAGE" == *"gofumpt found unformatted files."* ]] || {
+            echo "::error::Expected gofumpt details in the format failure"
+            exit 1
+          }
+          [[ "$ERROR_MESSAGE" == *"Formatting diff:"* ]] || {
+            echo "::error::Expected a gofumpt formatting diff in the format failure"
+            exit 1
+          }
+          [[ "$ERROR_MESSAGE" == *"Fix locally with: gofumpt -w ."* ]] || {
+            echo "::error::Expected gofumpt remediation command in the format failure"
+            exit 1
+          }
+          [[ "$ERROR_MESSAGE" == *"main.go"* ]] || {
+            echo "::error::Expected the unformatted Go file in the format failure"
+            exit 1
+          }
   python:
     runs-on: ubuntu-latest
     strategy:
@@ -183,6 +204,27 @@ jobs:
             exit 1
           }
 
+      - name: assert format failure is actionable
+        if: matrix.check == 'app:format'
+        env:
+          ERROR_MESSAGE: ${{ steps.py-fail.outputs.error_message }}
+        run: |
+          [[ "$ERROR_MESSAGE" == *"ruff format found formatting differences."* ]] || {
+            echo "::error::Expected Ruff format details in the format failure"
+            exit 1
+          }
+          [[ "$ERROR_MESSAGE" == *"Formatting diff:"* ]] || {
+            echo "::error::Expected a Ruff formatting diff in the format failure"
+            exit 1
+          }
+          [[ "$ERROR_MESSAGE" == *"Fix locally with: uvx ruff@latest format ."* ]] || {
+            echo "::error::Expected Ruff remediation command in the format failure"
+            exit 1
+          }
+          [[ "$ERROR_MESSAGE" == *"src/app/__init__.py"* ]] || {
+            echo "::error::Expected the unformatted Python file in the format failure"
+            exit 1
+          }
   typescript:
     runs-on: ubuntu-latest
     strategy:
@@ -244,6 +286,27 @@ jobs:
             exit 1
           }
 
+      - name: assert format failure is actionable
+        if: matrix.check == 'app:format'
+        env:
+          ERROR_MESSAGE: ${{ steps.ts-fail.outputs.error_message }}
+        run: |
+          [[ "$ERROR_MESSAGE" == *"oxfmt found formatting differences."* ]] || {
+            echo "::error::Expected Oxfmt details in the format failure"
+            exit 1
+          }
+          [[ "$ERROR_MESSAGE" == *"Formatting diff:"* ]] || {
+            echo "::error::Expected an Oxfmt formatting diff in the format failure"
+            exit 1
+          }
+          [[ "$ERROR_MESSAGE" == *"Fix locally with: npx --yes oxfmt@0.62.0 --write ."* ]] || {
+            echo "::error::Expected Oxfmt remediation command in the format failure"
+            exit 1
+          }
+          [[ "$ERROR_MESSAGE" == *"src/app.ts"* ]] || {
+            echo "::error::Expected the unformatted TypeScript file in the format failure"
+            exit 1
+          }
   error-invalid-check:
     runs-on: ubuntu-latest
     strategy:

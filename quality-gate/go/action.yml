@@ -52,8 +52,19 @@ runs:
         set -euo pipefail
         UNFORMATTED=$(gofumpt -l .)
         if [[ -n "$UNFORMATTED" ]]; then
-          echo "::error title=format::gofumpt found unformatted files. Run 'gofumpt -w .' locally."
-          echo "$UNFORMATTED" | while read -r f; do echo "  $f"; done
+          DIFF=$(gofumpt -d . || true)
+          {
+            echo "gofumpt found unformatted files."
+            echo
+            echo "Files requiring formatting:"
+            echo "$UNFORMATTED" | while read -r f; do echo "- $f"; done
+            echo
+            echo "Formatting diff:"
+            printf '%s\n' "$DIFF" | awk 'NR <= 240 { print } NR == 241 { print "... diff truncated; run the command below for the complete result." }'
+            echo
+            echo "Fix locally with: gofumpt -w ."
+          } > "$RUNNER_TEMP/quality-gate-error.txt"
+          echo "::error title=format::gofumpt found unformatted files."
           exit 1
         fi
         echo "gofumpt: all files are correctly formatted."
@@ -65,8 +76,19 @@ runs:
         set -euo pipefail
         UNFORMATTED=$(goimports -l .)
         if [[ -n "$UNFORMATTED" ]]; then
-          echo "::error title=format::goimports found files with unorganised imports. Run 'goimports -w .' locally."
-          echo "$UNFORMATTED" | while read -r f; do echo "  $f"; done
+          DIFF=$(goimports -d . || true)
+          {
+            echo "goimports found files with unorganised imports."
+            echo
+            echo "Files requiring import organisation:"
+            echo "$UNFORMATTED" | while read -r f; do echo "- $f"; done
+            echo
+            echo "Import diff:"
+            printf '%s\n' "$DIFF" | awk 'NR <= 240 { print } NR == 241 { print "... diff truncated; run the command below for the complete result." }'
+            echo
+            echo "Fix locally with: goimports -w ."
+          } > "$RUNNER_TEMP/quality-gate-error.txt"
+          echo "::error title=format::goimports found files with unorganised imports."
           exit 1
         fi
         echo "goimports: all import blocks are correctly organised."

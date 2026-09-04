@@ -30,7 +30,7 @@ jobs:
           working-directory: ${{ inputs.working-directory }}
 
   format:
-    name: ${{ inputs.project-name }} / Format / ${{ matrix.language }}
+    name: ${{ inputs.project-name }} / Format (${{ matrix.language == 'typescript' && 'Typescript' || matrix.language == 'python' && 'Python' || 'Go' }})
     needs: detect
     runs-on: ubuntu-latest
     strategy:
@@ -46,7 +46,7 @@ jobs:
           language: ${{ matrix.language }}
 
   lint:
-    name: ${{ inputs.project-name }} / Lint / ${{ matrix.language }}
+    name: ${{ inputs.project-name }} / Lint (${{ matrix.language == 'typescript' && 'Typescript' || matrix.language == 'python' && 'Python' || 'Go' }})
     needs: detect
     runs-on: ubuntu-latest
     strategy:
@@ -62,7 +62,7 @@ jobs:
           language: ${{ matrix.language }}
 
   strlint:
-    name: ${{ inputs.project-name }} / Structural Lint / ${{ matrix.language }}
+    name: ${{ inputs.project-name }} / Structural Lint (${{ matrix.language == 'typescript' && 'Typescript' || matrix.language == 'python' && 'Python' || 'Go' }})
     needs: detect
     runs-on: ubuntu-latest
     strategy:
@@ -78,7 +78,7 @@ jobs:
           language: ${{ matrix.language }}
 
   typecheck:
-    name: ${{ inputs.project-name }} / Type Check / ${{ matrix.language }}
+    name: ${{ inputs.project-name }} / Type Check (${{ matrix.language == 'typescript' && 'Typescript' || matrix.language == 'python' && 'Python' || 'Go' }})
     needs: detect
     runs-on: ubuntu-latest
     strategy:
@@ -94,7 +94,7 @@ jobs:
           language: ${{ matrix.language }}
 
   test:
-    name: ${{ inputs.project-name }} / Test / ${{ matrix.language }}
+    name: ${{ inputs.project-name }} / Test (${{ matrix.language == 'typescript' && 'Typescript' || matrix.language == 'python' && 'Python' || 'Go' }})
     needs: [detect, format, lint, strlint, typecheck]
     runs-on: ubuntu-latest
     strategy:

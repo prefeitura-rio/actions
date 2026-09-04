@@ -34,8 +34,25 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
-        uvx ruff@latest format --check .
-        echo "ruff format: all files are correctly formatted."
+        if CHECK_OUTPUT=$(uvx ruff@latest format --check . 2>&1); then
+          echo "ruff format: all files are correctly formatted."
+          exit 0
+        fi
+
+        DIFF=$(uvx ruff@latest format --diff . 2>&1 || true)
+        {
+          echo "ruff format found formatting differences."
+          echo
+          echo "Formatter output:"
+          printf '%s\n' "$CHECK_OUTPUT"
+          echo
+          echo "Formatting diff:"
+          printf '%s\n' "$DIFF" | awk 'NR <= 240 { print } NR == 241 { print "... diff truncated; run the command below for the complete result." }'
+          echo
+          echo "Fix locally with: uvx ruff@latest format ."
+        } > "$RUNNER_TEMP/quality-gate-error.txt"
+        echo "::error title=format::ruff format found formatting differences."
+        exit 1
     - name: lint | ruff check (python)
       if: inputs.check == 'app:lint'
       shell: bash
@@ -124,7 +141,7 @@ runs:
         ACTION_PATH: ${{ github.action_path }}
       run: |
         set -euo pipefail
-        if [[ -f ty.toml || ( -f pyproject.toml && grep -q '^\[tool\.ty' pyproject.toml ) ]]; then
+        if [[ -f ty.toml ]] || { [[ -f pyproject.toml ]] && grep -q '^\[tool\.ty' pyproject.toml; }; then
           uvx ty@0.0.74 check .
         else
           uvx ty@0.0.74 check --config-file "${ACTION_PATH}/ty.toml" .
