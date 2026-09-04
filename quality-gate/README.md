@@ -69,6 +69,10 @@ the command to apply the fix locally. Formatter command output remains available
 in the failed step logs. Go reports separate `gofumpt` and `goimports` failures so
 the correct formatter command is clear.
 
+Quality-gate summaries use friendly check and language names, such as `Quality
+Gate: Lint (Typescript)` and `Quality Gate: Format (Python)`. Detection and setup
+failures fall back to the raw check name when a language is not available.
+
 ### `app:lint`
 
 Static analysis. Runs on all three languages.

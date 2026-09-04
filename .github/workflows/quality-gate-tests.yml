@@ -143,6 +143,14 @@ jobs:
             exit 1
           }
 
+      - name: assert friendly quality-gate summary name
+        if: matrix.check == 'app:format'
+        run: |
+          grep -Fq "### Quality Gate: Format (Go)" "$GITHUB_STEP_SUMMARY" || {
+            echo "::error::Expected the Go format summary to use its friendly name"
+            exit 1
+          }
+
   python:
     runs-on: ubuntu-latest
     strategy:
@@ -216,6 +224,14 @@ jobs:
           }
           [[ "$ERROR_MESSAGE" == *"src/app/__init__.py"* ]] || {
             echo "::error::Expected the unformatted Python file in the format failure"
+            exit 1
+          }
+
+      - name: assert friendly quality-gate summary name
+        if: matrix.check == 'app:format'
+        run: |
+          grep -Fq "### Quality Gate: Format (Python)" "$GITHUB_STEP_SUMMARY" || {
+            echo "::error::Expected the Python format summary to use its friendly name"
             exit 1
           }
 
@@ -295,6 +311,18 @@ jobs:
           }
           [[ "$ERROR_MESSAGE" == *"src/app.ts"* ]] || {
             echo "::error::Expected the unformatted TypeScript file in the format failure"
+            exit 1
+          }
+          [[ "$ERROR_MESSAGE" != *"Command failed (exit 1): FILES="* ]] || {
+            echo "::error::Expected the custom Oxfmt report to survive the error trap"
+            exit 1
+          }
+
+      - name: assert friendly quality-gate summary name
+        if: matrix.check == 'app:format'
+        run: |
+          grep -Fq "### Quality Gate: Format (Typescript)" "$GITHUB_STEP_SUMMARY" || {
+            echo "::error::Expected the TypeScript format summary to use its friendly name"
             exit 1
           }
 

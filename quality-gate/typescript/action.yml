@@ -91,10 +91,11 @@ runs:
       run: |
         set -euo pipefail
         STDERR_FILE=$(mktemp)
-        set +e
-        FILES=$(npx --yes oxfmt@0.62.0 --list-different . 2>"$STDERR_FILE")
-        OXFMT_STATUS=$?
-        set -e
+        if FILES=$(npx --yes oxfmt@0.62.0 --list-different . 2>"$STDERR_FILE"); then
+          OXFMT_STATUS=0
+        else
+          OXFMT_STATUS=$?
+        fi
         if [[ "$OXFMT_STATUS" -gt 1 || ( "$OXFMT_STATUS" -eq 1 && -z "$FILES" ) ]]; then
           {
             echo "oxfmt could not complete the formatting check."

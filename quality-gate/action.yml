@@ -46,7 +46,7 @@ runs:
         cat > "$bash_env" <<'EOF'
         quality_gate_capture_failure() {
           local status=$?
-          if [[ "$status" -ne 0 ]]; then
+          if [[ "$status" -ne 0 && ! -s "$RUNNER_TEMP/quality-gate-error.txt" ]]; then
             {
               printf "Command failed (exit %s): %s\n\nRecent output:\n" "$status" "$BASH_COMMAND"
               sed -E $'s/\033\\[[0-9;]*[[:alpha:]]//g' "$RUNNER_TEMP/quality-gate-output.log" | tail -n 80 || true
@@ -185,12 +185,32 @@ runs:
       shell: bash
       env:
         CHECK: ${{ inputs.check }}
+        LANGUAGE: ${{ steps.lang.outputs.name }}
         ERROR_MESSAGE: ${{ steps.collect-error.outputs.error_message }}
       run: |
         set -euo pipefail
         success="$RUNNER_TEMP/quality-gate-success"
+        case "$CHECK" in
+          app:format) CHECK_NAME="Format" ;;
+          app:lint) CHECK_NAME="Lint" ;;
+          app:strlint) CHECK_NAME="Structural Lint" ;;
+          app:typecheck) CHECK_NAME="Type Check" ;;
+          app:test) CHECK_NAME="Test" ;;
+          *) CHECK_NAME="$CHECK" ;;
+        esac
+        case "$LANGUAGE" in
+          go) LANGUAGE_NAME="Go" ;;
+          python) LANGUAGE_NAME="Python" ;;
+          typescript) LANGUAGE_NAME="Typescript" ;;
+          *) LANGUAGE_NAME="" ;;
+        esac
+        if [[ -n "$LANGUAGE_NAME" && "$CHECK" != "detect-only" ]]; then
+          SUMMARY_NAME="$CHECK_NAME ($LANGUAGE_NAME)"
+        else
+          SUMMARY_NAME="$CHECK_NAME"
+        fi
         {
-          echo "### Quality Gate: $CHECK"
+          echo "### Quality Gate: $SUMMARY_NAME"
           if [[ -f "$success" ]]; then
             echo "Outcome: success"
           else
