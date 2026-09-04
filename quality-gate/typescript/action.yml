@@ -88,37 +88,43 @@ runs:
       if: inputs.check == 'app:format'
       shell: bash
       working-directory: ${{ inputs.working-directory }}
+      env:
+        NPM_CONFIG_LOGLEVEL: error
       run: |
         set -euo pipefail
-        STDERR_FILE=$(mktemp)
-        if FILES=$(npx --yes oxfmt@0.62.0 --list-different . 2>"$STDERR_FILE"); then
+        if CHECK_OUTPUT=$(npx --yes --loglevel=error oxfmt@0.62.0 --check . 2>&1); then
           OXFMT_STATUS=0
         else
           OXFMT_STATUS=$?
         fi
-        if [[ "$OXFMT_STATUS" -gt 1 || ( "$OXFMT_STATUS" -eq 1 && -z "$FILES" ) ]]; then
+
+        FILES=$(printf '%s\n' "$CHECK_OUTPUT" | awk '
+          / \([0-9]+ms\)$/ {
+            file = $0
+            sub(/ \([0-9]+ms\)$/, "", file)
+            print file
+          }
+        ')
+
+        if [[ "$OXFMT_STATUS" -ne 0 && -z "$FILES" ]]; then
+          printf '%s\n' "$CHECK_OUTPUT"
           {
             echo "oxfmt could not complete the formatting check."
             echo
-            echo "Formatter output:"
-            cat "$STDERR_FILE"
-            echo
+            echo "See the failed step logs for command output."
             echo "Fix locally with: npx --yes oxfmt@0.62.0 --write ."
           } > "$RUNNER_TEMP/quality-gate-error.txt"
-          rm -f "$STDERR_FILE"
           echo "::error title=format::oxfmt could not complete the formatting check."
           exit "$OXFMT_STATUS"
         fi
-        rm -f "$STDERR_FILE"
 
-        if [[ -z "$FILES" ]]; then
+        if [[ "$OXFMT_STATUS" -eq 0 ]]; then
           echo "oxfmt: all files are correctly formatted."
           exit 0
         fi
 
         FILE_COUNT=$(printf '%s\n' "$FILES" | awk 'NF { count++ } END { print count + 0 }')
-        echo "oxfmt found formatting differences in $FILE_COUNT file(s):"
-        printf '%s\n' "$FILES"
+        printf '%s\n' "$CHECK_OUTPUT"
         {
           echo "oxfmt found formatting differences in $FILE_COUNT file(s)."
           echo
