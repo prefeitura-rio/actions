@@ -39,16 +39,22 @@ runs:
           exit 0
         fi
 
-        DIFF=$(uvx ruff@latest format --diff . 2>&1 || true)
+        FILES=$(printf '%s\n' "$CHECK_OUTPUT" | awk '
+          /Would reformat:/ { print $NF }
+          /^  --> / { file = $2; sub(/:.*/, "", file); print file }
+        ' | sort -u)
+        printf '%s\n' "$CHECK_OUTPUT"
         {
           echo "ruff format found formatting differences."
           echo
-          echo "Formatter output:"
-          printf '%s\n' "$CHECK_OUTPUT"
+          echo "Files requiring formatting:"
+          if [[ -n "$FILES" ]]; then
+            printf '%s\n' "$FILES" | while IFS= read -r file; do echo "- $file"; done
+          else
+            echo "- See formatter output in the failed step logs."
+          fi
           echo
-          echo "Formatting diff:"
-          printf '%s\n' "$DIFF" | awk 'NR <= 240 { print } NR == 241 { print "... diff truncated; run the command below for the complete result." }'
-          echo
+          echo "See the failed step logs for command output."
           echo "Fix locally with: uvx ruff@latest format ."
         } > "$RUNNER_TEMP/quality-gate-error.txt"
         echo "::error title=format::ruff format found formatting differences."

@@ -134,10 +134,6 @@ jobs:
             echo "::error::Expected gofumpt details in the format failure"
             exit 1
           }
-          [[ "$ERROR_MESSAGE" == *"Formatting diff:"* ]] || {
-            echo "::error::Expected a gofumpt formatting diff in the format failure"
-            exit 1
-          }
           [[ "$ERROR_MESSAGE" == *"Fix locally with: gofumpt -w ."* ]] || {
             echo "::error::Expected gofumpt remediation command in the format failure"
             exit 1
@@ -146,6 +142,7 @@ jobs:
             echo "::error::Expected the unformatted Go file in the format failure"
             exit 1
           }
+
   python:
     runs-on: ubuntu-latest
     strategy:
@@ -213,10 +210,6 @@ jobs:
             echo "::error::Expected Ruff format details in the format failure"
             exit 1
           }
-          [[ "$ERROR_MESSAGE" == *"Formatting diff:"* ]] || {
-            echo "::error::Expected a Ruff formatting diff in the format failure"
-            exit 1
-          }
           [[ "$ERROR_MESSAGE" == *"Fix locally with: uvx ruff@latest format ."* ]] || {
             echo "::error::Expected Ruff remediation command in the format failure"
             exit 1
@@ -225,6 +218,7 @@ jobs:
             echo "::error::Expected the unformatted Python file in the format failure"
             exit 1
           }
+
   typescript:
     runs-on: ubuntu-latest
     strategy:
@@ -291,12 +285,8 @@ jobs:
         env:
           ERROR_MESSAGE: ${{ steps.ts-fail.outputs.error_message }}
         run: |
-          [[ "$ERROR_MESSAGE" == *"oxfmt found formatting differences."* ]] || {
+          [[ "$ERROR_MESSAGE" == *"oxfmt found formatting differences in"* ]] || {
             echo "::error::Expected Oxfmt details in the format failure"
-            exit 1
-          }
-          [[ "$ERROR_MESSAGE" == *"Formatting diff:"* ]] || {
-            echo "::error::Expected an Oxfmt formatting diff in the format failure"
             exit 1
           }
           [[ "$ERROR_MESSAGE" == *"Fix locally with: npx --yes oxfmt@0.62.0 --write ."* ]] || {
@@ -307,6 +297,7 @@ jobs:
             echo "::error::Expected the unformatted TypeScript file in the format failure"
             exit 1
           }
+
   error-invalid-check:
     runs-on: ubuntu-latest
     strategy:
