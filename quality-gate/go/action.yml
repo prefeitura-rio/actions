@@ -54,6 +54,7 @@ runs:
         if [[ -n "$UNFORMATTED" ]]; then
           DIFF=$(gofumpt -d . || true)
           printf '%s\n' "$UNFORMATTED"
+          printf '%s\n' "$DIFF"
           {
             echo "gofumpt found unformatted files."
             echo
@@ -61,7 +62,7 @@ runs:
             echo "$UNFORMATTED" | while read -r f; do echo "- $f"; done
             echo
             echo "Formatting diff:"
-            printf '%s\n' "$DIFF"
+            printf '%s\n' "$DIFF" | awk 'NR <= 200 { print } NR == 201 { print "... diff truncated; run the command below for the complete result." }'
             echo
             echo "Fix locally with: gofumpt -w ."
           } > "$RUNNER_TEMP/quality-gate-error.txt"
@@ -79,6 +80,7 @@ runs:
         if [[ -n "$UNFORMATTED" ]]; then
           DIFF=$(goimports -d . || true)
           printf '%s\n' "$UNFORMATTED"
+          printf '%s\n' "$DIFF"
           {
             echo "goimports found files with unorganised imports."
             echo
@@ -86,7 +88,7 @@ runs:
             echo "$UNFORMATTED" | while read -r f; do echo "- $f"; done
             echo
             echo "Formatting diff:"
-            printf '%s\n' "$DIFF"
+            printf '%s\n' "$DIFF" | awk 'NR <= 200 { print } NR == 201 { print "... diff truncated; run the command below for the complete result." }'
             echo
             echo "Fix locally with: goimports -w ."
           } > "$RUNNER_TEMP/quality-gate-error.txt"

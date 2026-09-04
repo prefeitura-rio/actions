@@ -64,14 +64,19 @@ Fail on any formatting diff. Never auto-fixes in CI.
 | Python     | ruff format         | 0.16.4 (via uvx)        |
 | TypeScript | oxfmt               | 0.62.0 (via npx)        |
 
-When formatting fails, the summary lists the affected files, includes the unified
+When formatting fails, the summary lists the affected files, includes a unified
 formatting diff explaining the required changes, and provides the exact command
-to apply the fix locally. Go reports separate `gofumpt` and `goimports` failures so
-the correct formatter command is clear.
+to apply the fix locally. Large diffs are capped at 200 lines in the summary;
+the complete formatter output remains in the failed step logs. Go reports
+separate `gofumpt` and `goimports` failures so the correct formatter command is
+clear.
 
 Quality-gate summaries use friendly check and language names, such as `Quality
 Gate: Lint (Typescript)` and `Quality Gate: Format (Python)`. Detection and setup
 failures fall back to the raw check name when a language is not available.
+The summary reads diagnostics from a runner temporary file, avoiding process
+environment limits for large formatter reports. The `error_message` output is
+bounded to 64 KiB for downstream step usage.
 
 ### `app:lint`
 

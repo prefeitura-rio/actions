@@ -100,6 +100,7 @@ runs:
         fi
 
         if [[ "$OXFMT_STATUS" -gt 1 || ( "$OXFMT_STATUS" -eq 1 && -z "$FILES" ) ]]; then
+          cat "$STDERR_FILE"
           {
             echo "oxfmt could not complete the formatting check."
             echo
@@ -145,6 +146,8 @@ runs:
           done
         fi
 
+        cat "$DIFF_FILE"
+
         {
           echo "oxfmt found formatting differences in $FILE_COUNT file(s)."
           echo
@@ -152,7 +155,7 @@ runs:
           printf '%s\n' "${ORIGINAL_FILES[@]}" | while IFS= read -r file; do echo "- $file"; done
           echo
           echo "Formatting diff:"
-          cat "$DIFF_FILE"
+          awk 'NR <= 200 { print } NR == 201 { print "... diff truncated; run the command below for the complete result." }' "$DIFF_FILE"
           echo
           echo "Fix locally with: npx --yes --loglevel=error oxfmt@0.62.0 --write ."
         } > "$RUNNER_TEMP/quality-gate-error.txt"

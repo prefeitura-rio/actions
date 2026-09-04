@@ -173,9 +173,17 @@ runs:
 
         if [[ -n "$msg" ]]; then
           delimiter="QUALITY_GATE_ERROR_$(date +%s%N)"
+          max_bytes=65536
+          size=$(wc -c < "$msg")
           {
             echo "error_message<<$delimiter"
-            cat "$msg"
+            if (( size <= max_bytes )); then
+              cat "$msg"
+            else
+              head -c 57344 "$msg"
+              printf '\n\n... error output truncated; see the quality-gate step logs for the complete report. ...\n\n'
+              tail -c 8192 "$msg"
+            fi
             echo "$delimiter"
           } >> "$GITHUB_OUTPUT"
         fi
@@ -186,7 +194,6 @@ runs:
       env:
         CHECK: ${{ inputs.check }}
         LANGUAGE: ${{ steps.lang.outputs.name }}
-        ERROR_MESSAGE: ${{ steps.collect-error.outputs.error_message }}
       run: |
         set -euo pipefail
         success="$RUNNER_TEMP/quality-gate-success"
@@ -217,8 +224,8 @@ runs:
             echo "Outcome: failure"
           fi
           echo "Error:"
-          if [[ -n "$ERROR_MESSAGE" ]]; then
-            printf '%s\n' "$ERROR_MESSAGE"
+          if [[ -s "$RUNNER_TEMP/quality-gate-error.txt" ]]; then
+            cat "$RUNNER_TEMP/quality-gate-error.txt"
           else
             echo "None"
           fi

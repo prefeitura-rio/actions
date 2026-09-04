@@ -44,6 +44,7 @@ runs:
           /^  --> / { file = $2; sub(/:.*/, "", file); print file }
         ' | sort -u)
         if [[ -z "$FILES" ]]; then
+          printf '%s\n' "$CHECK_OUTPUT"
           {
             echo "ruff format could not complete the formatting check."
             echo
@@ -58,6 +59,7 @@ runs:
 
         DIFF=$(uvx ruff@0.16.4 format --diff . 2>&1 || true)
         printf '%s\n' "$CHECK_OUTPUT"
+        printf '%s\n' "$DIFF"
         {
           echo "ruff format found formatting differences."
           echo
@@ -65,7 +67,7 @@ runs:
           printf '%s\n' "$FILES" | while IFS= read -r file; do echo "- $file"; done
           echo
           echo "Formatting diff:"
-          printf '%s\n' "$DIFF"
+          printf '%s\n' "$DIFF" | awk 'NR <= 200 { print } NR == 201 { print "... diff truncated; run the command below for the complete result." }'
           echo
           echo "Fix locally with: uvx ruff@0.16.4 format ."
         } > "$RUNNER_TEMP/quality-gate-error.txt"
