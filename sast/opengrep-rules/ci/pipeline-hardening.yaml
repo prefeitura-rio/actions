@@ -1,0 +1,45 @@
+rules:
+  - id: ci-unpinned-latest-install
+    message: >-
+      Instalação de dependência não fixada (@latest) em pipeline. Um release
+      upstream comprometido/typosquatado executa código arbitrário no runner
+      (que pode conter credenciais de deploy de produção). Fixe a versão exata
+      e prefira 'npm ci' com lockfile.
+    severity: WARNING
+    languages: [generic]
+    paths:
+      include:
+        - "*.gitlab-ci.yml"
+        - ".gitlab-ci.yml"
+        - "*/.github/workflows/*.yml"
+        - "*/.github/workflows/*.yaml"
+    patterns:
+      - pattern-regex: '(?i)(npm|pnpm|yarn)\s+(install|add|i)\b[^\n]*@latest|(?i)plugins\s+install\b[^\n]*@latest'
+    metadata:
+      category: security
+      cwe: ["CWE-829: Inclusion of Functionality from Untrusted Control Sphere"]
+      owasp: ["A08:2021 - Software and Data Integrity Failures"]
+      confidence: HIGH
+
+  - id: ci-secret-on-command-line
+    message: >-
+      Segredo passado como argumento de linha de comando (-Dsecret=$VAR /
+      client_secret=$VAR). Fica visível em /proc, ps e 'set -x' em runners
+      compartilhados. Passe via settings.xml, arquivo de ambiente ou
+      --data-urlencode a partir de arquivo.
+    severity: WARNING
+    languages: [generic]
+    paths:
+      include:
+        - "*.gitlab-ci.yml"
+        - ".gitlab-ci.yml"
+        - "*/.github/workflows/*.yml"
+        - "*/.github/workflows/*.yaml"
+    patterns:
+      - pattern-either:
+          - pattern-regex: '-D[A-Za-z0-9_.]*(?i:secret|password|token|secure\.key)[A-Za-z0-9_.]*=\s*["'']?\$'
+          - pattern-regex: '(?i)(client_secret|password|api[_-]?key|access[_-]?token)=\$'
+    metadata:
+      category: security
+      cwe: ["CWE-214: Invocation of Process Using Visible Sensitive Information"]
+      confidence: MEDIUM

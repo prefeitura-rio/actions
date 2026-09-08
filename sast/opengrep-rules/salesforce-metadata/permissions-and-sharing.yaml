@@ -1,0 +1,82 @@
+rules:
+  - id: sf-permset-dangerous-system-permission
+    message: >-
+      Permission Set concede permissão de sistema perigosa (ModifyAllData /
+      ViewAllData / AuthorApex / ModifyMetadata / ManageProfilesPermissionsets /
+      ManageRemoteAccess). Revise: é uma escalada de privilégio se atribuída a
+      usuário funcional, de integração ou de CI/CD. Aplique menor privilégio.
+    severity: WARNING
+    languages: [generic]
+    paths:
+      include:
+        - "*.permissionset-meta.xml"
+    patterns:
+      - pattern-regex: '<name>(ModifyAllData|ViewAllData|AuthorApex|ModifyMetadata|ManageProfilesPermissionsets|ManageRemoteAccess|CustomizeApplication)</name>'
+    metadata:
+      category: security
+      cwe: ["CWE-269: Improper Privilege Management"]
+      owasp: ["A01:2021 - Broken Access Control"]
+      confidence: MEDIUM
+      references:
+        - "SECURITY_REVIEW addendum -> C1/C2 (Agentforce_Admin, GitLab_CI_CD_Deployments)"
+
+  - id: sf-object-owd-public-readwrite
+    message: >-
+      Objeto com OWD Public Read/Write (sharingModel ReadWrite). Se guardar PII
+      (payloads, transcrições, CPF), qualquer usuário com acesso ao objeto lê,
+      edita e apaga todos os registros — inclusive a trilha de auditoria.
+      Use Private + regra de compartilhamento/permission set dedicado.
+    severity: INFO
+    languages: [generic]
+    paths:
+      include:
+        - "*.object-meta.xml"
+    patterns:
+      - pattern-regex: '<sharingModel>ReadWrite</sharingModel>'
+    metadata:
+      category: security
+      cwe: ["CWE-732: Incorrect Permission Assignment for Critical Resource"]
+      confidence: LOW
+      references:
+        - "SECURITY_REVIEW addendum -> H3/H5 (Log_Event__c, Audio_Transcription__c)"
+
+  - id: sf-custom-metadata-secret-in-plaintext
+    message: >-
+      Segredo (token/secret/API key/senha) armazenado em campo Text de Custom
+      Metadata. Registros __mdt são legíveis por qualquer usuário que execute
+      SOQL/Apex e, se protected=false, via Metadata/Tooling API. Use External
+      Credential/Named Credential; nunca Text para segredo.
+    severity: WARNING
+    languages: [generic]
+    paths:
+      include:
+        - "*.md-meta.xml"
+    patterns:
+      - pattern-regex: '<field>[A-Za-z0-9_]*(ApiToken|Token|Secret|API_?Key|Password|ClientSecret)[A-Za-z0-9_]*</field>'
+    metadata:
+      category: security
+      cwe: ["CWE-522: Insufficiently Protected Credentials"]
+      owasp: ["A02:2021 - Cryptographic Failures"]
+      confidence: MEDIUM
+      references:
+        - "SECURITY_REVIEW addendum -> H7/F-08 (MCP_Config, Http_Tool_Config)"
+
+  - id: sf-flow-system-mode-without-sharing
+    message: >-
+      Flow executa em SystemModeWithoutSharing. Se for screen flow acionado pelo
+      usuário com ids de registro como input, ignora sharing/FLS/CRUD e permite
+      IDOR. Prefira DefaultMode (contexto do usuário) ou SystemModeWithSharing.
+    severity: WARNING
+    languages: [generic]
+    paths:
+      include:
+        - "*.flow-meta.xml"
+    patterns:
+      - pattern-regex: '<runInMode>SystemModeWithoutSharing</runInMode>'
+    metadata:
+      category: security
+      cwe: ["CWE-639: Authorization Bypass Through User-Controlled Key"]
+      owasp: ["A01:2021 - Broken Access Control"]
+      confidence: LOW
+      references:
+        - "SECURITY_REVIEW addendum -> H6 (CSAT_Fluxo_de_tela_de_pesquisa)"
