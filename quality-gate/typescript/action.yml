@@ -321,6 +321,10 @@ runs:
             rule:
               pattern: <script setup lang="\$LANG">\$\$\$CONTENT</script>
             injected: [javascript, typescript]
+          - hostLanguage: html
+            rule:
+              pattern: <script lang="\$LANG" setup>\$\$\$CONTENT</script>
+            injected: [javascript, typescript]
         EOF
         ast-grep scan --config "$TMP_CFG"
         rm -f "$TMP_CFG"
