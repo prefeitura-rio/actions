@@ -65,6 +65,7 @@ jobs:
         run: ast-grep test --skip-snapshot-tests --config quality-gate/${{ matrix.language }}/sgconfig.yaml
 
   go:
+    name: Go / ${{ matrix.check }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -158,6 +159,7 @@ jobs:
           }
 
   python:
+    name: Python / ${{ matrix.check }} / ${{ matrix.failure_kind || 'standard' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -267,6 +269,7 @@ jobs:
           }
 
   typescript:
+    name: TypeScript / ${{ matrix.framework == 'typescript' && 'plain' || matrix.framework }} / ${{ matrix.check }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
