@@ -210,7 +210,9 @@ Both frameworks continue to report as `typescript` to the root dispatcher and
 reusable workflow. An existing `scripts.typecheck` command remains
 authoritative; framework commands are used only when that script is absent.
 Projects using the fallback must declare `vue-tsc` and `typescript` in their
-development dependencies.
+development dependencies. When dependency metadata does not identify Vue, the
+`.vue` file fallback scan is bounded to five directory levels to avoid
+unbounded traversal of large repositories.
 
 When a framework is detected, the job summary identifies it while preserving the
 TypeScript language identity: `Typescript - Vue` or `Typescript - Nuxt`.

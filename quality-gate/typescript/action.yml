@@ -63,12 +63,17 @@ runs:
           ...(project.optionalDependencies || {}),
         };
 
-        const hasVueFile = (directory) => {
+        const MAX_VUE_SCAN_DEPTH = 5;
+        const hasVueFile = (directory, depth = 0) => {
           if (!fs.existsSync(directory)) return false;
           for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
             if (['.git', '.nuxt', 'node_modules', 'dist', 'build'].includes(entry.name)) continue;
             const entryPath = path.join(directory, entry.name);
-            if (entry.isDirectory() && hasVueFile(entryPath)) return true;
+            if (
+              entry.isDirectory() &&
+              depth < MAX_VUE_SCAN_DEPTH &&
+              hasVueFile(entryPath, depth + 1)
+            ) return true;
             if (entry.isFile() && entry.name.endsWith('.vue')) return true;
           }
           return false;
@@ -311,6 +316,10 @@ runs:
           - hostLanguage: html
             rule:
               pattern: <script lang="\$LANG">\$\$\$CONTENT</script>
+            injected: [javascript, typescript]
+          - hostLanguage: html
+            rule:
+              pattern: <script setup lang="\$LANG">\$\$\$CONTENT</script>
             injected: [javascript, typescript]
         EOF
         ast-grep scan --config "$TMP_CFG"
