@@ -1,0 +1,40 @@
+rules:
+  - id: apex-callout-endpoint-from-user-input
+    message: >-
+      Possível SSRF: endpoint de callout definido a partir de entrada
+      controlada pelo chamador (input.* / webhookUrl vindo de Flow/Invocable).
+      Um chamador pode apontar o callout para host interno/externo arbitrário e
+      exfiltrar dados no corpo. Ignore a URL de entrada ou faça allowlist do host.
+    severity: ERROR
+    languages: [generic]
+    paths:
+      include:
+        - "*.cls"
+    patterns:
+      - pattern-either:
+          - pattern-regex: '=\s*[A-Za-z_][A-Za-z0-9_]*\.(webhookUrl|callbackUrl)\b'
+          - pattern-regex: '\.setEndpoint\(\s*([A-Za-z_][A-Za-z0-9_]*\.)?(input\.[A-Za-z0-9_]+|[A-Za-z0-9_]*[wW]ebhook[Uu]rl[A-Za-z0-9_]*)\b'
+    metadata:
+      category: security
+      cwe: ["CWE-918: Server-Side Request Forgery (SSRF)"]
+      owasp: ["A10:2021 - Server-Side Request Forgery"]
+      confidence: MEDIUM
+
+  - id: apex-dynamic-callout-endpoint-review
+    message: >-
+      Endpoint de callout dinâmico (variável, não literal 'callout:'/'https://').
+      Revise a origem do valor: se derivar de entrada não confiável há risco de
+      SSRF. Prefira Named Credential (callout:) e valide o host.
+    severity: INFO
+    languages: [generic]
+    paths:
+      include:
+        - "*.cls"
+    patterns:
+      - pattern-regex: '\.setEndpoint\(\s*[A-Za-z_][A-Za-z0-9_.]*\s*\)'
+      # Do not flag the safe, literal forms.
+      - pattern-not-regex: "\\.setEndpoint\\(\\s*'(callout:|https://)"
+    metadata:
+      category: security
+      cwe: ["CWE-918: Server-Side Request Forgery (SSRF)"]
+      confidence: LOW

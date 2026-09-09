@@ -1,0 +1,107 @@
+rules:
+  - id: apex-test-seealldata-true
+    message: >-
+      Teste usa @isTest(SeeAllData=true): pode ler dados reais da org e é
+      não-determinístico. Construa fixtures e remova SeeAllData=true.
+    severity: WARNING
+    languages: [generic]
+    paths:
+      include:
+        - "*.cls"
+    patterns:
+      - pattern-regex: '(?i)seealldata\s*=\s*true'
+    metadata:
+      category: security
+      cwe: ["CWE-1188: Insecure Default Initialization of Resource"]
+      confidence: HIGH
+
+
+  - id: apex-debug-log-pii
+    message: >-
+      Log de debug pode vazar PII: serialização completa de requisição/objeto
+      ou campos sensíveis (CPF, senha, token) em System.debug. Não registre o
+      corpo inteiro; logue apenas identificadores/correlationId (LGPD).
+    severity: WARNING
+    languages: [generic]
+    paths:
+      include:
+        - "*.cls"
+    patterns:
+      - pattern-either:
+          - pattern-regex: 'System\.debug\([^;]*JSON\.serialize\s*\('
+          - pattern-regex: '(?i)system\.debug\([^;]*(cpf|senha|password|secret|token|authorization)'
+    metadata:
+      category: security
+      cwe: ["CWE-532: Insertion of Sensitive Information into Log File"]
+      confidence: MEDIUM
+
+  - id: apex-insecure-http-callout
+    message: >-
+      Callout Apex sobre HTTP em texto claro (http://). Use HTTPS e Named
+      Credential; tráfego com PII não pode trafegar sem TLS.
+    severity: WARNING
+    languages: [generic]
+    paths:
+      include:
+        - "*.cls"
+    patterns:
+      - pattern-regex: "\\.setEndpoint\\(\\s*'http://"
+    metadata:
+      category: security
+      cwe: ["CWE-319: Cleartext Transmission of Sensitive Information"]
+      confidence: HIGH
+
+  - id: apex-messaging-consent-enforcement-disabled
+    message: >-
+      Consentimento de canal de mensageria desabilitado
+      (isEnforceMessagingChannelConsent=false). Envia mensagem ao cidadão que
+      pode ter feito opt-out. Mantenha a checagem de consentimento (LGPD).
+    severity: WARNING
+    languages: [generic]
+    paths:
+      include:
+        - "*.cls"
+    patterns:
+      - pattern-regex: "(?i)isEnforceMessagingChannelConsent'\\s*,\\s*false"
+    metadata:
+      category: security
+      cwe: ["CWE-285: Improper Authorization"]
+      confidence: MEDIUM
+      references:
+        - "SECURITY_REVIEW addendum -> F-07 (DividaAtivaFormSendAction)"
+
+  - id: apex-content-visible-to-external-users
+    message: >-
+      ContentAsset/arquivo marcado como visível a usuários externos
+      (IsVisibleByExternalUsers=true). Recurso recuperável sem sessão; garanta
+      que não exponha PII e use nome/URL opaco não correlacionável.
+    severity: INFO
+    languages: [generic]
+    paths:
+      include:
+        - "*.cls"
+    patterns:
+      - pattern-regex: 'IsVisibleByExternalUsers\s*=\s*true'
+    metadata:
+      category: security
+      cwe: ["CWE-200: Exposure of Sensitive Information to an Unauthorized Actor"]
+      confidence: LOW
+      references:
+        - "SECURITY_REVIEW addendum -> F-11 (DividaAtivaValorImagem)"
+
+  - id: apex-soql-injection-concatenation
+    message: >-
+      Possível injeção de SOQL/SOSL: query dinâmica construída por concatenação
+      de string. Use binds (:var) ou String.escapeSingleQuotes() e WITH USER_MODE.
+    severity: ERROR
+    languages: [generic]
+    paths:
+      include:
+        - "*.cls"
+    patterns:
+      - pattern-regex: "(?i)(Database\\.(query|getQueryLocator|countQuery)|Search\\.query)\\(\\s*'[^']*'\\s*\\+"
+    metadata:
+      category: security
+      cwe: ["CWE-89: SQL Injection"]
+      owasp: ["A03:2021 - Injection"]
+      confidence: MEDIUM

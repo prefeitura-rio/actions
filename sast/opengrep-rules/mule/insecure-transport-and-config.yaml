@@ -1,0 +1,56 @@
+rules:
+  - id: mule-cleartext-http-port-80
+    message: >-
+      Endpoint/backend Mule configurado em texto claro (port 80 / HTTP).
+      Tráfego leste-oeste com PII do cidadão não deve trafegar sem TLS. Use
+      HTTPS/443 com tls:context em cada http:request-config.
+    severity: WARNING
+    languages: [generic]
+    paths:
+      include:
+        - "*config-*.yaml"
+        - "*.properties"
+    patterns:
+      - pattern-either:
+          - pattern-regex: '(?m)port:\s*["'']?80["'']?\s*(#.*)?$'
+          - pattern-regex: '(?i)protocol:\s*["'']?HTTP["'']?\s*$'
+    metadata:
+      category: security
+      cwe: ["CWE-319: Cleartext Transmission of Sensitive Information"]
+      owasp: ["A02:2021 - Cryptographic Failures"]
+      confidence: MEDIUM
+
+  - id: mule-prod-config-points-to-dev-host
+    message: >-
+      Configuração de PRODUÇÃO aponta para um host de desenvolvimento (-dev).
+      Corrija para o endpoint real de produção sobre HTTPS.
+    severity: ERROR
+    languages: [generic]
+    paths:
+      include:
+        - "*config-prod.yaml"
+        - "*config-prod.properties"
+    patterns:
+      - pattern-regex: '(?i)host:\s*["'']?[^"''\n]*-dev[.\-][^"''\n]*'
+    metadata:
+      category: security
+      cwe: ["CWE-1188: Insecure Default Initialization of Resource"]
+      confidence: HIGH
+
+  - id: mule-plaintext-secret-in-config
+    message: >-
+      Possível segredo em texto claro em config Mule (clientSecret/password/token
+      sem secure-property ![...] nem referência ${...}). Use o
+      mule-secure-configuration-property-module e credentials-<env>.yaml.
+    severity: WARNING
+    languages: [generic]
+    paths:
+      include:
+        - "*config-*.yaml"
+        - "*credentials-*.yaml"
+    patterns:
+      - pattern-regex: '(?i)(client[_]?secret|password|api[_]?key|token)\s*:\s*["'']?(?!\!\[)(?!\$\{)(?!SUA_|SEU_|substituir)[A-Za-z0-9+/_\-]{8,}'
+    metadata:
+      category: security
+      cwe: ["CWE-312: Cleartext Storage of Sensitive Information"]
+      confidence: LOW

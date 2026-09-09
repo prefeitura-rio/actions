@@ -1,0 +1,53 @@
+rules:
+  - id: mule-error-detail-exposed-to-caller
+    message: >-
+      Detalhe interno de erro exposto ao chamador (error.description /
+      detailedDescription / cause.message). Vaza internals/stack para o cliente
+      (CWE-209). Retorne mensagem genérica + correlationId; logue o detalhe só
+      no servidor.
+    severity: WARNING
+    languages: [generic]
+    paths:
+      include:
+        - "*/src/main/mule/*.xml"
+    patterns:
+      - pattern-regex: 'error\.(detailedDescription|description|cause\.message)'
+    metadata:
+      category: security
+      cwe: ["CWE-209: Generation of Error Message Containing Sensitive Information"]
+      owasp: ["A05:2021 - Security Misconfiguration"]
+      confidence: MEDIUM
+
+  - id: mule-raw-payload-in-error-response
+    message: >-
+      http:error-response ecoa o payload bruto (#[payload]) de volta ao cliente.
+      Pode refletir dados de outro tenant/atacante ou objetos internos de erro.
+      Substitua por um corpo estático sanitizado.
+    severity: WARNING
+    languages: [generic]
+    paths:
+      include:
+        - "*/src/main/mule/*.xml"
+    patterns:
+      - pattern-regex: '<http:body[^>]*>\s*#\[\s*payload\s*\]\s*</http:body>'
+    metadata:
+      category: security
+      cwe: ["CWE-209: Generation of Error Message Containing Sensitive Information"]
+      confidence: MEDIUM
+
+  - id: mule-pii-payload-logging
+    message: >-
+      Logger registra o payload/corpo completo (#[payload] / vars com XML/JSON
+      bruto). Persiste PII do cidadão em log compartilhado (LGPD). Logue apenas
+      correlationId/status; nunca o corpo.
+    severity: WARNING
+    languages: [generic]
+    paths:
+      include:
+        - "*/src/main/mule/*.xml"
+    patterns:
+      - pattern-regex: '<logger\b[^>]*message="[^"]*#\[[^"]*\bpayload\b'
+    metadata:
+      category: security
+      cwe: ["CWE-532: Insertion of Sensitive Information into Log File"]
+      confidence: LOW
