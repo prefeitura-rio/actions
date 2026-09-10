@@ -222,8 +222,12 @@ run_typecheck() {
   elif [[ "$FRAMEWORK" == nuxt ]]; then
     if [[ "$MANAGER" == npm ]]; then npm exec --no -- nuxt typecheck; else pnpm exec nuxt typecheck; fi
   else
-    qg_error "Missing typecheck script for TypeScript project. Add scripts.typecheck to package.json."
-    return 1
+    if command -v tsc >/dev/null 2>&1 || [[ -x node_modules/.bin/tsc ]]; then
+      if [[ "$MANAGER" == npm ]]; then npm exec --no -- tsc --noEmit; else pnpm exec tsc --noEmit; fi
+    else
+      qg_error "Missing typecheck script for TypeScript project. Add scripts.typecheck to package.json."
+      return 1
+    fi
   fi
 }
 
