@@ -11,6 +11,7 @@ source "$QUALITY_GATE_ROOT/scripts/lib/tools.sh"
 CHECK=
 PROJECT_DIR=.
 ACTION_DIR="$SCRIPT_DIR/.."
+BASEDPYRIGHT_VERSION="1.39.10"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -136,12 +137,16 @@ case "$CHECK" in
     run_strlint
     ;;
   app:typecheck)
-    if [[ -f ty.toml ]] || { [[ -f pyproject.toml ]] && grep -q '^\[tool\.ty' pyproject.toml; }; then
-      uvx ty@0.0.74 check .
+    sync_project
+    if [[ -f pyrightconfig.json ]] || {
+      [[ -f pyproject.toml ]] && grep -qE '^\[tool\.(basedpyright|pyright)\]$' pyproject.toml
+    }; then
+      uvx "basedpyright@${BASEDPYRIGHT_VERSION}" --project "$PROJECT_DIR"
     else
-      uvx ty@0.0.74 check --config-file "$ACTION_DIR/ty.toml" .
+      uvx "basedpyright@${BASEDPYRIGHT_VERSION}" \
+        --project "$ACTION_DIR/pyrightconfig.json" .
     fi
-    echo "ty: no type errors found."
+    echo "basedpyright: no type errors found."
     ;;
   app:test)
     sync_project

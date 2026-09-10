@@ -14,8 +14,8 @@ bash quality-gate/tests/scripts/test-portable.sh
 These tests cover language detection, invalid checks, TypeScript framework and
 package-manager metadata, shared error collection, summary rendering, and the
 invocation contract of every language entrypoint. The GitHub workflow remains
-responsible for adapter behavior and full fixture coverage, including setup
-actions, outputs, annotations, summaries, and error relay.
+responsible for adapter behavior and fixture coverage, including setup actions,
+action outputs, error relay, and friendly summary-name behavior.
 
 ## What Is Tested and Why
 
@@ -57,7 +57,7 @@ match the project's markers (rejected) and by requesting the correct language
 | `ast-grep-rules` | ast-grep rule correctness for Go, Python, TypeScript |
 | `portable-scripts` | Provider-neutral shell and Node entrypoint contracts without GitHub variables |
 | `go` | All 5 checks (format, lint, strlint, typecheck, test) pass/fail for Go |
-| `python` | All 4 checks (format, lint, strlint, test) pass/fail for Python |
+| `python` | All 5 checks (format, lint, strlint, typecheck, test) pass/fail for Python |
 | `typescript` | All 5 checks pass/fail for TypeScript, Vue, and Nuxt fixtures, including framework-aware summary names |
 | `error-invalid-check` | Invalid check names are rejected with exact error message |
 | `setup-py-success` | `setup.py`-only project is accepted as Python |
@@ -71,15 +71,20 @@ match the project's markers (rejected) and by requesting the correct language
 | `polyglot-project-paths` | Polyglot subdirectories route to correct language action |
 | `error-no-language` | Empty directory fails with expected error |
 | `error-ts-no-lockfile` | TypeScript without lockfile fails with expected error |
+| `error-py-no-lockfile` | Python typecheck without `uv.lock` fails with a lockfile diagnostic |
 | `error-ts-no-tsconfig` | package.json without tsconfig.json fails (not detected as TypeScript) |
 | `error-gofumpt-sha-mismatch` | Corrupted gofumpt download triggers sha256 error + cleanup |
 | `error-ast-grep-sha-mismatch` | Corrupted ast-grep download triggers sha256 error + cleanup |
+
+The Python typecheck matrix uses the passing fixture to exercise project
+`[tool.basedpyright]` configuration and `typecheck-fail` to exercise the
+organization `pyrightconfig.json` fallback.
 
 ## How to Read a Failure
 
 For the quality checks, a failure identifies the language, check, and fixture
 that produced it. Error-path failures also show the expected and actual error
-message. Formatter failures additionally verify that the summary identifies the
-formatter, affected files, formatting diff, and a local remediation command. The
-final totals show whether the complete suite passed or whether one or more
-checks require investigation.
+message. Formatter failure assertions verify that the error output identifies
+the formatter, affected files, formatting diff, and a local remediation command;
+separate assertions verify friendly summary names. The final totals show whether
+the complete suite passed or whether one or more checks require investigation.

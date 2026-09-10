@@ -10,87 +10,25 @@ provides only orchestration and runner integration. A future GitLab, Bitbucket,
 Azure DevOps, or other git-cloud adapter can invoke the same scripts without
 changing the checks.
 
-## Architecture
+## Workflow Overview
 
 ```mermaid
+%% Reusable workflow: detect once, run language checks in parallel, test last
 flowchart TD
-    Caller[Consumer workflow] --> Root[quality-gate/action.yml]
+    DetectJob["Detect job<br/>check: detect-only"] --> Languages["Languages output"]
+    Languages --> Matrix["Language matrix"]
 
-    subgraph GithubAdapter[GitHub adapter]
-        Root --> Init[Initialize error relay]
-        Init --> Validate[validate-check.sh]
-        Validate --> Detect[detect-languages.sh]
-        Detect --> DetectOutput[Write GITHUB_OUTPUT]
-        Detect --> Dispatch{Detected language}
-        Dispatch --> GoAdapter[go/action.yml]
-        Dispatch --> PythonAdapter[python/action.yml]
-        Dispatch --> TypeScriptAdapter[typescript/action.yml]
-        GoAdapter --> GoSetup[actions/setup-go]
-        PythonAdapter --> PythonSetup[astral-sh/setup-uv]
-        TypeScriptAdapter --> TSInfo[project-info.js]
-        TSInfo --> TSOutputs[Write metadata to GITHUB_OUTPUT]
-        TSOutputs --> PnpmSetup[pnpm/action-setup when needed]
-        TSOutputs --> NodeSetup[actions/setup-node when needed]
-        GoSetup --> GoRun[Invoke Go check script]
-        PythonSetup --> PythonRun[Invoke Python check script]
-        NodeSetup --> TypeScriptRun[Invoke TypeScript check script]
-        PnpmSetup --> TypeScriptRun
-        Root --> Success[GitHub success marker]
-        Root --> Collect[collect-error.sh]
-        Root --> Summary[render-summary.sh]
-        Collect --> ErrorOutput[Publish error_message]
-        Summary --> StepSummary[Publish GitHub step summary]
-    end
+    Matrix --> Format["Format"]
+    Matrix --> Lint["Lint"]
+    Matrix --> StructuralLint["Structural lint"]
+    Matrix --> Typecheck["Type check"]
 
-    subgraph PortableCore[Portable core]
-        DetectScript[Language marker detection]
-        ToolCache[QUALITY_GATE_TOOL_CACHE]
-        Download[Download and verify pinned tools]
-        Diagnostics[Exit codes and stderr diagnostics]
-        ErrorFile[QUALITY_GATE_ERROR_FILE]
-        SummaryFiles[Explicit name and summary files]
-    end
-
-    Detect -. implementation .-> DetectScript
-    GoRun --> GoChecks{Go check}
-    PythonRun --> PythonChecks{Python check}
-    TypeScriptRun --> TypeScriptChecks{TypeScript check}
-
-    GoChecks --> GoFormat[gofumpt and goimports]
-    GoChecks --> GoLint[golangci-lint]
-    GoChecks --> GoStrlint[ast-grep org and repo rules]
-    GoChecks --> GoTypecheck[go vet and go build]
-    GoChecks --> GoTest[go test race]
-
-    PythonChecks --> PythonFormat[ruff format]
-    PythonChecks --> PythonLint[ruff and complexipy]
-    PythonChecks --> PythonStrlint[ast-grep org and repo rules]
-    PythonChecks --> PythonTypecheck[ty]
-    PythonChecks --> PythonTest[pytest with coverage]
-
-    TypeScriptChecks --> TSFormat[oxfmt]
-    TypeScriptChecks --> TSLint[oxlint and optional react-doctor]
-    TypeScriptChecks --> TSStrlint[ast-grep with Vue injection rules]
-    TypeScriptChecks --> TSTypecheck[project typecheck or Vue/Nuxt fallback]
-    TypeScriptChecks --> TSTest[npm test or pnpm test]
-
-    GoFormat --> ToolCache
-    GoStrlint --> ToolCache
-    PythonStrlint --> ToolCache
-    TSStrlint --> ToolCache
-    ToolCache --> Download
-    GoChecks --> Diagnostics
-    PythonChecks --> Diagnostics
-    TypeScriptChecks --> Diagnostics
-    Diagnostics --> ErrorFile
-    ErrorFile --> Collect
-    Summary --> SummaryFiles
-
-    Future[Future GitLab or other git-cloud adapter] --> PortableEntry[Same portable entrypoints]
-    PortableEntry --> GoRun
-    PortableEntry --> PythonRun
-    PortableEntry --> TypeScriptRun
+    Format --> Test["Test<br/>needs all four checks"]
+    Lint --> Test
+    StructuralLint --> Test
+    Typecheck --> Test
 ```
+
 
 ### Repository layout
 
@@ -133,7 +71,7 @@ documented environment variables:
 | `--check` | Selects `app:format`, `app:lint`, `app:strlint`, `app:typecheck`, or `app:test` |
 | `--working-directory` | Project directory to inspect and execute in |
 | `--action-directory` | Directory containing organization rules and fallback configuration |
-| `QUALITY_GATE_ERROR_FILE` | Optional file receiving the complete diagnostic report |
+| `QUALITY_GATE_ERROR_FILE` | Optional file receiving the selected diagnostic report |
 | `QUALITY_GATE_OUTPUT_LOG` | Log file used by the sourceable failure-capture helper |
 | `QUALITY_GATE_TOOL_CACHE` | Optional tool cache; defaults to `$HOME/.quality-gate-tools` |
 
@@ -141,7 +79,8 @@ The portable result contract is:
 
 - Exit code `0` means the requested operation passed.
 - A non-zero exit code means it failed or received invalid input.
-- Human-readable diagnostics go to stderr.
+- Portable scripts emit human-readable diagnostics to stderr; the GitHub adapter
+  also captures command output for its failure relay.
 - Detection and metadata entrypoints write stable `key=value` records to stdout.
 - Providers decide how to publish diagnostics, annotations, summaries, reports,
   and artifacts.
@@ -228,11 +167,12 @@ to detect once and run each language in parallel.
 | `app:format` | gofumpt, goimports | Ruff format | oxfmt |
 | `app:lint` | golangci-lint | Ruff check, complexipy | oxlint, optional react-doctor |
 | `app:strlint` | ast-grep organization and repo rules | ast-grep organization and repo rules | ast-grep organization and repo rules with Vue script injection |
-| `app:typecheck` | `go vet`, `go build` | ty | Project script, `vue-tsc`, or `nuxt typecheck` |
+| `app:typecheck` | `go vet`, `go build` | basedpyright | Project script, `vue-tsc`, or `nuxt typecheck` |
 | `app:test` | `go test -race` | pytest with coverage | npm or pnpm test |
 
-Formatting checks never modify project files. Formatting failures include the
-affected files, a bounded diff, and a local remediation command.
+Formatting checks never modify project files. Formatting differences include the
+affected files, a bounded diff, and a local remediation command. Formatter
+execution failures may only include the formatter output and remediation command.
 
 ## TypeScript Metadata
 
@@ -242,7 +182,12 @@ affected files, a bounded diff, and a local remediation command.
 - Vue or Nuxt framework detection;
 - React dependency presence;
 - presence of a project `typecheck` script;
-- `.node-version` validation for typecheck and test checks.
+- `.node-version` is required for typecheck and test checks; `actions/setup-node`
+  consumes and validates the file.
+
+For TypeScript typecheck and test checks, the project must also have a lockfile.
+Projects using pnpm must declare `packageManager: pnpm@<version>` in
+`package.json`.
 
 Nuxt detection takes precedence over Vue. Vue fallback scanning is bounded to
 five directory levels and ignores `.git`, `.nuxt`, `node_modules`, `dist`, and
@@ -250,27 +195,34 @@ five directory levels and ignores `.git`, `.nuxt`, `node_modules`, `dist`, and
 
 ## Tooling And Configuration
 
-Binary tools are stored under `QUALITY_GATE_TOOL_CACHE`. Downloads such as
-gofumpt and ast-grep are verified against hardcoded SHA-256 checksums.* Go tools
-installed from modules use pinned versions. npm and pnpm tools use pinned
-versions through `npx` or the project package manager.
+Downloaded binary tools are stored under `QUALITY_GATE_TOOL_CACHE`. Downloads
+such as gofumpt and ast-grep are verified against hardcoded SHA-256 checksums.
+Go tools installed from modules use pinned versions. npm and pnpm quality tools
+use pinned versions through `npx` or the project package manager.
+Python typechecks use pinned `basedpyright@1.39.10`, synchronize the project with
+`uv sync --frozen --all-groups`, and honor project `pyrightconfig.json` or
+`[tool.basedpyright]`/`[tool.pyright]` configuration before using the organization
+fallback.
+Projects with a `pyproject.toml` must commit a matching `uv.lock` for this check.
 
-Configuration precedence is project configuration first, organization fallback
-second. Structural lint always runs organization rules and then additive
+For checks that support configuration, project configuration takes precedence
+over the organization fallback. Formatting uses pinned tool defaults. Structural
+lint always runs organization rules first, then the selected additive
 repository-local rules from `sgconfig.yaml`, `rules/`, or `.quality-gate/`.
+Root-level `sgconfig.yaml` or `rules/` takes precedence over `.quality-gate/`.
 
 Organization fallback files are stored beside the language adapters:
 
 - `go/.golangci.yml`;
-- `python/ruff.toml` and `python/ty.toml`;
+- `python/ruff.toml` and `python/pyrightconfig.json`;
 - `typescript/.oxlintrc.json`;
 - language-specific ast-grep rules under each `rules/` directory.
 
-\* *Note on binary downloads:* Prebuilt binary downloads for `gofumpt` and `ast-grep`
+> **Note on binary downloads:** Prebuilt binary downloads for `gofumpt` and `ast-grep`
 target Linux x86_64 (`linux_amd64`) environments, matching standard GitHub Actions
-and Linux CI runners. When executing scripts locally on non-x86_64 architectures
-(such as macOS Apple Silicon or ARM64 Linux), pre-installing the tools in `PATH`
-takes precedence and bypasses downloading mismatched binaries.
+and Linux CI runners. The installers currently always populate the quality-gate
+tool cache, so pre-installing those tools elsewhere in `PATH` does not bypass a
+download on non-x86_64 architectures such as macOS Apple Silicon or ARM64 Linux.
 
 ## Repository-Local Rules
 
@@ -300,7 +252,7 @@ The GitHub workflow additionally covers:
 - Vue and Nuxt behavior;
 - corrupted tool downloads and checksum cleanup;
 - reusable workflow dispatch;
-- GitHub adapter outputs, error relay, and summaries.
+- GitHub adapter outputs, error relay, and friendly summary names.
 
 See [`docs/testing.md`](docs/testing.md) for the complete test matrix.
 

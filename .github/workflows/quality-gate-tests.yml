@@ -157,7 +157,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        check: [app:format, app:lint, app:strlint, app:test]
+        check: [app:format, app:lint, app:strlint, app:typecheck, app:test]
         include:
           - check: app:format
             fixture: quality-gate/python/fixtures/pass
@@ -173,6 +173,9 @@ jobs:
           - check: app:strlint
             fixture: quality-gate/python/fixtures/pass
             fail: quality-gate/python/fixtures/strlint-fail
+          - check: app:typecheck
+            fixture: quality-gate/python/fixtures/pass
+            fail: quality-gate/python/fixtures/typecheck-fail
           - check: app:test
             fixture: quality-gate/python/fixtures/pass
             fail: quality-gate/python/fixtures/test-fail
@@ -226,6 +229,16 @@ jobs:
           }
           [[ "$ERROR_MESSAGE" == *"FAILED"* ]] || {
             echo "::error::Expected complexipy to report the function as failed"
+            exit 1
+          }
+
+      - name: assert basedpyright failure
+        if: matrix.check == 'app:typecheck'
+        env:
+          ERROR_MESSAGE: ${{ steps.py-fail.outputs.error_message }}
+        run: |
+          [[ "$ERROR_MESSAGE" == *"__init__.py"* ]] || {
+            echo "::error::Expected basedpyright to identify the failing Python file"
             exit 1
           }
 
@@ -748,6 +761,31 @@ jobs:
           EXPECTED="No lockfile found for TypeScript project. Commit pnpm-lock.yaml (pnpm) or package-lock.json (npm)."
           [[ "$ACTUAL" == "$EXPECTED" ]] || {
             echo "::error::Wrong error message. Expected: '${EXPECTED}' — Got: '${ACTUAL}'"
+            exit 1
+          }
+
+  error-py-no-lockfile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: run typecheck on Python project without lockfile
+        id: no-lockfile
+        uses: ./quality-gate
+        with:
+          check: app:typecheck
+          working-directory: quality-gate/fixtures/error/py-no-lockfile
+        continue-on-error: true
+      - name: assert lockfile error
+        env:
+          ERROR_MESSAGE: ${{ steps.no-lockfile.outputs.error_message }}
+        run: |
+          [[ "${{ steps.no-lockfile.outcome }}" == "failure" ]] || {
+            echo "::error::Expected action to fail on missing Python lockfile but it succeeded"
+            exit 1
+          }
+          [[ "$ERROR_MESSAGE" == *"uv.lock"* ]] || {
+            echo "::error::Expected the Python lockfile error to mention uv.lock"
             exit 1
           }
 
