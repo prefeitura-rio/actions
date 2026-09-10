@@ -1,0 +1,4 @@
+[project]
+name = "fixture-python-no-lockfile"
+version = "0.1.0"
+requires-python = ">=3.13"

@@ -1,389 +1,264 @@
-# Quality-Gate
+# Quality Gate
 
-Language-agnostic composite GitHub Action that runs a single quality check on
-any Go, Python, or TypeScript project. Detects the project language automatically
-from marker files and executes the appropriate tool for the requested check.
-Vue and Nuxt projects are handled as TypeScript frameworks without separate
-workflow jobs.
-Supports polyglot repositories — detects all present languages and runs checks
-for each in parallel via matrix.
+Quality Gate is a provider-neutral quality-check engine with a GitHub Actions
+adapter. It detects Go, Python, and TypeScript projects and runs formatting,
+linting, structural linting, type checks, and tests. Vue and Nuxt projects are
+handled by the TypeScript module.
 
----
+The portable scripts are the source of quality-check behavior. GitHub Actions
+provides only orchestration and runner integration. A future GitLab, Bitbucket,
+Azure DevOps, or other git-cloud adapter can invoke the same scripts without
+changing the checks.
 
-## Using the action
+## Workflow Overview
+
+```mermaid
+%% Reusable workflow: detect once, run language checks in parallel, test last
+flowchart TD
+    DetectJob["Detect job<br/>check: detect-only"] --> Languages["Languages output"]
+    Languages --> Matrix["Language matrix"]
+
+    Matrix --> Format["Format"]
+    Matrix --> Lint["Lint"]
+    Matrix --> StructuralLint["Structural lint"]
+    Matrix --> Typecheck["Type check"]
+
+    Format --> Test["Test<br/>needs all four checks"]
+    Lint --> Test
+    StructuralLint --> Test
+    Typecheck --> Test
+```
+
+
+### Repository layout
+
+```text
+quality-gate/
+├── action.yml                         # GitHub root adapter and dispatcher
+├── scripts/
+│   ├── capture-failure.sh             # Sourceable failure trap support
+│   ├── collect-error.sh               # Portable error selection/truncation
+│   ├── detect-languages.sh            # Project marker detection
+│   ├── install-ast-grep.sh            # Shared ast-grep installer
+│   ├── render-summary.sh              # Portable summary rendering
+│   ├── validate-check.sh              # Check-name validation
+│   └── lib/
+│       ├── diagnostics.sh             # Error and report primitives
+│       └── tools.sh                   # Cache and checksum primitives
+├── go/
+│   ├── action.yml                     # GitHub Go adapter
+│   └── scripts/check.sh               # Go checks
+├── python/
+│   ├── action.yml                     # GitHub Python adapter
+│   └── scripts/check.sh               # Python checks
+├── typescript/
+│   ├── action.yml                     # GitHub TypeScript adapter
+│   └── scripts/
+│       ├── check.sh                   # TypeScript checks
+│       └── project-info.js            # Package manager/framework metadata
+├── tests/scripts/test-portable.sh     # Provider-neutral contract tests
+└── docs/testing.md                    # Test strategy and fixture matrix
+```
+
+## Portable Contract
+
+Portable entrypoints do not read `GITHUB_*`, `RUNNER_*`, or equivalent
+provider-specific variables. They use explicit arguments and the following
+documented environment variables:
+
+| Interface | Purpose |
+|---|---|
+| `--check` | Selects `app:format`, `app:lint`, `app:strlint`, `app:typecheck`, or `app:test` |
+| `--working-directory` | Project directory to inspect and execute in |
+| `--action-directory` | Directory containing organization rules and fallback configuration |
+| `QUALITY_GATE_ERROR_FILE` | Optional file receiving the selected diagnostic report |
+| `QUALITY_GATE_OUTPUT_LOG` | Log file used by the sourceable failure-capture helper |
+| `QUALITY_GATE_TOOL_CACHE` | Optional tool cache; defaults to `$HOME/.quality-gate-tools` |
+
+The portable result contract is:
+
+- Exit code `0` means the requested operation passed.
+- A non-zero exit code means it failed or received invalid input.
+- Portable scripts emit human-readable diagnostics to stderr; the GitHub adapter
+  also captures command output for its failure relay.
+- Detection and metadata entrypoints write stable `key=value` records to stdout.
+- Providers decide how to publish diagnostics, annotations, summaries, reports,
+  and artifacts.
+
+Example language detection:
+
+```bash
+bash quality-gate/scripts/detect-languages.sh \
+  --check detect-only \
+  --working-directory ./my-project
+```
+
+Example direct Python check:
+
+```bash
+bash quality-gate/python/scripts/check.sh \
+  --check app:lint \
+  --working-directory ./my-project \
+  --action-directory ./quality-gate/python
+```
+
+The caller must provide runtime dependencies such as Go, Node.js, uv, npm, or
+pnpm. The scripts manage their pinned quality tools and verify downloaded binary
+checksums before execution.
+
+## GitHub Adapter
+
+The public entrypoint remains:
+
+```yaml
+- uses: prefeitura-rio/actions/quality-gate@master
+  with:
+    check: app:format
+```
+
+The adapter performs these provider-specific operations:
+
+- invokes `uses:` actions for runtime setup;
+- manages GitHub matrices and conditional dispatch;
+- writes `GITHUB_OUTPUT`, `GITHUB_ENV`, and `GITHUB_STEP_SUMMARY`;
+- configures the runner error relay and Bash environment;
+- maps portable stdout, stderr, and exit codes into GitHub conventions.
+
+The adapter does not own formatter, linter, structural-rule, typecheck, or test
+behavior. Those operations live in the portable scripts.
+
+## Inputs And Outputs
 
 ### Inputs
 
-| Input      | Required | Valid values                                                             |
-| ---------- | -------- | ------------------------------------------------------------------------ |
-| `check`    | yes      | `app:format` · `app:lint` · `app:strlint` · `app:typecheck` · `app:test` · `detect-only` |
-| `working-directory` | no  | Directory to run checks in (default: `.`)                               |
-| `language` | no       | Explicit language override: `go`, `python`, `typescript`                 |
+| Input | Required | Values |
+|---|---:|---|
+| `check` | yes | `app:format`, `app:lint`, `app:strlint`, `app:typecheck`, `app:test`, `detect-only` |
+| `working-directory` | no | Project directory; defaults to `.` |
+| `language` | no | `go`, `python`, or `typescript` |
 
 ### Outputs
 
-| Output        | Description |
-| ------------- | ----------- |
-| `error_message` | Human-readable error message set when the action fails. |
-| `languages`   | JSON array of detected languages (e.g. `["go","typescript"]`). Set only when `check: detect-only`. |
-| `summary_name` | Friendly check, language, and framework name used in the job summary, such as `Format (Typescript)` or `Format (Typescript - Vue)`. |
+| Output | Description |
+|---|---|
+| `error_message` | Complete or truncated human-readable failure diagnostic |
+| `languages` | JSON array returned by `detect-only` |
+| `summary_name` | Friendly check, language, and framework name |
 
-### Language detection
+## Detection And Dispatch
 
-| Marker file                      | Detected language |
-| -------------------------------- | ----------------- |
-| `go.mod`                         | Go                |
-| `pyproject.toml` or `setup.py`   | Python            |
-| `package.json` + `tsconfig.json` | TypeScript (including Vue/Nuxt) |
+The dispatcher uses these markers:
 
-If none of these marker files exist the action exits with an error.
+| Marker | Language |
+|---|---|
+| `go.mod` | Go |
+| `pyproject.toml` or `setup.py` | Python |
+| `package.json` and `tsconfig.json` | TypeScript |
 
-When `check: detect-only`, the action outputs all detected languages as a JSON
-array via the `languages` output. This enables the reusable workflow to matrix
-over languages for parallel execution.
+With `detect-only`, all detected languages are returned. With a normal check,
+zero detected languages fail, one language is selected automatically, and
+multiple languages require the `language` input. This allows a reusable workflow
+to detect once and run each language in parallel.
 
-When `check` is a normal check (e.g. `app:format`) and multiple languages are
-detected, the action exits with an error unless `language` is provided. Use
-`detect-only` to enumerate languages, then call the action once per language.
+## Checks
 
----
+| Check | Go | Python | TypeScript |
+|---|---|---|---|
+| `app:format` | gofumpt, goimports | Ruff format | oxfmt |
+| `app:lint` | golangci-lint | Ruff check, complexipy | oxlint, optional react-doctor |
+| `app:strlint` | ast-grep organization and repo rules | ast-grep organization and repo rules | ast-grep organization and repo rules with Vue script injection |
+| `app:typecheck` | `go vet`, `go build` | basedpyright | Project script, `vue-tsc`, or `nuxt typecheck` |
+| `app:test` | `go test -race` | pytest with coverage | npm or pnpm test |
 
-## Check reference
+Formatting checks never modify project files. Formatting differences include the
+affected files, a bounded diff, and a local remediation command. Formatter
+execution failures may only include the formatter output and remediation command.
 
-### `detect-only`
+## TypeScript Metadata
 
-Detect all supported languages in the working directory. Outputs a JSON array
-via the `languages` output. Does not run any quality checks.
+`typescript/scripts/project-info.js` is provider-neutral and reports:
 
-Example output: `["go","python","typescript"]`
+- package manager and pinned pnpm version when required;
+- Vue or Nuxt framework detection;
+- React dependency presence;
+- presence of a project `typecheck` script;
+- `.node-version` is required for typecheck and test checks; `actions/setup-node`
+  consumes and validates the file.
 
-### `app:format`
+For TypeScript typecheck and test checks, the project must also have a lockfile.
+Projects using pnpm must declare `packageManager: pnpm@<version>` in
+`package.json`.
 
-Fail on any formatting diff. Never auto-fixes in CI.
+Nuxt detection takes precedence over Vue. Vue fallback scanning is bounded to
+five directory levels and ignores `.git`, `.nuxt`, `node_modules`, `dist`, and
+`build` directories.
 
-| Language   | Tool                | Version                 |
-| ---------- | ------------------- | ----------------------- |
-| Go         | gofumpt + goimports | v0.8.0 / v0.35.0        |
-| Python     | ruff format         | 0.16.4 (via uvx)        |
-| TypeScript | oxfmt               | 0.66.0 (via npx)        |
+## Tooling And Configuration
 
-When formatting fails, the summary lists the affected files, includes a unified
-formatting diff explaining the required changes, and provides the exact command
-to apply the fix locally. Large diffs are capped at 200 lines in the summary;
-the complete formatter output remains in the failed step logs. Go reports
-separate `gofumpt` and `goimports` failures so the correct formatter command is
-clear.
+Downloaded binary tools are stored under `QUALITY_GATE_TOOL_CACHE`. Downloads
+such as gofumpt and ast-grep are verified against hardcoded SHA-256 checksums.
+Go tools installed from modules use pinned versions. npm and pnpm quality tools
+use pinned versions through `npx` or the project package manager.
+Python typechecks use pinned `basedpyright@1.39.10`, synchronize the project with
+`uv sync --frozen --all-groups`, and honor project `pyrightconfig.json` or
+`[tool.basedpyright]`/`[tool.pyright]` configuration before using the organization
+fallback.
+Projects with a `pyproject.toml` must commit a matching `uv.lock` for this check.
 
-Quality-gate summaries use friendly check, language, and framework names, such as
-`Quality Gate: Lint (Typescript)`, `Quality Gate: Format (Typescript - Vue)`, and
-`Quality Gate: Format (Python)`. Detection and setup failures fall back to the
-raw check name when a language is not available.
-The summary reads diagnostics from a runner temporary file, avoiding process
-environment limits for large formatter reports. The `error_message` output is
-bounded to 64 KiB for downstream step usage.
+For checks that support configuration, project configuration takes precedence
+over the organization fallback. Formatting uses pinned tool defaults. Structural
+lint always runs organization rules first, then the selected additive
+repository-local rules from `sgconfig.yaml`, `rules/`, or `.quality-gate/`.
+Root-level `sgconfig.yaml` or `rules/` takes precedence over `.quality-gate/`.
 
-### `app:lint`
+Organization fallback files are stored beside the language adapters:
 
-Static analysis. Runs on all three languages.
+- `go/.golangci.yml`;
+- `python/ruff.toml` and `python/pyrightconfig.json`;
+- `typescript/.oxlintrc.json`;
+- language-specific ast-grep rules under each `rules/` directory.
 
-| Language   | Tool                      | Version                 |
-| ---------- | ------------------------- | ----------------------- |
-| Go         | golangci-lint             | v2.12.2                 |
-| Python     | ruff check + complexipy   | ruff via uv (project-pinned) · complexipy 7.0.1 (via uvx) |
-| TypeScript | oxlint + react-doctor    | oxlint 1.81.0 (via npx) · react-doctor 0.9.12 (via npx, React projects) |
+> **Note on binary downloads:** Prebuilt binary downloads for `gofumpt` and `ast-grep`
+target Linux x86_64 (`linux_amd64`) environments, matching standard GitHub Actions
+and Linux CI runners. The installers currently always populate the quality-gate
+tool cache, so pre-installing those tools elsewhere in `PATH` does not bypass a
+download on non-x86_64 architectures such as macOS Apple Silicon or ARM64 Linux.
 
-### `app:strlint`
+## Repository-Local Rules
 
-Structural lint using ast-grep. Runs in two passes:
+Repositories can add structural rules without changing the action:
 
-1. **Org rules** — bundled with the action, always applied.
-2. **Repo-local rules** — detected at runtime from a `sgconfig.yaml` or `rules/` directory in the consuming repo.
+1. Add `sgconfig.yaml` at the project root, or under `.quality-gate/` for a
+   multi-project repository.
+2. Add rule files under `rules/`.
+3. Run `app:strlint`.
+
+Repository-local rules are additive and do not replace organization rules.
+
+## Testing
+
+Run the provider-neutral contract tests locally:
 
 ```bash
-# Pass 1 — org rules (always runs)
-ast-grep scan --config <action-path>/<lang>/rules
-
-# Pass 2 — repo-local rules (only if present)
-ast-grep scan   # uses repo's own sgconfig.yaml
+bash quality-gate/tests/scripts/test-portable.sh
 ```
 
-#### Org rules
+The GitHub workflow additionally covers:
 
-| Language   | Rule ID                  | Severity | What it catches                                                             |
-| ---------- | ------------------------ | -------- | --------------------------------------------------------------------------- |
-| Go         | `no-panic`               | error    | `panic(...)` outside test files                                             |
-| Go         | `no-http-default-client` | warning  | `http.DefaultClient`, `http.Get`, `http.Post`, `http.Head`, `http.PostForm` |
-| Go         | `no-plain-error-wrap`    | warning  | `fmt.Errorf("...: %v", err)` instead of `%w`                                |
-| Python     | `no-print`               | warning  | `print(...)` outside test files                                             |
-| Python     | `no-bare-except`         | warning  | bare `except:` clause (no exception type specified)                         |
-| Python     | `no-eval`                | error    | `eval(...)` and `exec(...)`                                                 |
-| TypeScript | `no-any-assertion`       | error    | `expr as any` outside test files                                            |
-| TypeScript | `no-console`             | warning  | `console.log`, `.warn`, `.error`, `.info`, `.debug`                         |
+- all language checks against passing and failing fixtures;
+- organization ast-grep rule tests;
+- language detection and overrides;
+- repository-local and mandatory policy rules;
+- Vue and Nuxt behavior;
+- corrupted tool downloads and checksum cleanup;
+- reusable workflow dispatch;
+- GitHub adapter outputs, error relay, and friendly summary names.
 
-### `app:typecheck`
+See [`docs/testing.md`](docs/testing.md) for the complete test matrix.
 
-Type checking and compilation verification.
+## Reusable Workflow
 
-| Language   | Command                                    | Notes                                        |
-| ---------- | ------------------------------------------ | -------------------------------------------- |
-| Go         | `go vet ./...` + `go build -o /dev/null`   | Builds `./cmd/...` if present, otherwise `.` |
-| Python     | `ty check` (strict: all rules at error)     | ty 0.0.74 (via uvx)                          |
-| TypeScript | `pnpm run typecheck` / `npm run typecheck` | project script; Vue falls back to `vue-tsc`, Nuxt to `nuxt typecheck` |
-
-### `app:test`
-
-Unit and integration tests.
-
-| Language   | Command                                             |
-| ---------- | --------------------------------------------------- |
-| Go         | `CGO_ENABLED=1 go test -count=1 -race -v ./...`     |
-| Python     | `uv run pytest --cov=src --cov-report=term-missing` |
-| TypeScript | `pnpm test` or `npm test`                           |
-
----
-
-## How it works
-
-`action.yml` is the public dispatcher. It validates the check, detects the
-language(s), and invokes one language-specific composite action:
-
-- `go/action.yml`
-- `python/action.yml`
-- `typescript/action.yml`
-
-Each language action owns its setup and all format, lint, structural lint,
-typecheck, and test commands. Consumers continue to use the root action and do
-not need to change their workflow configuration.
-
-For polyglot repositories, the reusable workflow (`quality-gate.yml`) uses
-`detect-only` to enumerate all languages, then matrices over them so that
-Go, Python, and TypeScript checks run in parallel.
-
-Tool configuration follows this precedence: project configuration is used when
-present; the organization configuration is the fallback when the project does
-not provide one. Organization fallbacks use strict presets: Ruff selects all
-rules, golangci-lint enables all linters, oxlint enables correctness rules plus
-the explicit organization policy rules, and ty treats all rules as errors.
-Structural lint runs both organization and project rules, with project rules
-applied last. For Vue and Nuxt, organization TypeScript rules also run inside
-`<script lang="ts">` blocks in `.vue` files. The action does not modify project
-files.
-
-### Tool installation
-
-Binary tools (gofumpt, ast-grep) are downloaded from GitHub releases and verified
-against a hardcoded sha256 checksum before execution. This prevents tampered
-releases from running on CI runners.
-
-npx-pinned tools (oxfmt, oxlint, react-doctor) are downloaded by npx at the
-pinned version. Oxlint's Vue plugin is enabled by the organization fallback
-configuration. react-doctor runs only when the project declares `react` or
-`react-dom`.
-
-Go tools installed via `go install` are pinned by module version (golangci-lint
-installed via the official `golangci-lint-action` which pins by version tag).
-
-Ruff formatting uses the action-pinned `uvx ruff@0.16.4`. Other Python tools
-(ruff check, pytest) are installed via uv from the project's `pyproject.toml`.
-ty and complexipy are the exception: they are installed by the action via
-`uvx <tool>@<version>` at a pinned version, independent of the project's own
-dependencies, the same way gofumpt and ast-grep are pinned for Go.
-The action does not pass a complexity threshold; complexipy uses its default or
-the consuming project's configuration.
-
-### TypeScript package manager detection
-
-The action detects `pnpm-lock.yaml` or `package-lock.json` at the repo root.
-If neither is present it exits with an error.
-
-### TypeScript framework detection
-
-The TypeScript action detects frontend frameworks internally after TypeScript
-detection. Nuxt detection takes precedence over Vue detection.
-
-| Framework | Detection | Framework-specific behavior |
-| --------- | --------- | ---------------------------- |
-| Vue | `vue` dependency or `.vue` files | Vue-aware Oxlint rules, `.vue` formatting, and `vue-tsc --noEmit` fallback |
-| Nuxt | `nuxt` dependency or `nuxt.config.*` | Vue-aware Oxlint rules, `.vue` formatting, and `nuxt typecheck` fallback |
-
-Both frameworks continue to report as `typescript` to the root dispatcher and
-reusable workflow. An existing `scripts.typecheck` command remains
-authoritative; framework commands are used only when that script is absent.
-Projects using the fallback must declare `vue-tsc` and `typescript` in their
-development dependencies. When dependency metadata does not identify Vue, the
-`.vue` file fallback scan is bounded to five directory levels to avoid
-unbounded traversal of large repositories.
-
-When a framework is detected, the job summary identifies it while preserving the
-TypeScript language identity: `Typescript - Vue` or `Typescript - Nuxt`.
-
----
-
-## Adding repo-local ast-grep rules
-
-Repositories can define their own structural lint rules alongside the org rules.
-
-1. Create a `sgconfig.yaml` at the project root (or in a `.quality-gate/`
-   directory for multi-project repos).
-2. Add rule files under `rules/` following the ast-grep rule format.
-3. The action picks them up automatically — no configuration needed.
-
-Org rules always run first. Repo-local rules are additive — they extend, never
-replace, the org ruleset.
-
----
-
-## Complete workflow example
-
-Single-language project:
-
-```yaml
-name: Quality Gate
-
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-
-jobs:
-  format:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: prefeitura-rio/actions/quality-gate@master
-        with:
-          check: app:format
-
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: prefeitura-rio/actions/quality-gate@master
-        with:
-          check: app:lint
-
-  strlint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: prefeitura-rio/actions/quality-gate@master
-        with:
-          check: app:strlint
-
-  typecheck:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: prefeitura-rio/actions/quality-gate@master
-        with:
-          check: app:typecheck
-
-  test:
-    runs-on: ubuntu-latest
-    needs: [format, lint, strlint, typecheck]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: prefeitura-rio/actions/quality-gate@master
-        with:
-          check: app:test
-```
-
-Polyglot project (Go + TypeScript, auto-detected):
-
-```yaml
-name: Quality Gate
-
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-
-jobs:
-  format:
-    needs: detect
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        language: ${{ fromJson(needs.detect.outputs.languages) }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: prefeitura-rio/actions/quality-gate@master
-        with:
-          check: app:format
-          language: ${{ matrix.language }}
-
-  lint:
-    needs: detect
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        language: ${{ fromJson(needs.detect.outputs.languages) }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: prefeitura-rio/actions/quality-gate@master
-        with:
-          check: app:lint
-          language: ${{ matrix.language }}
-
-  strlint:
-    needs: detect
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        language: ${{ fromJson(needs.detect.outputs.languages) }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: prefeitura-rio/actions/quality-gate@master
-        with:
-          check: app:strlint
-          language: ${{ matrix.language }}
-
-  typecheck:
-    needs: detect
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        language: ${{ fromJson(needs.detect.outputs.languages) }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: prefeitura-rio/actions/quality-gate@master
-        with:
-          check: app:typecheck
-          language: ${{ matrix.language }}
-
-  test:
-    needs: [detect, format, lint, strlint, typecheck]
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        language: ${{ fromJson(needs.detect.outputs.languages) }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: prefeitura-rio/actions/quality-gate@master
-        with:
-          check: app:test
-          language: ${{ matrix.language }}
-
-  detect:
-    runs-on: ubuntu-latest
-    outputs:
-      languages: ${{ steps.detect.outputs.languages }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: prefeitura-rio/actions/quality-gate@master
-        id: detect
-        with:
-          check: detect-only
-```
-
-Or use the reusable workflow:
+For a project with one or more language markers:
 
 ```yaml
 jobs:
@@ -393,3 +268,21 @@ jobs:
       project-name: my-project
       working-directory: .
 ```
+
+The reusable workflow runs detection first, creates a language matrix, executes
+format, lint, structural lint, and typecheck in parallel, and runs tests only
+after those checks pass.
+
+## Future Git-Cloud Adapters
+
+A provider adapter should implement only:
+
+- repository checkout;
+- runtime installation and caching;
+- matrix or job orchestration;
+- provider-native result publication.
+
+It should call the existing portable entrypoints and preserve their arguments,
+exit codes, stdout records, stderr diagnostics, and working-directory semantics.
+This keeps GitHub-to-GitLab migration limited to orchestration rather than
+reimplementing quality checks.

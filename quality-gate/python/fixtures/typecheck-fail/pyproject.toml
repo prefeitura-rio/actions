@@ -1,0 +1,9 @@
+[project]
+name = "fixture-typecheck-fail"
+version = "0.1.0"
+requires-python = ">=3.13"
+
+[dependency-groups]
+dev = [
+    "basedpyright==1.39.10",
+]
