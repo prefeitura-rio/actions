@@ -7,7 +7,8 @@ ERROR_FILE=$(mktemp)
 SUCCESS_FILE=$(mktemp)
 SUMMARY_NAME_FILE=$(mktemp)
 SUMMARY_FILE=$(mktemp)
-trap 'rm -f "$ERROR_FILE" "$SUCCESS_FILE" "$SUMMARY_NAME_FILE" "$SUMMARY_FILE"' EXIT
+TEMP_DIR=$(mktemp -d)
+trap 'rm -rf "$ERROR_FILE" "$SUCCESS_FILE" "$SUMMARY_NAME_FILE" "$SUMMARY_FILE" "$TEMP_DIR"' EXIT
 
 fail() {
   printf 'FAIL: %s\n' "$1" >&2
@@ -111,6 +112,25 @@ assert_equal \
   "No lockfile found for TypeScript project. Commit pnpm-lock.yaml (pnpm) or package-lock.json (npm)." \
   "$(<"$ERROR_FILE")" \
   "missing-lockfile diagnostic"
+
+printf '{"name": "test", "packageManager": "pnpm@"}' > "$TEMP_DIR/package.json"
+touch "$TEMP_DIR/pnpm-lock.yaml"
+if node "$ROOT/typescript/scripts/project-info.js" "$TEMP_DIR" --require-package-manager 2>"$ERROR_FILE"; then
+  fail "TypeScript project with empty pnpm version should be rejected"
+fi
+assert_equal \
+  "package.json must declare packageManager as pnpm@<version>." \
+  "$(<"$ERROR_FILE")" \
+  "empty-pnpm-version diagnostic"
+
+printf '{"name": "test", "packageManager": "pnpm@10.15.0\\nmanager=npm"}' > "$TEMP_DIR/package.json"
+if node "$ROOT/typescript/scripts/project-info.js" "$TEMP_DIR" --require-package-manager 2>"$ERROR_FILE"; then
+  fail "TypeScript project with newline in packageManager should be rejected"
+fi
+assert_equal \
+  "package.json must declare packageManager as pnpm@<version>." \
+  "$(<"$ERROR_FILE")" \
+  "newline-package-manager diagnostic"
 
 for script in \
   "$ROOT/go/scripts/check.sh" \

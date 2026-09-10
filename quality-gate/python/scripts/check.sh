@@ -92,7 +92,10 @@ EOF
 run_strlint() {
   local org_config
   org_config=$(mktemp "${TMPDIR:-/tmp}/quality-gate.XXXXXX.yaml")
-  trap 'rm -f "$org_config"' EXIT
+  local cleanup
+  printf -v cleanup 'rm -f -- %q' "$org_config"
+  # shellcheck disable=SC2064
+  trap "$cleanup" EXIT
   printf 'ruleDirs:\n  - %s/rules\n' "$ACTION_DIR" > "$org_config"
   ast-grep scan --config "$org_config"
   rm -f "$org_config"

@@ -81,7 +81,10 @@ prepare_nuxt() {
 format_typescript() {
   local stderr_file files status diff_file file_count
   stderr_file=$(mktemp "${TMPDIR:-/tmp}/quality-gate.XXXXXX")
-  trap 'rm -f "$stderr_file"' EXIT
+  local cleanup
+  printf -v cleanup 'rm -f -- %q' "$stderr_file"
+  # shellcheck disable=SC2064
+  trap "$cleanup" EXIT
   if files=$(npx --yes --loglevel=error oxfmt@0.66.0 --list-different . 2>"$stderr_file"); then
     status=0
   else
@@ -118,10 +121,12 @@ EOF
   local -a temp_files=()
 
   cleanup_format() {
-    rm -f "$diff_file"
-    for d in "${temp_dirs[@]}"; do
-      rm -rf "$d"
-    done
+    rm -f "${diff_file:-}"
+    if [[ ${#temp_dirs[@]} -gt 0 ]]; then
+      for d in "${temp_dirs[@]}"; do
+        rm -rf "$d"
+      done
+    fi
   }
   trap cleanup_format EXIT
 
@@ -169,7 +174,10 @@ EOF
 run_strlint() {
   local tmp_config
   tmp_config=$(mktemp "${TMPDIR:-/tmp}/quality-gate.XXXXXX.yaml")
-  trap 'rm -f "$tmp_config"' EXIT
+  local cleanup
+  printf -v cleanup 'rm -f -- %q' "$tmp_config"
+  # shellcheck disable=SC2064
+  trap "$cleanup" EXIT
   cat > "$tmp_config" <<EOF
 ruleDirs:
   - ${ACTION_DIR}/rules

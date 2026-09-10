@@ -56,12 +56,13 @@ if (checkRequiresRuntime && !fs.existsSync(path.join(projectDirectory, '.node-ve
 
 if (needsPackageManager) {
   if (fs.existsSync(path.join(projectDirectory, 'pnpm-lock.yaml'))) {
-    const packageManager = project.packageManager || '';
-    if (!packageManager.startsWith('pnpm@')) {
+    const packageManager = typeof project.packageManager === 'string' ? project.packageManager.trim() : '';
+    const match = packageManager.match(/^pnpm@([0-9]+(?:\.[0-9]+)*(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$/);
+    if (!match || !match[1]) {
       throw new Error('package.json must declare packageManager as pnpm@<version>.');
     }
     console.log('manager=pnpm');
-    console.log(`version=${packageManager.slice(5)}`);
+    console.log(`version=${match[1]}`);
   } else if (fs.existsSync(path.join(projectDirectory, 'package-lock.json'))) {
     console.log('manager=npm');
   } else {

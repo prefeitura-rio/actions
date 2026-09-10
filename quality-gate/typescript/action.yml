@@ -50,10 +50,11 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       env:
         ACTION_DIRECTORY: ${{ github.action_path }}
+        CHECK: ${{ inputs.check }}
         QUALITY_GATE_ERROR_FILE: ${{ runner.temp }}/quality-gate-error.txt
       run: |
         set -euo pipefail
         bash "${ACTION_DIRECTORY}/scripts/check.sh" \
-          --check "${{ inputs.check }}" \
+          --check "$CHECK" \
           --working-directory "$PWD" \
           --action-directory "$ACTION_DIRECTORY"

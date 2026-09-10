@@ -38,6 +38,8 @@ ACTION_DIR=$(cd -- "$ACTION_DIR" && pwd)
 qg_tool_cache_init
 cd "$PROJECT_DIR"
 
+GOLANGCI_LINT_VERSION="2.12.2"
+
 install_format_tools() {
   local output="$QUALITY_GATE_TOOL_DOWNLOADS/gofumpt"
   qg_download_verified \
@@ -50,8 +52,19 @@ install_format_tools() {
 }
 
 install_lint_tool() {
-  if ! command -v golangci-lint >/dev/null 2>&1; then
-    GOBIN="$QUALITY_GATE_TOOL_BIN" go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+  local target="$QUALITY_GATE_TOOL_BIN/golangci-lint"
+  local is_valid=false
+
+  if [[ -x "$target" ]]; then
+    local version_output
+    version_output=$("$target" version 2>&1 || true)
+    if [[ "$version_output" == *"$GOLANGCI_LINT_VERSION"* ]]; then
+      is_valid=true
+    fi
+  fi
+
+  if [[ "$is_valid" != true ]]; then
+    GOBIN="$QUALITY_GATE_TOOL_BIN" go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v$GOLANGCI_LINT_VERSION"
   fi
 }
 
@@ -106,7 +119,10 @@ EOF
 run_strlint() {
   local tmp_config
   tmp_config=$(mktemp "${TMPDIR:-/tmp}/quality-gate.XXXXXX.yaml")
-  trap 'rm -f "$tmp_config"' EXIT
+  local cleanup
+  printf -v cleanup 'rm -f -- %q' "$tmp_config"
+  # shellcheck disable=SC2064
+  trap "$cleanup" EXIT
   printf 'ruleDirs:\n  - %s/rules\n' "$ACTION_DIR" > "$tmp_config"
   ast-grep scan --config "$tmp_config"
   rm -f "$tmp_config"
