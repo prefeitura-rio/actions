@@ -251,7 +251,7 @@ five directory levels and ignores `.git`, `.nuxt`, `node_modules`, `dist`, and
 ## Tooling And Configuration
 
 Binary tools are stored under `QUALITY_GATE_TOOL_CACHE`. Downloads such as
-gofumpt and ast-grep are verified against hardcoded SHA-256 checksums. Go tools
+gofumpt and ast-grep are verified against hardcoded SHA-256 checksums.* Go tools
 installed from modules use pinned versions. npm and pnpm tools use pinned
 versions through `npx` or the project package manager.
 
@@ -265,6 +265,12 @@ Organization fallback files are stored beside the language adapters:
 - `python/ruff.toml` and `python/ty.toml`;
 - `typescript/.oxlintrc.json`;
 - language-specific ast-grep rules under each `rules/` directory.
+
+\* *Note on binary downloads:* Prebuilt binary downloads for `gofumpt` and `ast-grep`
+target Linux x86_64 (`linux_amd64`) environments, matching standard GitHub Actions
+and Linux CI runners. When executing scripts locally on non-x86_64 architectures
+(such as macOS Apple Silicon or ARM64 Linux), pre-installing the tools in `PATH`
+takes precedence and bypasses downloading mismatched binaries.
 
 ## Repository-Local Rules
 

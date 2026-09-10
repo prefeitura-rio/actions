@@ -62,7 +62,7 @@ format_gofumpt() {
     diff_output=$(gofumpt -d . || true)
     printf '%s\n' "$unformatted"
     printf '%s\n' "$diff_output"
-    qg_report "$(cat <<EOF
+    qg_error "$(cat <<EOF
 gofumpt found unformatted files.
 
 Files requiring formatting:
@@ -86,7 +86,7 @@ format_goimports() {
     diff_output=$(goimports -d . || true)
     printf '%s\n' "$unformatted"
     printf '%s\n' "$diff_output"
-    qg_report "$(cat <<EOF
+    qg_error "$(cat <<EOF
 goimports found files with unorganised imports.
 
 Files requiring import organisation:
@@ -106,9 +106,11 @@ EOF
 run_strlint() {
   local tmp_config
   tmp_config=$(mktemp "${TMPDIR:-/tmp}/quality-gate.XXXXXX.yaml")
-  trap 'rm -f "$tmp_config"' RETURN
+  trap 'rm -f "$tmp_config"' EXIT
   printf 'ruleDirs:\n  - %s/rules\n' "$ACTION_DIR" > "$tmp_config"
   ast-grep scan --config "$tmp_config"
+  rm -f "$tmp_config"
+  trap - EXIT
   echo "Org-wide ast-grep rules passed."
 
   if [[ -f sgconfig.yaml || -d rules ]]; then

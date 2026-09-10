@@ -9,10 +9,36 @@ process.on('uncaughtException', (error) => {
   process.exit(1);
 });
 
-const requirePackageManager = process.argv.includes('--require-package-manager');
-const directoryArgument = process.argv.slice(2).find((argument) => !argument.startsWith('--')) || '.';
-const checkArgumentIndex = process.argv.indexOf('--check');
-const check = checkArgumentIndex >= 0 ? process.argv[checkArgumentIndex + 1] : '';
+const rawArgs = process.argv.slice(2);
+let directoryArgument = '.';
+let check = '';
+let requirePackageManager = false;
+
+for (let i = 0; i < rawArgs.length; i++) {
+  const arg = rawArgs[i];
+  if (arg === '--require-package-manager') {
+    requirePackageManager = true;
+  } else if (arg === '--check') {
+    if (i + 1 < rawArgs.length) {
+      check = rawArgs[++i];
+    }
+  } else if (arg.startsWith('--check=')) {
+    check = arg.slice('--check='.length);
+  } else if (arg === '--working-directory') {
+    if (i + 1 < rawArgs.length) {
+      directoryArgument = rawArgs[++i];
+    }
+  } else if (arg.startsWith('--working-directory=')) {
+    directoryArgument = arg.slice('--working-directory='.length);
+  } else if (arg === '--') {
+    if (i + 1 < rawArgs.length) {
+      directoryArgument = rawArgs[++i];
+    }
+  } else if (!arg.startsWith('--')) {
+    directoryArgument = arg;
+  }
+}
+
 const checkRequiresRuntime = check === 'app:typecheck' || check === 'app:test';
 const needsPackageManager = requirePackageManager || checkRequiresRuntime;
 const projectDirectory = path.resolve(directoryArgument);

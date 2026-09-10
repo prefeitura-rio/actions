@@ -59,7 +59,7 @@ format_python() {
   ' | sort -u)
   if [[ -z "$files" ]]; then
     printf '%s\n' "$check_output"
-    qg_report "$(cat <<EOF
+    qg_error "$(cat <<EOF
 ruff format could not complete the formatting check.
 
 Formatter output:
@@ -74,7 +74,7 @@ EOF
   diff_output=$(uvx ruff@0.16.4 format --diff . 2>&1 || true)
   printf '%s\n' "$check_output"
   printf '%s\n' "$diff_output"
-  qg_report "$(cat <<EOF
+  qg_error "$(cat <<EOF
 ruff format found formatting differences.
 
 Files requiring formatting:
@@ -92,9 +92,11 @@ EOF
 run_strlint() {
   local org_config
   org_config=$(mktemp "${TMPDIR:-/tmp}/quality-gate.XXXXXX.yaml")
-  trap 'rm -f "$org_config"' RETURN
+  trap 'rm -f "$org_config"' EXIT
   printf 'ruleDirs:\n  - %s/rules\n' "$ACTION_DIR" > "$org_config"
   ast-grep scan --config "$org_config"
+  rm -f "$org_config"
+  trap - EXIT
   echo "Org-wide Python ast-grep rules passed."
 
   if [[ -f sgconfig.yaml || -d rules ]]; then

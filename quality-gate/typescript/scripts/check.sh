@@ -81,6 +81,7 @@ prepare_nuxt() {
 format_typescript() {
   local stderr_file files status diff_file file_count
   stderr_file=$(mktemp "${TMPDIR:-/tmp}/quality-gate.XXXXXX")
+  trap 'rm -f "$stderr_file"' EXIT
   if files=$(npx --yes --loglevel=error oxfmt@0.66.0 --list-different . 2>"$stderr_file"); then
     status=0
   else
@@ -89,7 +90,7 @@ format_typescript() {
 
   if [[ "$status" -gt 1 || ( "$status" -eq 1 && -z "$files" ) ]]; then
     cat "$stderr_file"
-    qg_report "$(cat <<EOF
+    qg_error "$(cat <<EOF
 oxfmt could not complete the formatting check.
 
 Formatter output:
@@ -99,9 +100,11 @@ Fix locally with: npx --yes --loglevel=error oxfmt@0.66.0 --write .
 EOF
 )"
     rm -f "$stderr_file"
+    trap - EXIT
     return "$status"
   fi
   rm -f "$stderr_file"
+  trap - EXIT
 
   if [[ "$status" -eq 0 ]]; then
     echo "oxfmt: all files are correctly formatted."
@@ -113,6 +116,14 @@ EOF
   local -a original_files=()
   local -a temp_dirs=()
   local -a temp_files=()
+
+  cleanup_format() {
+    rm -f "$diff_file"
+    for d in "${temp_dirs[@]}"; do
+      rm -rf "$d"
+    done
+  }
+  trap cleanup_format EXIT
 
   while IFS= read -r file; do
     [[ -z "$file" || ! -f "$file" ]] && continue
@@ -136,7 +147,7 @@ EOF
   fi
 
   cat "$diff_file"
-  qg_report "$(cat <<EOF
+  qg_error "$(cat <<EOF
 oxfmt found formatting differences in $file_count file(s).
 
 Files requiring formatting:
@@ -149,10 +160,8 @@ Fix locally with: npx --yes --loglevel=error oxfmt@0.66.0 --write .
 EOF
 )"
 
-  for temp_dir in "${temp_dirs[@]}"; do
-    rm -rf "$temp_dir"
-  done
-  rm -f "$diff_file"
+  cleanup_format
+  trap - EXIT
   echo "oxfmt found formatting differences in $file_count file(s)." >&2
   return 1
 }
@@ -160,7 +169,7 @@ EOF
 run_strlint() {
   local tmp_config
   tmp_config=$(mktemp "${TMPDIR:-/tmp}/quality-gate.XXXXXX.yaml")
-  trap 'rm -f "$tmp_config"' RETURN
+  trap 'rm -f "$tmp_config"' EXIT
   cat > "$tmp_config" <<EOF
 ruleDirs:
   - ${ACTION_DIR}/rules
@@ -182,6 +191,8 @@ languageInjections:
     injected: [javascript, typescript]
 EOF
   ast-grep scan --config "$tmp_config"
+  rm -f "$tmp_config"
+  trap - EXIT
   echo "Org-wide TypeScript ast-grep rules passed."
 
   if [[ -f sgconfig.yaml || -d rules ]]; then

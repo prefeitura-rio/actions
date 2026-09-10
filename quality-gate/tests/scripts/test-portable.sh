@@ -98,6 +98,12 @@ assert_contains "$project_info" "manager=pnpm" "pnpm detection"
 assert_contains "$project_info" "version=10.15.0" "pnpm version detection"
 assert_contains "$project_info" "framework=nuxt" "Nuxt framework detection"
 
+project_info_flags_first=$(node "$ROOT/typescript/scripts/project-info.js" --check app:test "$ROOT/typescript/fixtures/nuxt/pass")
+assert_equal "$project_info" "$project_info_flags_first" "project-info flags-first argument parsing"
+
+project_info_named_dir=$(node "$ROOT/typescript/scripts/project-info.js" --check app:test --working-directory "$ROOT/typescript/fixtures/nuxt/pass")
+assert_equal "$project_info" "$project_info_named_dir" "project-info --working-directory argument parsing"
+
 if node "$ROOT/typescript/scripts/project-info.js" "$FIXTURES/error/ts-no-lockfile" --require-package-manager 2>"$ERROR_FILE"; then
   fail "TypeScript project without lockfile should be rejected"
 fi
