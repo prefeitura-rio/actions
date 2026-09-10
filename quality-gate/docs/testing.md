@@ -3,6 +3,20 @@
 Quality-gate is tested at several levels so that clean projects remain green,
 real violations are rejected, and failures explain what needs to be fixed.
 
+## Local Portable Tests
+
+The provider-neutral contract is tested without GitHub environment variables:
+
+```bash
+bash quality-gate/tests/scripts/test-portable.sh
+```
+
+These tests cover language detection, invalid checks, TypeScript framework and
+package-manager metadata, shared error collection, summary rendering, and the
+invocation contract of every language entrypoint. The GitHub workflow remains
+responsible for adapter behavior and full fixture coverage, including setup
+actions, outputs, annotations, summaries, and error relay.
+
 ## What Is Tested and Why
 
 The organization structural rules are tested with small valid and invalid code
@@ -41,6 +55,7 @@ match the project's markers (rejected) and by requesting the correct language
 |-----|---------------|
 | `reusable-workflow` | End-to-end smoke test of the reusable workflow on a Go project |
 | `ast-grep-rules` | ast-grep rule correctness for Go, Python, TypeScript |
+| `portable-scripts` | Provider-neutral shell and Node entrypoint contracts without GitHub variables |
 | `go` | All 5 checks (format, lint, strlint, typecheck, test) pass/fail for Go |
 | `python` | All 4 checks (format, lint, strlint, test) pass/fail for Python |
 | `typescript` | All 5 checks pass/fail for TypeScript, Vue, and Nuxt fixtures, including framework-aware summary names |

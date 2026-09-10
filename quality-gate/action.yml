@@ -38,6 +38,8 @@ runs:
   steps:
     - name: Init error relay
       shell: bash
+      env:
+        ACTION_DIRECTORY: ${{ github.action_path }}
       run: |
         set -euo pipefail
         relay="$RUNNER_TEMP/quality-gate-error.txt"
@@ -48,32 +50,23 @@ runs:
         : > "$relay"
         : > "$log"
         rm -f "$success"
-        cat > "$bash_env" <<'EOF'
-        quality_gate_capture_failure() {
-          local status=$?
-          if [[ "$status" -ne 0 && ! -s "$RUNNER_TEMP/quality-gate-error.txt" ]]; then
-            {
-              printf "Command failed (exit %s): %s\n\nRecent output:\n" "$status" "$BASH_COMMAND"
-              sed -E $'s/\033\\[[0-9;]*[[:alpha:]]//g' "$RUNNER_TEMP/quality-gate-output.log" | tail -n 80 || true
-            } > "$RUNNER_TEMP/quality-gate-error.txt"
-          fi
-          exit "$status"
-        }
-        exec > >(tee -a "$RUNNER_TEMP/quality-gate-output.log") 2>&1
-        trap quality_gate_capture_failure ERR
+        cat > "$bash_env" <<EOF
+        QUALITY_GATE_ERROR_FILE="$relay"
+        QUALITY_GATE_OUTPUT_LOG="$log"
+        source "$ACTION_DIRECTORY/scripts/capture-failure.sh"
         EOF
         echo "BASH_ENV=$bash_env" >> "$GITHUB_ENV"
     - name: Validate check input
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       env:
+        ACTION_DIRECTORY: ${{ github.action_path }}
         CHECK: ${{ inputs.check }}
       run: |
         set -euo pipefail
-        VALID="app:format app:lint app:strlint app:typecheck app:test detect-only"
-        if ! echo "$VALID" | grep -Fqw "$CHECK"; then
-          MSG="Invalid check '${CHECK}'. Valid values: ${VALID}"
-          echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
+        if ! QUALITY_GATE_ERROR_FILE="$RUNNER_TEMP/quality-gate-error.txt" \
+          bash "${ACTION_DIRECTORY}/scripts/validate-check.sh" "$CHECK"; then
+          MSG=$(<"$RUNNER_TEMP/quality-gate-error.txt")
           echo "::error title=quality-gate::${MSG}"
           exit 1
         fi
@@ -82,62 +75,21 @@ runs:
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       env:
+        ACTION_DIRECTORY: ${{ github.action_path }}
         LANGUAGE: ${{ inputs.language }}
         CHECK: ${{ inputs.check }}
       run: |
         set -euo pipefail
-
-        # --- detect-only mode: output all languages as JSON array ---
-        if [[ "$CHECK" == "detect-only" ]]; then
-          detected=()
-          if [[ -f go.mod ]]; then detected+=("go"); fi
-          if [[ -f pyproject.toml || -f setup.py ]]; then detected+=("python"); fi
-          if [[ -f package.json && -f tsconfig.json ]]; then detected+=("typescript"); fi
-
-          if [[ ${#detected[@]} -eq 0 ]]; then
-            MSG="Could not detect a supported language. Expected go.mod, pyproject.toml, or package.json+tsconfig.json."
-            echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
-            echo "::error title=quality-gate::${MSG}"
-            exit 1
-          fi
-
-          printf 'languages=%s\n' \
-            "$(printf '%s\n' "${detected[@]}" | jq -R . | jq -sc .)" \
-            >> "$GITHUB_OUTPUT"
-          exit 0
+        if ! output=$(QUALITY_GATE_ERROR_FILE="$RUNNER_TEMP/quality-gate-error.txt" \
+          bash "${ACTION_DIRECTORY}/scripts/detect-languages.sh" \
+            --check "$CHECK" \
+            --language "$LANGUAGE" \
+            --working-directory "$PWD"); then
+          MSG=$(<"$RUNNER_TEMP/quality-gate-error.txt")
+          echo "::error title=quality-gate::${MSG}"
+          exit 1
         fi
-
-        # --- normal check mode ---
-        detected=()
-        if [[ -f go.mod ]]; then detected+=("go"); fi
-        if [[ -f pyproject.toml || -f setup.py ]]; then detected+=("python"); fi
-        if [[ -f package.json && -f tsconfig.json ]]; then detected+=("typescript"); fi
-
-        if [[ -n "$LANGUAGE" ]]; then
-          # Caller provided explicit language — validate against detected markers
-          if [[ ! " ${detected[*]} " =~ " ${LANGUAGE} " ]]; then
-            MSG="Requested language '${LANGUAGE}' not detected in project. Detected: ${detected[*]:-none}."
-            echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
-            echo "::error title=quality-gate::${MSG}"
-            exit 1
-          fi
-          echo "name=${LANGUAGE}" >> "$GITHUB_OUTPUT"
-        else
-          # Auto-detect: exactly one → use it; multiple → error with hint
-          if [[ ${#detected[@]} -eq 0 ]]; then
-            MSG="Could not detect a supported language. Expected go.mod, pyproject.toml, or package.json+tsconfig.json."
-            echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
-            echo "::error title=quality-gate::${MSG}"
-            exit 1
-          elif [[ ${#detected[@]} -gt 1 ]]; then
-            DETECTED="${detected[*]}"
-            MSG="Multiple supported languages detected: ${DETECTED}. Run quality-gate once per language, or use the detect-only check to enumerate languages."
-            echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
-            echo "::error title=quality-gate::${MSG}"
-            exit 1
-          fi
-          echo "name=${detected[0]}" >> "$GITHUB_OUTPUT"
-        fi
+        printf '%s\n' "$output" >> "$GITHUB_OUTPUT"
     - name: Run Go quality gate
       if: steps.lang.outputs.name == 'go'
       uses: $/quality-gate/go
@@ -164,33 +116,21 @@ runs:
       id: collect-error
       if: always()
       shell: bash
+      env:
+        ACTION_DIRECTORY: ${{ github.action_path }}
+        CHECK: ${{ inputs.check }}
       run: |
         set -euo pipefail
-        relay="$RUNNER_TEMP/quality-gate-error.txt"
-        success="$RUNNER_TEMP/quality-gate-success"
-        if [[ -s "$relay" ]]; then
-          msg="$relay"
-        elif [[ ! -f "$success" ]]; then
-          printf "Quality gate '%s' failed. See the failed quality-gate step logs for details.\n" "${{ inputs.check }}" > "$relay"
-          msg="$relay"
-        else
-          msg=""
-        fi
-
-        if [[ -n "$msg" ]]; then
+        output=$(bash "${ACTION_DIRECTORY}/scripts/collect-error.sh" \
+          --check "$CHECK" \
+          --error-file "$RUNNER_TEMP/quality-gate-error.txt" \
+          --success-file "$RUNNER_TEMP/quality-gate-success")
+        if [[ -n "$output" ]]; then
           delimiter="QUALITY_GATE_ERROR_$(date +%s%N)"
-          max_bytes=65536
-          size=$(wc -c < "$msg")
           {
-            echo "error_message<<$delimiter"
-            if (( size <= max_bytes )); then
-              cat "$msg"
-            else
-              head -c 57344 "$msg"
-              printf '\n\n... error output truncated; see the quality-gate step logs for the complete report. ...\n\n'
-              tail -c 8192 "$msg"
-            fi
-            echo "$delimiter"
+            printf 'error_message<<%s\n' "$delimiter"
+            printf '%s\n' "$output"
+            printf '%s\n' "$delimiter"
           } >> "$GITHUB_OUTPUT"
         fi
         echo "BASH_ENV=" >> "$GITHUB_ENV"
@@ -199,49 +139,21 @@ runs:
       if: always()
       shell: bash
       env:
+        ACTION_DIRECTORY: ${{ github.action_path }}
         CHECK: ${{ inputs.check }}
         LANGUAGE: ${{ steps.lang.outputs.name }}
         FRAMEWORK: ${{ steps.typescript.outputs.framework }}
       run: |
         set -euo pipefail
-        success="$RUNNER_TEMP/quality-gate-success"
-        case "$CHECK" in
-          app:format) CHECK_NAME="Format" ;;
-          app:lint) CHECK_NAME="Lint" ;;
-          app:strlint) CHECK_NAME="Structural Lint" ;;
-          app:typecheck) CHECK_NAME="Type Check" ;;
-          app:test) CHECK_NAME="Test" ;;
-          *) CHECK_NAME="$CHECK" ;;
-        esac
-        case "$LANGUAGE" in
-          go) LANGUAGE_NAME="Go" ;;
-          python) LANGUAGE_NAME="Python" ;;
-          typescript)
-            case "$FRAMEWORK" in
-              vue) LANGUAGE_NAME="Typescript - Vue" ;;
-              nuxt) LANGUAGE_NAME="Typescript - Nuxt" ;;
-              *) LANGUAGE_NAME="Typescript" ;;
-            esac
-            ;;
-          *) LANGUAGE_NAME="" ;;
-        esac
-        if [[ -n "$LANGUAGE_NAME" && "$CHECK" != "detect-only" ]]; then
-          SUMMARY_NAME="$CHECK_NAME ($LANGUAGE_NAME)"
-        else
-          SUMMARY_NAME="$CHECK_NAME"
-        fi
-        echo "name=$SUMMARY_NAME" >> "$GITHUB_OUTPUT"
-        {
-          echo "### Quality Gate: $SUMMARY_NAME"
-          if [[ -f "$success" ]]; then
-            echo "Outcome: success"
-          else
-            echo "Outcome: failure"
-          fi
-          echo "Error:"
-          if [[ -s "$RUNNER_TEMP/quality-gate-error.txt" ]]; then
-            cat "$RUNNER_TEMP/quality-gate-error.txt"
-          else
-            echo "None"
-          fi
-        } >> "$GITHUB_STEP_SUMMARY"
+        name_file="$RUNNER_TEMP/quality-gate-summary-name"
+        summary_file="$RUNNER_TEMP/quality-gate-summary.md"
+        bash "${ACTION_DIRECTORY}/scripts/render-summary.sh" \
+          --check "$CHECK" \
+          --language "$LANGUAGE" \
+          --framework "$FRAMEWORK" \
+          --error-file "$RUNNER_TEMP/quality-gate-error.txt" \
+          --success-file "$RUNNER_TEMP/quality-gate-success" \
+          --name-file "$name_file" \
+          --summary-file "$summary_file"
+        printf 'name=%s\n' "$(<"$name_file")" >> "$GITHUB_OUTPUT"
+        cat "$summary_file" >> "$GITHUB_STEP_SUMMARY"

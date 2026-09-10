@@ -1,5 +1,5 @@
 name: Quality Gate (Typescript)
-description: Run quality checks for typescript.
+description: Run portable TypeScript quality checks through the GitHub adapter.
 inputs:
   check:
     description: The quality check to run.
@@ -11,383 +11,49 @@ inputs:
 outputs:
   framework:
     description: Detected frontend framework, or none for a plain TypeScript project.
-    value: ${{ steps.ts-framework.outputs.name }}
+    value: ${{ steps.ts-info.outputs.framework }}
 runs:
   using: composite
   steps:
-    - name: typescript | detect package manager
-      id: ts-pm
-      if: (inputs.check == 'app:typecheck' || inputs.check == 'app:test')
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      run: |
-        set -euo pipefail
-        if [[ -f pnpm-lock.yaml ]]; then
-          echo "manager=pnpm" >> "$GITHUB_OUTPUT"
-          if [[ ! -f package.json ]]; then
-            MSG="pnpm-lock.yaml found but package.json is missing."
-            echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
-            echo "::error title=quality-gate::${MSG}"
-            exit 1
-          fi
-          pnpm_version=$(node -p "const value = require('./package.json').packageManager || ''; value.startsWith('pnpm@') ? value.slice(5) : ''")
-          if [[ -z "$pnpm_version" ]]; then
-            MSG="package.json must declare packageManager as pnpm@<version>."
-            echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
-            echo "::error title=quality-gate::${MSG}"
-            exit 1
-          fi
-          echo "version=$pnpm_version" >> "$GITHUB_OUTPUT"
-        elif [[ -f package-lock.json ]]; then
-          echo "manager=npm" >> "$GITHUB_OUTPUT"
-        else
-          MSG="No lockfile found for TypeScript project. Commit pnpm-lock.yaml (pnpm) or package-lock.json (npm)."
-          echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
-          echo "::error title=quality-gate::${MSG}"
-          exit 1
-        fi
-    - name: typescript | detect framework
-      id: ts-framework
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      run: |
-        set -euo pipefail
-        node <<'NODE'
-        const fs = require('node:fs');
-        const path = require('node:path');
-
-        const project = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-        const dependencies = {
-          ...(project.dependencies || {}),
-          ...(project.devDependencies || {}),
-          ...(project.optionalDependencies || {}),
-        };
-
-        const MAX_VUE_SCAN_DEPTH = 5;
-        const hasVueFile = (directory, depth = 0) => {
-          if (!fs.existsSync(directory)) return false;
-          for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-            if (['.git', '.nuxt', 'node_modules', 'dist', 'build'].includes(entry.name)) continue;
-            const entryPath = path.join(directory, entry.name);
-            if (
-              entry.isDirectory() &&
-              depth < MAX_VUE_SCAN_DEPTH &&
-              hasVueFile(entryPath, depth + 1)
-            ) return true;
-            if (entry.isFile() && entry.name.endsWith('.vue')) return true;
-          }
-          return false;
-        };
-
-        const hasNuxtConfig = [
-          'nuxt.config.ts',
-          'nuxt.config.mts',
-          'nuxt.config.js',
-          'nuxt.config.mjs',
-          'nuxt.config.cjs',
-        ].some((file) => fs.existsSync(file));
-
-        let framework = 'none';
-        if (dependencies.nuxt || hasNuxtConfig) {
-          framework = 'nuxt';
-        } else if (dependencies.vue || hasVueFile('.')) {
-          framework = 'vue';
-        }
-
-        fs.appendFileSync(process.env.GITHUB_OUTPUT, `name=${framework}\n`);
-        console.log(`Detected frontend framework: ${framework}`);
-        NODE
-    - name: typescript | setup pnpm
-      if: (inputs.check == 'app:typecheck' || inputs.check == 'app:test') && steps.ts-pm.outputs.manager == 'pnpm'
-      uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-      with:
-        version: ${{ steps.ts-pm.outputs.version }}
-    - name: typescript | validate Node.js version file
-      if: (inputs.check == 'app:typecheck' || inputs.check == 'app:test')
+    - name: typescript | project metadata
+      id: ts-info
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       env:
+        ACTION_DIRECTORY: ${{ github.action_path }}
         CHECK: ${{ inputs.check }}
+        QUALITY_GATE_ERROR_FILE: ${{ runner.temp }}/quality-gate-error.txt
       run: |
         set -euo pipefail
-        if [[ ! -f .node-version ]]; then
-          MSG="Missing .node-version for TypeScript $CHECK check. Add the Node.js major version used by the project."
-          echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
-          echo "::error title=quality-gate::${MSG}"
+        if ! output=$(node "${ACTION_DIRECTORY}/scripts/project-info.js" "$PWD" --check "$CHECK" 2>&1); then
+          printf '%s\n' "$output" > "$QUALITY_GATE_ERROR_FILE"
+          printf '%s\n' "$output"
           exit 1
         fi
+        printf '%s\n' "$output" >> "$GITHUB_OUTPUT"
+    - name: typescript | setup pnpm
+      if: (inputs.check == 'app:typecheck' || inputs.check == 'app:test') && steps.ts-info.outputs.manager == 'pnpm'
+      uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      with:
+        version: ${{ steps.ts-info.outputs.version }}
     - name: typescript | setup Node.js
-      if: (inputs.check == 'app:typecheck' || inputs.check == 'app:test')
+      if: inputs.check == 'app:typecheck' || inputs.check == 'app:test'
       uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
       with:
         node-version-file: ${{ inputs.working-directory }}/.node-version
-        cache: ${{ steps.ts-pm.outputs.manager }}
+        cache: ${{ steps.ts-info.outputs.manager }}
         cache-dependency-path: |
           ${{ inputs.working-directory }}/pnpm-lock.yaml
           ${{ inputs.working-directory }}/package-lock.json
-    - name: typescript | pnpm install
-      if: (inputs.check == 'app:typecheck' || inputs.check == 'app:test') && steps.ts-pm.outputs.manager == 'pnpm'
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      run: |
-        set -euo pipefail
-        pnpm install --frozen-lockfile
-    - name: typescript | npm ci
-      if: (inputs.check == 'app:typecheck' || inputs.check == 'app:test') && steps.ts-pm.outputs.manager == 'npm'
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      run: |
-        set -euo pipefail
-        npm ci
-    - name: typescript | prepare Nuxt
-      if: inputs.check == 'app:test' && steps.ts-framework.outputs.name == 'nuxt'
+    - name: typescript | run portable check
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       env:
-        PM: ${{ steps.ts-pm.outputs.manager }}
+        ACTION_DIRECTORY: ${{ github.action_path }}
+        QUALITY_GATE_ERROR_FILE: ${{ runner.temp }}/quality-gate-error.txt
       run: |
         set -euo pipefail
-        if [[ "$PM" == "npm" ]]; then
-          npm exec --no -- nuxt prepare
-        else
-          pnpm exec nuxt prepare
-        fi
-    - name: format | oxfmt (typescript)
-      if: inputs.check == 'app:format'
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      env:
-        NPM_CONFIG_LOGLEVEL: error
-      run: |
-        set -euo pipefail
-        STDERR_FILE=$(mktemp)
-        if FILES=$(npx --yes --loglevel=error oxfmt@0.66.0 --list-different . 2>"$STDERR_FILE"); then
-          OXFMT_STATUS=0
-        else
-          OXFMT_STATUS=$?
-        fi
-
-        if [[ "$OXFMT_STATUS" -gt 1 || ( "$OXFMT_STATUS" -eq 1 && -z "$FILES" ) ]]; then
-          cat "$STDERR_FILE"
-          {
-            echo "oxfmt could not complete the formatting check."
-            echo
-            echo "Formatter output:"
-            cat "$STDERR_FILE"
-            echo
-            echo "Fix locally with: npx --yes --loglevel=error oxfmt@0.66.0 --write ."
-          } > "$RUNNER_TEMP/quality-gate-error.txt"
-          echo "::error title=format::oxfmt could not complete the formatting check."
-          rm -f "$STDERR_FILE"
-          exit "$OXFMT_STATUS"
-        fi
-        rm -f "$STDERR_FILE"
-
-        if [[ "$OXFMT_STATUS" -eq 0 ]]; then
-          echo "oxfmt: all files are correctly formatted."
-          exit 0
-        fi
-
-        FILE_COUNT=$(printf '%s\n' "$FILES" | awk 'NF { count++ } END { print count + 0 }')
-        DIFF_FILE=$(mktemp)
-        TEMP_DIRS=()
-        ORIGINAL_FILES=()
-        TEMP_FILES=()
-
-        while IFS= read -r file; do
-          [[ -z "$file" || ! -f "$file" ]] && continue
-          temp_dir=$(mktemp -d "$(dirname "$file")/.quality-gate-format.XXXXXX")
-          temp_file="$temp_dir/$(basename "$file")"
-          cp "$file" "$temp_file"
-          TEMP_DIRS+=("$temp_dir")
-          ORIGINAL_FILES+=("$file")
-          TEMP_FILES+=("$temp_file")
-        done <<< "$FILES"
-
-        if [[ ${#TEMP_FILES[@]} -gt 0 ]]; then
-          npx --yes --loglevel=error oxfmt@0.66.0 --write "${TEMP_FILES[@]}" >/dev/null 2>&1 || true
-          for index in "${!TEMP_FILES[@]}"; do
-            diff -u \
-              --label "${ORIGINAL_FILES[$index]} (current)" \
-              --label "${ORIGINAL_FILES[$index]} (formatted)" \
-              "${ORIGINAL_FILES[$index]}" "${TEMP_FILES[$index]}" >> "$DIFF_FILE" || true
-          done
-        fi
-
-        cat "$DIFF_FILE"
-
-        {
-          echo "oxfmt found formatting differences in $FILE_COUNT file(s)."
-          echo
-          echo "Files requiring formatting:"
-          printf '%s\n' "${ORIGINAL_FILES[@]}" | while IFS= read -r file; do echo "- $file"; done
-          echo
-          echo "Formatting diff:"
-          awk 'NR <= 200 { print } NR == 201 { print "... diff truncated; run the command below for the complete result." }' "$DIFF_FILE"
-          echo
-          echo "Fix locally with: npx --yes --loglevel=error oxfmt@0.66.0 --write ."
-        } > "$RUNNER_TEMP/quality-gate-error.txt"
-
-        for temp_dir in "${TEMP_DIRS[@]}"; do
-          rm -rf "$temp_dir"
-        done
-        rm -f "$DIFF_FILE"
-
-        echo "::error title=format::oxfmt found formatting differences in $FILE_COUNT file(s)."
-        exit 1
-    - name: typescript | detect React
-      id: react
-      if: inputs.check == 'app:lint'
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      run: |
-        set -euo pipefail
-        if node -e 'const p = require("./package.json"); const d = {...p.dependencies, ...p.devDependencies, ...p.optionalDependencies}; process.exit(d.react || d["react-dom"] ? 0 : 1)'; then
-          echo "present=true" >> "$GITHUB_OUTPUT"
-        else
-          echo "present=false" >> "$GITHUB_OUTPUT"
-        fi
-    - name: lint | oxlint (typescript)
-      if: inputs.check == 'app:lint'
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      env:
-        ACTION_PATH: ${{ github.action_path }}
-      run: |
-        set -euo pipefail
-        if [[ -f .oxlintrc.json || -f .oxlintrc.yaml || -f .oxlintrc.yml || -f oxlint.config.js || -f oxlint.config.mjs || -f oxlint.config.ts ]]; then
-          npx --yes oxlint@1.81.0 .
-        else
-          npx --yes oxlint@1.81.0 --config "${ACTION_PATH}/.oxlintrc.json" .
-        fi
-        echo "oxlint: no issues found."
-    - name: lint | react-doctor (react)
-      if: inputs.check == 'app:lint' && steps.react.outputs.present == 'true'
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      run: |
-        set -euo pipefail
-        npx --yes react-doctor@0.9.12
-        echo "react-doctor: no issues found."
-    - name: strlint | install ast-grep
-      if: inputs.check == 'app:strlint'
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      run: |
-        set -euo pipefail
-
-        TOOL_BIN="$HOME/.quality-gate-tools/bin"
-        TOOL_DL="$HOME/.quality-gate-tools/dl"
-        mkdir -p "$TOOL_BIN" "$TOOL_DL"
-        echo "$TOOL_BIN" >> "$GITHUB_PATH"
-
-        SG_OUT="$TOOL_DL/sg.zip"
-        SG_SHA="76fb6555be6734fb5057dba8d2fb756430f374bb9e1af694cf1ce00e13238d63"
-        if [[ ! -f "$SG_OUT" ]] || ! echo "$SG_SHA  $SG_OUT" | sha256sum -c --status; then
-          curl -sfL \
-            "https://github.com/ast-grep/ast-grep/releases/download/0.45.1/app-x86_64-unknown-linux-gnu.zip" \
-            -o "$SG_OUT"
-        fi
-        echo "$SG_SHA  $SG_OUT" | sha256sum -c --status || {
-          MSG="sha256 mismatch for ast-grep"
-          echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
-          echo "::error title=strlint::${MSG}"
-          rm -f "$SG_OUT"
-          exit 1
-        }
-        unzip -p "$SG_OUT" ast-grep > "$TOOL_BIN/ast-grep"
-        chmod +x "$TOOL_BIN/ast-grep"
-    - name: strlint | ast-grep org rules (typescript)
-      if: inputs.check == 'app:strlint'
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      env:
-        ACTION_PATH: ${{ github.action_path }}
-      run: |
-        set -euo pipefail
-        TMP_CFG=$(mktemp --suffix=.yaml)
-        cat > "$TMP_CFG" <<EOF
-        ruleDirs:
-          - ${ACTION_PATH}/rules
-        languageGlobs:
-          html:
-            - '*.vue'
-        languageInjections:
-          - hostLanguage: html
-            rule:
-              pattern: <script lang="\$LANG">\$\$\$CONTENT</script>
-            injected: [javascript, typescript]
-          - hostLanguage: html
-            rule:
-              pattern: <script setup lang="\$LANG">\$\$\$CONTENT</script>
-            injected: [javascript, typescript]
-          - hostLanguage: html
-            rule:
-              pattern: <script lang="\$LANG" setup>\$\$\$CONTENT</script>
-            injected: [javascript, typescript]
-        EOF
-        ast-grep scan --config "$TMP_CFG"
-        rm -f "$TMP_CFG"
-        echo "Org-wide TypeScript ast-grep rules passed."
-    - name: strlint | ast-grep repo rules (typescript)
-      if: inputs.check == 'app:strlint'
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      run: |
-        set -euo pipefail
-        if [[ -f sgconfig.yaml || -d rules ]]; then
-          ast-grep scan
-          echo "Repo-local TypeScript ast-grep rules passed."
-        elif [[ -f .quality-gate/sgconfig.yaml || -d .quality-gate/rules ]]; then
-          ast-grep scan --config .quality-gate/sgconfig.yaml
-          echo "Repo-local TypeScript ast-grep rules passed."
-        else
-          echo "No repo-local sgconfig.yaml or rules/ found — skipping."
-        fi
-    - name: typecheck | typescript framework checker
-      if: inputs.check == 'app:typecheck'
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      env:
-        PM: ${{ steps.ts-pm.outputs.manager }}
-        FRAMEWORK: ${{ steps.ts-framework.outputs.name }}
-      run: |
-        set -euo pipefail
-        HAS_TYPECHECK_SCRIPT=$(node -p "Boolean(require('./package.json').scripts?.typecheck)")
-        if [[ "$HAS_TYPECHECK_SCRIPT" == "true" ]]; then
-          if [[ "$PM" == "npm" ]]; then
-            npm run typecheck
-          else
-            pnpm run typecheck
-          fi
-        elif [[ "$FRAMEWORK" == "vue" ]]; then
-          if [[ "$PM" == "npm" ]]; then
-            npm exec --no -- vue-tsc --noEmit
-          else
-            pnpm exec vue-tsc --noEmit
-          fi
-        elif [[ "$FRAMEWORK" == "nuxt" ]]; then
-          if [[ "$PM" == "npm" ]]; then
-            npm exec --no -- nuxt typecheck
-          else
-            pnpm exec nuxt typecheck
-          fi
-        else
-          MSG="Missing typecheck script for TypeScript project. Add scripts.typecheck to package.json."
-          echo "$MSG" > "$RUNNER_TEMP/quality-gate-error.txt"
-          echo "::error title=typecheck::${MSG}"
-          exit 1
-        fi
-    - name: test | vitest (typescript)
-      if: inputs.check == 'app:test'
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      env:
-        PM: ${{ steps.ts-pm.outputs.manager }}
-      run: |
-        set -euo pipefail
-        if [[ "$PM" == "npm" ]]; then
-          npm test
-        else
-          pnpm test
-        fi
+        bash "${ACTION_DIRECTORY}/scripts/check.sh" \
+          --check "${{ inputs.check }}" \
+          --working-directory "$PWD" \
+          --action-directory "$ACTION_DIRECTORY"
