@@ -44,7 +44,9 @@ size=$(wc -c < "$selected_file")
 if (( size <= MAX_BYTES )); then
   cat "$selected_file"
 else
-  head -c 57344 "$selected_file"
+  head_bytes=$(( MAX_BYTES * 7 / 8 ))
+  tail_bytes=$(( MAX_BYTES - head_bytes ))
+  head -c "$head_bytes" "$selected_file"
   printf '\n\n... error output truncated; see the quality-gate step logs for the complete report. ...\n\n'
-  tail -c 8192 "$selected_file"
+  tail -c "$tail_bytes" "$selected_file"
 fi

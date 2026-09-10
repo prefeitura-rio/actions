@@ -219,6 +219,14 @@ languageGlobs:
 languageInjections:
   - hostLanguage: html
     rule:
+      pattern: <script>\$\$\$CONTENT</script>
+    injected: [javascript, typescript]
+  - hostLanguage: html
+    rule:
+      pattern: <script setup>\$\$\$CONTENT</script>
+    injected: [javascript, typescript]
+  - hostLanguage: html
+    rule:
       pattern: <script lang="\$LANG">\$\$\$CONTENT</script>
     injected: [javascript, typescript]
   - hostLanguage: html
@@ -238,8 +246,15 @@ EOF
   if [[ -f sgconfig.yaml || -d rules ]]; then
     ast-grep scan
     echo "Repo-local TypeScript ast-grep rules passed."
-  elif [[ -f .quality-gate/sgconfig.yaml || -d .quality-gate/rules ]]; then
+  elif [[ -f .quality-gate/sgconfig.yaml ]]; then
     ast-grep scan --config .quality-gate/sgconfig.yaml
+    echo "Repo-local TypeScript ast-grep rules passed."
+  elif [[ -d .quality-gate/rules ]]; then
+    local repo_config
+    repo_config=$(mktemp "${TMPDIR:-/tmp}/quality-gate-local.XXXXXX.yaml")
+    printf 'ruleDirs:\n  - .quality-gate/rules\n' > "$repo_config"
+    ast-grep scan --config "$repo_config"
+    rm -f "$repo_config"
     echo "Repo-local TypeScript ast-grep rules passed."
   else
     echo "No repo-local sgconfig.yaml or rules/ found - skipping."
@@ -287,6 +302,7 @@ case "$CHECK" in
   app:typecheck)
     load_project_info
     install_dependencies
+    prepare_nuxt
     run_typecheck
     ;;
   app:test)

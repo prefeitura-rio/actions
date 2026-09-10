@@ -9,8 +9,9 @@ message: >
 rule:
   pattern: $EXPR as any
 ignores:
-  - "**/*.test.ts"
-  - "**/*.test.tsx"
-  - "**/*.spec.ts"
-  - "**/*.spec.tsx"
+  - "**/*.test.*"
+  - "**/*.spec.*"
   - "tests/**"
+  - "**/tests/**"
+  - "**/test/**"
+  - "**/__tests__/**"

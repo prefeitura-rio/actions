@@ -110,3 +110,8 @@ printf '%s\n' "$SUMMARY_NAME" > "$NAME_FILE"
     printf 'Expected outcome: failure\n'
   fi
 } > "$SUMMARY_FILE"
+
+if [[ "$EXPECTED_FAILURE" == true && -f "$SUCCESS_FILE" ]]; then
+  printf 'Quality gate succeeded unexpectedly for expected-failure scenario.\n' >&2
+  exit 1
+fi

@@ -84,8 +84,10 @@ collected=$(bash "$ROOT/scripts/collect-error.sh" \
   --check app:format \
   --error-file "$ERROR_FILE" \
   --success-file "$SUCCESS_FILE" \
-  --max-bytes 5)
+  --max-bytes 8)
 assert_contains "$collected" "... error output truncated" "error truncation"
+assert_contains "$collected" "0123456" "dynamic truncation head"
+assert_contains "$collected" "9" "dynamic truncation tail"
 
 bash "$ROOT/scripts/render-summary.sh" \
   --check app:format \
@@ -115,14 +117,16 @@ assert_contains "$(<"$EXPECTED_FAILURE_SUMMARY")" "Expected outcome: failure" "e
 
 touch "$SUCCESS_FILE"
 : > "$ERROR_FILE"
-bash "$ROOT/scripts/render-summary.sh" \
+if bash "$ROOT/scripts/render-summary.sh" \
   --check app:typecheck \
   --language python \
   --error-file "$ERROR_FILE" \
   --success-file "$SUCCESS_FILE" \
   --name-file "$SUMMARY_NAME_FILE" \
   --summary-file "$EXPECTED_FAILURE_SUMMARY" \
-  --expected-failure
+  --expected-failure 2>/dev/null; then
+  fail "render-summary.sh should fail when expected failure unexpectedly succeeds"
+fi
 assert_contains "$(<"$EXPECTED_FAILURE_SUMMARY")" "Outcome: success" "expected-failure dynamic success outcome"
 rm -f "$EXPECTED_FAILURE_SUMMARY" "$SUCCESS_FILE"
 

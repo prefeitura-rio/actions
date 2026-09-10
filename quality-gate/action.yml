@@ -167,6 +167,8 @@ runs:
         if [[ "$EXPECTED_FAILURE" == true ]]; then
           summary_args+=(--expected-failure)
         fi
-        bash "${ACTION_DIRECTORY}/scripts/render-summary.sh" "${summary_args[@]}"
+        status=0
+        bash "${ACTION_DIRECTORY}/scripts/render-summary.sh" "${summary_args[@]}" || status=$?
         printf 'name=%s\n' "$(<"$name_file")" >> "$GITHUB_OUTPUT"
         cat "$summary_file" >> "$GITHUB_STEP_SUMMARY"
+        exit "$status"

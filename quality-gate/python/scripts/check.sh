@@ -120,8 +120,15 @@ run_strlint() {
   if [[ -f sgconfig.yaml || -d rules ]]; then
     ast-grep scan
     echo "Repo-local Python ast-grep rules passed."
-  elif [[ -f .quality-gate/sgconfig.yaml || -d .quality-gate/rules ]]; then
+  elif [[ -f .quality-gate/sgconfig.yaml ]]; then
     ast-grep scan --config .quality-gate/sgconfig.yaml
+    echo "Repo-local Python ast-grep rules passed."
+  elif [[ -d .quality-gate/rules ]]; then
+    local repo_config
+    repo_config=$(mktemp "${TMPDIR:-/tmp}/quality-gate-local.XXXXXX.yaml")
+    printf 'ruleDirs:\n  - .quality-gate/rules\n' > "$repo_config"
+    ast-grep scan --config "$repo_config"
+    rm -f "$repo_config"
     echo "Repo-local Python ast-grep rules passed."
   else
     echo "No repo-local sgconfig.yaml or rules/ found - skipping."
@@ -153,7 +160,7 @@ case "$CHECK" in
   app:typecheck)
     sync_project
     if [[ -f pyrightconfig.json ]] || {
-      [[ -f pyproject.toml ]] && grep -qE '^\[tool\.(basedpyright|pyright)\]$' pyproject.toml
+      [[ -f pyproject.toml ]] && grep -qE '^\[tool\.(basedpyright|pyright)' pyproject.toml
     }; then
       uvx "basedpyright@${BASEDPYRIGHT_VERSION}" --project "$PROJECT_DIR"
     else
@@ -164,7 +171,11 @@ case "$CHECK" in
     ;;
   app:test)
     sync_project
-    uv run pytest --cov=src --cov-report=term-missing
+    if [[ -d src ]]; then
+      uv run pytest --cov=src --cov-report=term-missing
+    else
+      uv run pytest --cov-report=term-missing
+    fi
     ;;
   *)
     qg_error "Unknown check: $CHECK"

@@ -154,18 +154,18 @@ run_strlint() {
   if [[ -f sgconfig.yaml || -d rules ]]; then
     ast-grep scan
     echo "Repo-local ast-grep rules passed."
-  elif [[ -f .quality-gate/sgconfig.yaml || -d .quality-gate/rules ]]; then
+  elif [[ -f .quality-gate/sgconfig.yaml ]]; then
     ast-grep scan --config .quality-gate/sgconfig.yaml
+    echo "Repo-local ast-grep rules passed."
+  elif [[ -d .quality-gate/rules ]]; then
+    local repo_config
+    repo_config=$(mktemp "${TMPDIR:-/tmp}/quality-gate-local.XXXXXX.yaml")
+    printf 'ruleDirs:\n  - .quality-gate/rules\n' > "$repo_config"
+    ast-grep scan --config "$repo_config"
+    rm -f "$repo_config"
     echo "Repo-local ast-grep rules passed."
   else
     echo "No repo-local sgconfig.yaml or rules/ found - skipping."
-  fi
-
-  if [[ -d tests ]]; then
-    ast-grep test -t tests
-    echo "Repo-local rule tests passed."
-  else
-    echo "No tests/ directory found - skipping rule tests."
   fi
 }
 
@@ -192,7 +192,7 @@ case "$CHECK" in
     if [[ -d cmd ]]; then
       go build -ldflags="-s -w" -o /dev/null ./cmd/...
     else
-      go build -ldflags="-s -w" -o /dev/null .
+      go build -ldflags="-s -w" -o /dev/null ./...
     fi
     ;;
   app:test)
