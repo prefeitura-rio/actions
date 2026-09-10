@@ -69,10 +69,11 @@ install_lint_tool() {
 }
 
 format_gofumpt() {
-  local unformatted diff_output
+  local unformatted diff_output diff_status=0
   unformatted=$(gofumpt -l .)
   if [[ -n "$unformatted" ]]; then
-    if ! diff_output=$(gofumpt -d . 2>&1); then
+    diff_output=$(gofumpt -d . 2>&1) || diff_status=$?
+    if [[ "$diff_status" -ne 0 && "$diff_status" -ne 1 ]] || [[ -z "$diff_output" ]]; then
       qg_error "$(cat <<EOF
 gofumpt could not complete the formatting check.
 
@@ -104,10 +105,11 @@ EOF
 }
 
 format_goimports() {
-  local unformatted diff_output
+  local unformatted diff_output diff_status=0
   unformatted=$(goimports -l .)
   if [[ -n "$unformatted" ]]; then
-    if ! diff_output=$(goimports -d . 2>&1); then
+    diff_output=$(goimports -d . 2>&1) || diff_status=$?
+    if [[ "$diff_status" -ne 0 && "$diff_status" -ne 1 ]] || [[ -z "$diff_output" ]]; then
       qg_error "$(cat <<EOF
 goimports could not complete the import organisation check.
 

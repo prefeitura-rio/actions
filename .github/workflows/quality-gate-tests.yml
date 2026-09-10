@@ -275,8 +275,8 @@ jobs:
         env:
           ERROR_MESSAGE: ${{ steps.py-fail.outputs.error_message }}
         run: |
-          [[ "$ERROR_MESSAGE" == *"no-exec"* ]] || {
-            echo "::error::Expected ast-grep to report no-exec rule violation"
+          [[ "$ERROR_MESSAGE" == *"no-eval"* ]] || {
+            echo "::error::Expected ast-grep to report no-eval rule violation"
             exit 1
           }
 
@@ -468,7 +468,7 @@ jobs:
         env:
           ERROR_MESSAGE: ${{ steps.ts-fail.outputs.error_message }}
         run: |
-          [[ "$ERROR_MESSAGE" == *"no-explicit-any"* || "$ERROR_MESSAGE" == *"no-console"* ]] || {
+          [[ "$ERROR_MESSAGE" == *"no-any-assertion"* || "$ERROR_MESSAGE" == *"no-console"* ]] || {
             echo "::error::Expected ast-grep to report structural lint violation"
             exit 1
           }
