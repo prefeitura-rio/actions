@@ -8,6 +8,7 @@ ERROR_FILE=
 SUCCESS_FILE=
 NAME_FILE=
 SUMMARY_FILE=
+EXPECTED_FAILURE=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -38,6 +39,10 @@ while [[ $# -gt 0 ]]; do
     --summary-file)
       SUMMARY_FILE=${2:?missing value for --summary-file}
       shift 2
+      ;;
+    --expected-failure)
+      EXPECTED_FAILURE=true
+      shift
       ;;
     *)
       printf 'Unknown argument: %s\n' "$1" >&2
@@ -74,6 +79,12 @@ else
   SUMMARY_NAME=$CHECK_NAME
 fi
 
+if [[ "$EXPECTED_FAILURE" == true ]]; then
+  TEST_SCENARIO="expected failure"
+else
+  TEST_SCENARIO=
+fi
+
 printf '%s\n' "$SUMMARY_NAME" > "$NAME_FILE"
 {
   printf '### Quality Gate: %s\n' "$SUMMARY_NAME"
@@ -87,5 +98,15 @@ printf '%s\n' "$SUMMARY_NAME" > "$NAME_FILE"
     cat "$ERROR_FILE"
   else
     printf 'None\n'
+  fi
+  if [[ "$EXPECTED_FAILURE" == true ]]; then
+    printf '\n## Test\n\n'
+    printf 'Test scenario: %s\n' "$TEST_SCENARIO"
+    if [[ -f "$SUCCESS_FILE" ]]; then
+      printf 'Outcome: success\n'
+    else
+      printf 'Outcome: failure\n'
+    fi
+    printf 'Expected outcome: failure\n'
   fi
 } > "$SUMMARY_FILE"

@@ -142,13 +142,45 @@ EOF
   done <<< "$files"
 
   if [[ ${#temp_files[@]} -gt 0 ]]; then
-    npx --yes --loglevel=error oxfmt@0.66.0 --write "${temp_files[@]}" >/dev/null 2>&1 || true
+    local oxfmt_write_err
+    oxfmt_write_err=$(mktemp "${TMPDIR:-/tmp}/quality-gate.XXXXXX")
+    if ! npx --yes --loglevel=error oxfmt@0.66.0 --write "${temp_files[@]}" >/dev/null 2>"$oxfmt_write_err"; then
+      local write_output
+      write_output=$(<"$oxfmt_write_err")
+      rm -f "$oxfmt_write_err"
+      cleanup_format
+      trap - EXIT
+      qg_error "$(cat <<EOF
+oxfmt could not complete the formatting check.
+
+Formatter output:
+$write_output
+
+Fix locally with: npx --yes --loglevel=error oxfmt@0.66.0 --write .
+EOF
+)"
+      return 1
+    fi
+    rm -f "$oxfmt_write_err"
+
     for index in "${!temp_files[@]}"; do
       diff -u \
         --label "${original_files[$index]} (current)" \
         --label "${original_files[$index]} (formatted)" \
         "${original_files[$index]}" "${temp_files[$index]}" >> "$diff_file" || true
     done
+  fi
+
+  if [[ ! -s "$diff_file" ]]; then
+    cleanup_format
+    trap - EXIT
+    qg_error "$(cat <<EOF
+oxfmt could not complete the formatting check.
+
+Fix locally with: npx --yes --loglevel=error oxfmt@0.66.0 --write .
+EOF
+)"
+    return 1
   fi
 
   cat "$diff_file"

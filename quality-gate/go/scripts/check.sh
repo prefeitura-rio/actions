@@ -72,7 +72,18 @@ format_gofumpt() {
   local unformatted diff_output
   unformatted=$(gofumpt -l .)
   if [[ -n "$unformatted" ]]; then
-    diff_output=$(gofumpt -d . || true)
+    if ! diff_output=$(gofumpt -d . 2>&1); then
+      qg_error "$(cat <<EOF
+gofumpt could not complete the formatting check.
+
+Formatter output:
+$diff_output
+
+Fix locally with: gofumpt -w .
+EOF
+)"
+      return 1
+    fi
     printf '%s\n' "$unformatted"
     printf '%s\n' "$diff_output"
     qg_error "$(cat <<EOF
@@ -96,7 +107,18 @@ format_goimports() {
   local unformatted diff_output
   unformatted=$(goimports -l .)
   if [[ -n "$unformatted" ]]; then
-    diff_output=$(goimports -d . || true)
+    if ! diff_output=$(goimports -d . 2>&1); then
+      qg_error "$(cat <<EOF
+goimports could not complete the import organisation check.
+
+Formatter output:
+$diff_output
+
+Fix locally with: goimports -w .
+EOF
+)"
+      return 1
+    fi
     printf '%s\n' "$unformatted"
     printf '%s\n' "$diff_output"
     qg_error "$(cat <<EOF

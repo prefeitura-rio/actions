@@ -72,7 +72,21 @@ EOF
     return 1
   fi
 
-  diff_output=$(uvx ruff@0.16.4 format --diff . 2>&1 || true)
+  local diff_status=0
+  diff_output=$(uvx ruff@0.16.4 format --diff . 2>&1) || diff_status=$?
+  if [[ "$diff_status" -ne 0 && "$diff_status" -ne 1 ]] || [[ -z "$diff_output" ]]; then
+    printf '%s\n' "$diff_output"
+    qg_error "$(cat <<EOF
+ruff format could not complete the formatting check.
+
+Formatter output:
+$diff_output
+
+Fix locally with: uvx ruff@0.16.4 format .
+EOF
+)"
+    return 1
+  fi
   printf '%s\n' "$check_output"
   printf '%s\n' "$diff_output"
   qg_error "$(cat <<EOF

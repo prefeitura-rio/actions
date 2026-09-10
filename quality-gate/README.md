@@ -136,6 +136,7 @@ behavior. Those operations live in the portable scripts.
 | `check` | yes | `app:format`, `app:lint`, `app:strlint`, `app:typecheck`, `app:test`, `detect-only` |
 | `working-directory` | no | Project directory; defaults to `.` |
 | `language` | no | `go`, `python`, or `typescript` |
+| `expected-failure` | no | `true` adds a `## Test` section to the summary for expected-failure scenarios |
 
 ### Outputs
 

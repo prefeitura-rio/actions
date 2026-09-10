@@ -75,6 +75,8 @@ match the project's markers (rejected) and by requesting the correct language
 | `error-ts-no-tsconfig` | package.json without tsconfig.json fails (not detected as TypeScript) |
 | `error-gofumpt-sha-mismatch` | Corrupted gofumpt download triggers sha256 error + cleanup |
 | `error-ast-grep-sha-mismatch` | Corrupted ast-grep download triggers sha256 error + cleanup |
+| `error-multi-language-no-override` | Normal check fails on multi-language directory without explicit override |
+| `repo-rule-precedence` | Root `sgconfig.yaml` takes precedence over `.quality-gate/sgconfig.yaml` |
 
 The Python typecheck matrix uses the passing fixture to exercise project
 `[tool.basedpyright]` configuration and `typecheck-fail` to exercise the
@@ -88,3 +90,40 @@ message. Formatter failure assertions verify that the error output identifies
 the formatter, affected files, formatting diff, and a local remediation command;
 separate assertions verify friendly summary names. The final totals show whether
 the complete suite passed or whether one or more checks require investigation.
+
+## Summary Format
+
+The action writes a summary block to `GITHUB_STEP_SUMMARY`. The format
+distinguishes standard invocations from expected-failure test invocations:
+
+**Standard invocation (production or passing fixture):**
+
+```text
+### Quality Gate: Type Check (Python)
+
+Outcome: success
+Error:
+None
+```
+
+**Expected-failure test invocation:**
+
+```text
+### Quality Gate: Type Check (Python)
+
+Outcome: failure
+Error:
+Command failed (exit 1): basedpyright ...
+...
+
+## Test
+
+Test scenario: expected failure
+Outcome: failure
+Expected outcome: failure
+```
+
+The `## Test` section appears only when `expected-failure: true` is passed to
+the action. It signals that the failure is intentional and was asserted by the
+test job. In production workflows, this input is omitted and the summary remains
+a simple pass/fail report.

@@ -1,0 +1,6 @@
+id: root-precedence-rule
+language: Go
+severity: error
+message: Root rule should take precedence over .quality-gate rule
+rule:
+  pattern: func main() { $$$BODY }

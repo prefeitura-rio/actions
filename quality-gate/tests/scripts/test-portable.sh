@@ -41,6 +41,14 @@ assert_equal \
   "$(bash "$ROOT/scripts/detect-languages.sh" --check detect-only --working-directory "$FIXTURES/error/multiple-languages")" \
   "multi-language detection"
 
+if QUALITY_GATE_ERROR_FILE="$ERROR_FILE" bash "$ROOT/scripts/detect-languages.sh" --check app:format --working-directory "$FIXTURES/error/multiple-languages"; then
+  fail "multiple languages without override should be rejected for normal check"
+fi
+assert_equal \
+  "Multiple supported languages detected: go python typescript. Run quality-gate once per language, or use the detect-only check to enumerate languages." \
+  "$(<"$ERROR_FILE")" \
+  "multi-language normal check rejection diagnostic"
+
 assert_equal \
   "name=go" \
   "$(bash "$ROOT/scripts/detect-languages.sh" --check app:format --language go --working-directory "$FIXTURES/../go/fixtures/pass")" \
@@ -89,6 +97,34 @@ bash "$ROOT/scripts/render-summary.sh" \
   --summary-file "$SUMMARY_FILE"
 assert_equal "Format (Typescript - Vue)" "$(<"$SUMMARY_NAME_FILE")" "summary name"
 assert_contains "$(<"$SUMMARY_FILE")" "Outcome: failure" "summary outcome"
+
+EXPECTED_FAILURE_SUMMARY=$(mktemp)
+bash "$ROOT/scripts/render-summary.sh" \
+  --check app:typecheck \
+  --language python \
+  --error-file "$ERROR_FILE" \
+  --success-file "$SUCCESS_FILE" \
+  --name-file "$SUMMARY_NAME_FILE" \
+  --summary-file "$EXPECTED_FAILURE_SUMMARY" \
+  --expected-failure
+assert_equal "Type Check (Python)" "$(<"$SUMMARY_NAME_FILE")" "expected-failure summary name"
+assert_contains "$(<"$EXPECTED_FAILURE_SUMMARY")" "## Test" "expected-failure section"
+assert_contains "$(<"$EXPECTED_FAILURE_SUMMARY")" "Test scenario: expected failure" "expected-failure scenario"
+assert_contains "$(<"$EXPECTED_FAILURE_SUMMARY")" "Outcome: failure" "expected-failure outcome"
+assert_contains "$(<"$EXPECTED_FAILURE_SUMMARY")" "Expected outcome: failure" "expected-failure expected outcome"
+
+touch "$SUCCESS_FILE"
+: > "$ERROR_FILE"
+bash "$ROOT/scripts/render-summary.sh" \
+  --check app:typecheck \
+  --language python \
+  --error-file "$ERROR_FILE" \
+  --success-file "$SUCCESS_FILE" \
+  --name-file "$SUMMARY_NAME_FILE" \
+  --summary-file "$EXPECTED_FAILURE_SUMMARY" \
+  --expected-failure
+assert_contains "$(<"$EXPECTED_FAILURE_SUMMARY")" "Outcome: success" "expected-failure dynamic success outcome"
+rm -f "$EXPECTED_FAILURE_SUMMARY" "$SUCCESS_FILE"
 
 project_info=$(node "$ROOT/typescript/scripts/project-info.js" "$ROOT/typescript/fixtures/vue/pass")
 assert_contains "$project_info" "framework=vue" "Vue framework detection"
