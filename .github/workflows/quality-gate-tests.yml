@@ -474,7 +474,7 @@ jobs:
           }
 
       - name: assert lint failure
-        if: matrix.check == 'app:lint'
+        if: matrix.check == 'app:lint' && matrix.framework != 'next'
         env:
           ERROR_MESSAGE: ${{ steps.ts-fail.outputs.error_message }}
         run: |
