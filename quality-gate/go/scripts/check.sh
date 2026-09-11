@@ -69,12 +69,22 @@ install_lint_tool() {
 }
 
 format_gofumpt() {
-  local unformatted diff_output
+  local unformatted diff_output diff_status=0
   unformatted=$(gofumpt -l .)
   if [[ -n "$unformatted" ]]; then
-    diff_output=$(gofumpt -d . || true)
-    printf '%s\n' "$unformatted"
-    printf '%s\n' "$diff_output"
+    diff_output=$(gofumpt -d . 2>&1) || diff_status=$?
+    if [[ "$diff_status" -ne 0 && "$diff_status" -ne 1 ]] || [[ -z "$diff_output" ]]; then
+      qg_error "$(cat <<EOF
+gofumpt could not complete the formatting check.
+
+Formatter output:
+$diff_output
+
+Fix locally with: gofumpt -w .
+EOF
+)"
+      return 1
+    fi
     qg_error "$(cat <<EOF
 gofumpt found unformatted files.
 
@@ -93,12 +103,22 @@ EOF
 }
 
 format_goimports() {
-  local unformatted diff_output
+  local unformatted diff_output diff_status=0
   unformatted=$(goimports -l .)
   if [[ -n "$unformatted" ]]; then
-    diff_output=$(goimports -d . || true)
-    printf '%s\n' "$unformatted"
-    printf '%s\n' "$diff_output"
+    diff_output=$(goimports -d . 2>&1) || diff_status=$?
+    if [[ "$diff_status" -ne 0 && "$diff_status" -ne 1 ]] || [[ -z "$diff_output" ]]; then
+      qg_error "$(cat <<EOF
+goimports could not complete the import organisation check.
+
+Formatter output:
+$diff_output
+
+Fix locally with: goimports -w .
+EOF
+)"
+      return 1
+    fi
     qg_error "$(cat <<EOF
 goimports found files with unorganised imports.
 
@@ -132,18 +152,18 @@ run_strlint() {
   if [[ -f sgconfig.yaml || -d rules ]]; then
     ast-grep scan
     echo "Repo-local ast-grep rules passed."
-  elif [[ -f .quality-gate/sgconfig.yaml || -d .quality-gate/rules ]]; then
+  elif [[ -f .quality-gate/sgconfig.yaml ]]; then
     ast-grep scan --config .quality-gate/sgconfig.yaml
+    echo "Repo-local ast-grep rules passed."
+  elif [[ -d .quality-gate/rules ]]; then
+    local repo_config
+    repo_config=$(mktemp "${TMPDIR:-/tmp}/quality-gate-local.XXXXXX.yaml")
+    printf 'ruleDirs:\n  - .quality-gate/rules\n' > "$repo_config"
+    ast-grep scan --config "$repo_config"
+    rm -f "$repo_config"
     echo "Repo-local ast-grep rules passed."
   else
     echo "No repo-local sgconfig.yaml or rules/ found - skipping."
-  fi
-
-  if [[ -d tests ]]; then
-    ast-grep test -t tests
-    echo "Repo-local rule tests passed."
-  else
-    echo "No tests/ directory found - skipping rule tests."
   fi
 }
 
@@ -170,7 +190,7 @@ case "$CHECK" in
     if [[ -d cmd ]]; then
       go build -ldflags="-s -w" -o /dev/null ./cmd/...
     else
-      go build -ldflags="-s -w" -o /dev/null .
+      go build -ldflags="-s -w" -o /dev/null ./...
     fi
     ;;
   app:test)

@@ -41,6 +41,14 @@ assert_equal \
   "$(bash "$ROOT/scripts/detect-languages.sh" --check detect-only --working-directory "$FIXTURES/error/multiple-languages")" \
   "multi-language detection"
 
+if QUALITY_GATE_ERROR_FILE="$ERROR_FILE" bash "$ROOT/scripts/detect-languages.sh" --check app:format --working-directory "$FIXTURES/error/multiple-languages"; then
+  fail "multiple languages without override should be rejected for normal check"
+fi
+assert_equal \
+  "Multiple supported languages detected: go python typescript. Run quality-gate once per language, or use the detect-only check to enumerate languages." \
+  "$(<"$ERROR_FILE")" \
+  "multi-language normal check rejection diagnostic"
+
 assert_equal \
   "name=go" \
   "$(bash "$ROOT/scripts/detect-languages.sh" --check app:format --language go --working-directory "$FIXTURES/../go/fixtures/pass")" \
@@ -76,8 +84,10 @@ collected=$(bash "$ROOT/scripts/collect-error.sh" \
   --check app:format \
   --error-file "$ERROR_FILE" \
   --success-file "$SUCCESS_FILE" \
-  --max-bytes 5)
+  --max-bytes 8)
 assert_contains "$collected" "... error output truncated" "error truncation"
+assert_contains "$collected" "0123456" "dynamic truncation head"
+assert_contains "$collected" "9" "dynamic truncation tail"
 
 bash "$ROOT/scripts/render-summary.sh" \
   --check app:format \
@@ -90,9 +100,53 @@ bash "$ROOT/scripts/render-summary.sh" \
 assert_equal "Format (Typescript - Vue)" "$(<"$SUMMARY_NAME_FILE")" "summary name"
 assert_contains "$(<"$SUMMARY_FILE")" "Outcome: failure" "summary outcome"
 
+bash "$ROOT/scripts/render-summary.sh" \
+  --check app:format \
+  --language typescript \
+  --framework next \
+  --error-file "$ERROR_FILE" \
+  --success-file "$SUCCESS_FILE" \
+  --name-file "$SUMMARY_NAME_FILE" \
+  --summary-file "$SUMMARY_FILE"
+assert_equal "Format (Typescript - Next.js)" "$(<"$SUMMARY_NAME_FILE")" "Next.js summary name"
+
+EXPECTED_FAILURE_SUMMARY=$(mktemp)
+bash "$ROOT/scripts/render-summary.sh" \
+  --check app:typecheck \
+  --language python \
+  --error-file "$ERROR_FILE" \
+  --success-file "$SUCCESS_FILE" \
+  --name-file "$SUMMARY_NAME_FILE" \
+  --summary-file "$EXPECTED_FAILURE_SUMMARY" \
+  --expected-failure
+assert_equal "Type Check (Python)" "$(<"$SUMMARY_NAME_FILE")" "expected-failure summary name"
+assert_contains "$(<"$EXPECTED_FAILURE_SUMMARY")" "## Test" "expected-failure section"
+assert_contains "$(<"$EXPECTED_FAILURE_SUMMARY")" "Test scenario: expected failure" "expected-failure scenario"
+assert_contains "$(<"$EXPECTED_FAILURE_SUMMARY")" "Outcome: failure" "expected-failure outcome"
+assert_contains "$(<"$EXPECTED_FAILURE_SUMMARY")" "Expected outcome: failure" "expected-failure expected outcome"
+
+touch "$SUCCESS_FILE"
+: > "$ERROR_FILE"
+if bash "$ROOT/scripts/render-summary.sh" \
+  --check app:typecheck \
+  --language python \
+  --error-file "$ERROR_FILE" \
+  --success-file "$SUCCESS_FILE" \
+  --name-file "$SUMMARY_NAME_FILE" \
+  --summary-file "$EXPECTED_FAILURE_SUMMARY" \
+  --expected-failure 2>/dev/null; then
+  fail "render-summary.sh should fail when expected failure unexpectedly succeeds"
+fi
+assert_contains "$(<"$EXPECTED_FAILURE_SUMMARY")" "Outcome: success" "expected-failure dynamic success outcome"
+rm -f "$EXPECTED_FAILURE_SUMMARY" "$SUCCESS_FILE"
+
 project_info=$(node "$ROOT/typescript/scripts/project-info.js" "$ROOT/typescript/fixtures/vue/pass")
 assert_contains "$project_info" "framework=vue" "Vue framework detection"
 assert_contains "$project_info" "react=false" "React detection"
+
+project_info=$(node "$ROOT/typescript/scripts/project-info.js" "$ROOT/typescript/fixtures/next/pass")
+assert_contains "$project_info" "framework=next" "Next.js framework detection"
+assert_contains "$project_info" "react=true" "Next.js React detection"
 
 project_info=$(node "$ROOT/typescript/scripts/project-info.js" "$ROOT/typescript/fixtures/nuxt/pass" --check app:test)
 assert_contains "$project_info" "manager=pnpm" "pnpm detection"

@@ -29,13 +29,24 @@ qg_download_verified() {
 }
 
 qg_install_ast_grep() {
+  local target="$QUALITY_GATE_TOOL_BIN/ast-grep"
+  local expected_version="0.45.1"
+
+  if [[ -x "$target" ]]; then
+    local version_output
+    version_output=$("$target" --version 2>&1 || true)
+    if [[ "$version_output" == *"$expected_version"* ]]; then
+      return 0
+    fi
+  fi
+
   local output="$QUALITY_GATE_TOOL_DOWNLOADS/sg.zip"
 
   qg_download_verified \
-    "https://github.com/ast-grep/ast-grep/releases/download/0.45.1/app-x86_64-unknown-linux-gnu.zip" \
+    "https://github.com/ast-grep/ast-grep/releases/download/${expected_version}/app-x86_64-unknown-linux-gnu.zip" \
     "$output" \
     "76fb6555be6734fb5057dba8d2fb756430f374bb9e1af694cf1ce00e13238d63" \
     ast-grep
-  unzip -p "$output" ast-grep > "$QUALITY_GATE_TOOL_BIN/ast-grep"
-  chmod +x "$QUALITY_GATE_TOOL_BIN/ast-grep"
+  unzip -p "$output" ast-grep > "$target"
+  chmod +x "$target"
 }

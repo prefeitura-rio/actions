@@ -13,8 +13,9 @@ rule:
     - pattern: console.info($$$ARGS)
     - pattern: console.debug($$$ARGS)
 ignores:
-  - "**/*.test.ts"
-  - "**/*.test.tsx"
-  - "**/*.spec.ts"
-  - "**/*.spec.tsx"
+  - "**/*.test.*"
+  - "**/*.spec.*"
   - "tests/**"
+  - "**/tests/**"
+  - "**/test/**"
+  - "**/__tests__/**"

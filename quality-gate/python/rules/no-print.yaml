@@ -9,6 +9,9 @@ rule:
   pattern: print($$$ARGS)
 ignores:
   - "tests/**"
+  - "**/tests/**"
+  - "**/test/**"
+  - "**/__tests__/**"
   - "**/*_test.py"
   - "**/test_*.py"
   - "**/conftest.py"

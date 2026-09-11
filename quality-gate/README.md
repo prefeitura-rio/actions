@@ -2,8 +2,8 @@
 
 Quality Gate is a provider-neutral quality-check engine with a GitHub Actions
 adapter. It detects Go, Python, and TypeScript projects and runs formatting,
-linting, structural linting, type checks, and tests. Vue and Nuxt projects are
-handled by the TypeScript module.
+linting, structural linting, type checks, and tests. Next.js, Vue, and Nuxt
+projects are handled by the TypeScript module.
 
 The portable scripts are the source of quality-check behavior. GitHub Actions
 provides only orchestration and runner integration. A future GitLab, Bitbucket,
@@ -136,6 +136,7 @@ behavior. Those operations live in the portable scripts.
 | `check` | yes | `app:format`, `app:lint`, `app:strlint`, `app:typecheck`, `app:test`, `detect-only` |
 | `working-directory` | no | Project directory; defaults to `.` |
 | `language` | no | `go`, `python`, or `typescript` |
+| `expected-failure` | no | `true` adds a `## Test` section to the summary for expected-failure scenarios |
 
 ### Outputs
 
@@ -165,9 +166,9 @@ to detect once and run each language in parallel.
 | Check | Go | Python | TypeScript |
 |---|---|---|---|
 | `app:format` | gofumpt, goimports | Ruff format | oxfmt |
-| `app:lint` | golangci-lint | Ruff check, complexipy | oxlint, optional react-doctor |
-| `app:strlint` | ast-grep organization and repo rules | ast-grep organization and repo rules | ast-grep organization and repo rules with Vue script injection |
-| `app:typecheck` | `go vet`, `go build` | basedpyright | Project script, `vue-tsc`, or `nuxt typecheck` |
+| `app:lint` | golangci-lint | Ruff check, complexipy | oxlint with detected framework rules, optional react-doctor |
+| `app:strlint` | ast-grep organization and repo rules | ast-grep organization and repo rules | ast-grep organization and repo rules with TSX support and Vue script injection |
+| `app:typecheck` | `go vet`, `go build` | basedpyright | Project script, `tsc`, `vue-tsc`, or `nuxt typecheck` |
 | `app:test` | `go test -race` | pytest with coverage | npm or pnpm test |
 
 Formatting checks never modify project files. Formatting differences include the
@@ -179,7 +180,7 @@ execution failures may only include the formatter output and remediation command
 `typescript/scripts/project-info.js` is provider-neutral and reports:
 
 - package manager and pinned pnpm version when required;
-- Vue or Nuxt framework detection;
+- Next.js, Vue, or Nuxt framework detection;
 - React dependency presence;
 - presence of a project `typecheck` script;
 - `.node-version` is required for typecheck and test checks; `actions/setup-node`
@@ -189,9 +190,14 @@ For TypeScript typecheck and test checks, the project must also have a lockfile.
 Projects using pnpm must declare `packageManager: pnpm@<version>` in
 `package.json`.
 
-Nuxt detection takes precedence over Vue. Vue fallback scanning is bounded to
-five directory levels and ignores `.git`, `.nuxt`, `node_modules`, `dist`, and
-`build` directories.
+Next.js detection takes precedence over Nuxt and Vue. Vue fallback scanning is
+bounded to five directory levels and ignores `.git`, `.next`, `.nuxt`,
+`node_modules`, `dist`, `build`, and `out` directories.
+
+Next.js projects can opt into route-aware typechecking through their existing
+project script, for example `next typegen && tsc --noEmit`. The action does not
+run `next typegen` automatically; projects without a typecheck script use the
+standard local `tsc --noEmit` fallback.
 
 ## Tooling And Configuration
 
@@ -249,7 +255,7 @@ The GitHub workflow additionally covers:
 - organization ast-grep rule tests;
 - language detection and overrides;
 - repository-local and mandatory policy rules;
-- Vue and Nuxt behavior;
+- Next.js, Vue, and Nuxt behavior;
 - corrupted tool downloads and checksum cleanup;
 - reusable workflow dispatch;
 - GitHub adapter outputs, error relay, and friendly summary names.

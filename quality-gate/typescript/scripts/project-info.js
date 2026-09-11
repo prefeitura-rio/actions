@@ -70,7 +70,7 @@ if (needsPackageManager) {
   }
 }
 
-const ignoredDirectories = new Set(['.git', '.nuxt', 'node_modules', 'dist', 'build']);
+const ignoredDirectories = new Set(['.git', '.next', '.nuxt', 'node_modules', 'dist', 'build', 'out']);
 const hasVueFile = (directory, depth = 0) => {
   if (!fs.existsSync(directory)) return false;
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
@@ -82,6 +82,14 @@ const hasVueFile = (directory, depth = 0) => {
   return false;
 };
 
+const hasNextConfig = [
+  'next.config.js',
+  'next.config.mjs',
+  'next.config.cjs',
+  'next.config.ts',
+  'next.config.mts',
+].some((file) => fs.existsSync(path.join(projectDirectory, file)));
+
 const hasNuxtConfig = [
   'nuxt.config.ts',
   'nuxt.config.mts',
@@ -91,7 +99,9 @@ const hasNuxtConfig = [
 ].some((file) => fs.existsSync(path.join(projectDirectory, file)));
 
 let framework = 'none';
-if (dependencies.nuxt || hasNuxtConfig) {
+if (dependencies.next || hasNextConfig) {
+  framework = 'next';
+} else if (dependencies.nuxt || hasNuxtConfig) {
   framework = 'nuxt';
 } else if (dependencies.vue || hasVueFile(projectDirectory)) {
   framework = 'vue';

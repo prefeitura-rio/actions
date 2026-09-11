@@ -1,8 +1,8 @@
 name: Quality Gate
 description: |
   Language-agnostic quality gate. Detects the project language and dispatches
-  the requested check to the language-specific action. Vue and Nuxt projects
-  use the TypeScript action with framework-aware checks.
+  the requested check to the language-specific action. Next.js, Vue, and Nuxt
+  projects use the TypeScript action with framework-aware checks.
 inputs:
   check:
     description: |
@@ -18,9 +18,16 @@ inputs:
       Explicit language override (go, python, typescript).
       When provided, skips file-based detection and uses this value directly.
       When omitted, detection runs from marker files (go.mod, pyproject.toml,
-      setup.py, package.json+tsconfig.json). Vue and Nuxt remain TypeScript
-      projects for dispatch and workflow matrix purposes.
+      setup.py, package.json+tsconfig.json). Next.js, Vue, and Nuxt remain
+      TypeScript projects for dispatch and workflow matrix purposes.
     required: false
+  expected-failure:
+    description: |
+      When true, adds a test scenario section to the job summary indicating
+      the failure is expected. Used by the quality-gate-tests workflow for
+      negative-test fixtures.
+    required: false
+    default: 'false'
 outputs:
   error_message:
     description: Human-readable error message set when the action fails.
@@ -143,17 +150,25 @@ runs:
         CHECK: ${{ inputs.check }}
         LANGUAGE: ${{ steps.lang.outputs.name }}
         FRAMEWORK: ${{ steps.typescript.outputs.framework }}
+        EXPECTED_FAILURE: ${{ inputs.expected-failure }}
       run: |
         set -euo pipefail
         name_file="$RUNNER_TEMP/quality-gate-summary-name"
         summary_file="$RUNNER_TEMP/quality-gate-summary.md"
-        bash "${ACTION_DIRECTORY}/scripts/render-summary.sh" \
-          --check "$CHECK" \
-          --language "$LANGUAGE" \
-          --framework "$FRAMEWORK" \
-          --error-file "$RUNNER_TEMP/quality-gate-error.txt" \
-          --success-file "$RUNNER_TEMP/quality-gate-success" \
-          --name-file "$name_file" \
+        summary_args=(
+          --check "$CHECK"
+          --language "$LANGUAGE"
+          --framework "$FRAMEWORK"
+          --error-file "$RUNNER_TEMP/quality-gate-error.txt"
+          --success-file "$RUNNER_TEMP/quality-gate-success"
+          --name-file "$name_file"
           --summary-file "$summary_file"
+        )
+        if [[ "$EXPECTED_FAILURE" == true ]]; then
+          summary_args+=(--expected-failure)
+        fi
+        status=0
+        bash "${ACTION_DIRECTORY}/scripts/render-summary.sh" "${summary_args[@]}" || status=$?
         printf 'name=%s\n' "$(<"$name_file")" >> "$GITHUB_OUTPUT"
         cat "$summary_file" >> "$GITHUB_STEP_SUMMARY"
+        exit "$status"

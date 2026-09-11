@@ -5,7 +5,7 @@ message: >
   Wrap errors with %w instead of %v or %s so the original error is preserved
   for errors.Is / errors.As unwrapping.
 rule:
-  pattern: fmt.Errorf($FORMAT, $ERR)
+  pattern: fmt.Errorf($FORMAT, $$$ARGS)
 constraints:
   FORMAT:
     regex: "%[vs]"

@@ -142,13 +142,45 @@ EOF
   done <<< "$files"
 
   if [[ ${#temp_files[@]} -gt 0 ]]; then
-    npx --yes --loglevel=error oxfmt@0.66.0 --write "${temp_files[@]}" >/dev/null 2>&1 || true
+    local oxfmt_write_err
+    oxfmt_write_err=$(mktemp "${TMPDIR:-/tmp}/quality-gate.XXXXXX")
+    if ! npx --yes --loglevel=error oxfmt@0.66.0 --write "${temp_files[@]}" >/dev/null 2>"$oxfmt_write_err"; then
+      local write_output
+      write_output=$(<"$oxfmt_write_err")
+      rm -f "$oxfmt_write_err"
+      cleanup_format
+      trap - EXIT
+      qg_error "$(cat <<EOF
+oxfmt could not complete the formatting check.
+
+Formatter output:
+$write_output
+
+Fix locally with: npx --yes --loglevel=error oxfmt@0.66.0 --write .
+EOF
+)"
+      return 1
+    fi
+    rm -f "$oxfmt_write_err"
+
     for index in "${!temp_files[@]}"; do
       diff -u \
         --label "${original_files[$index]} (current)" \
         --label "${original_files[$index]} (formatted)" \
         "${original_files[$index]}" "${temp_files[$index]}" >> "$diff_file" || true
     done
+  fi
+
+  if [[ ! -s "$diff_file" ]]; then
+    cleanup_format
+    trap - EXIT
+    qg_error "$(cat <<EOF
+oxfmt could not complete the formatting check.
+
+Fix locally with: npx --yes --loglevel=error oxfmt@0.66.0 --write .
+EOF
+)"
+    return 1
   fi
 
   cat "$diff_file"
@@ -167,7 +199,6 @@ EOF
 
   cleanup_format
   trap - EXIT
-  echo "oxfmt found formatting differences in $file_count file(s)." >&2
   return 1
 }
 
@@ -182,9 +213,20 @@ run_strlint() {
 ruleDirs:
   - ${ACTION_DIR}/rules
 languageGlobs:
+  typescript:
+    - '*.ts'
+    - '*.tsx'
   html:
     - '*.vue'
 languageInjections:
+  - hostLanguage: html
+    rule:
+      pattern: <script>\$\$\$CONTENT</script>
+    injected: [javascript, typescript]
+  - hostLanguage: html
+    rule:
+      pattern: <script setup>\$\$\$CONTENT</script>
+    injected: [javascript, typescript]
   - hostLanguage: html
     rule:
       pattern: <script lang="\$LANG">\$\$\$CONTENT</script>
@@ -206,8 +248,15 @@ EOF
   if [[ -f sgconfig.yaml || -d rules ]]; then
     ast-grep scan
     echo "Repo-local TypeScript ast-grep rules passed."
-  elif [[ -f .quality-gate/sgconfig.yaml || -d .quality-gate/rules ]]; then
+  elif [[ -f .quality-gate/sgconfig.yaml ]]; then
     ast-grep scan --config .quality-gate/sgconfig.yaml
+    echo "Repo-local TypeScript ast-grep rules passed."
+  elif [[ -d .quality-gate/rules ]]; then
+    local repo_config
+    repo_config=$(mktemp "${TMPDIR:-/tmp}/quality-gate-local.XXXXXX.yaml")
+    printf 'ruleDirs:\n  - .quality-gate/rules\n' > "$repo_config"
+    ast-grep scan --config "$repo_config"
+    rm -f "$repo_config"
     echo "Repo-local TypeScript ast-grep rules passed."
   else
     echo "No repo-local sgconfig.yaml or rules/ found - skipping."
@@ -222,8 +271,12 @@ run_typecheck() {
   elif [[ "$FRAMEWORK" == nuxt ]]; then
     if [[ "$MANAGER" == npm ]]; then npm exec --no -- nuxt typecheck; else pnpm exec nuxt typecheck; fi
   else
-    qg_error "Missing typecheck script for TypeScript project. Add scripts.typecheck to package.json."
-    return 1
+    if command -v tsc >/dev/null 2>&1 || [[ -x node_modules/.bin/tsc ]]; then
+      if [[ "$MANAGER" == npm ]]; then npm exec --no -- tsc --noEmit; else pnpm exec tsc --noEmit; fi
+    else
+      qg_error "Missing typecheck script for TypeScript project. Add scripts.typecheck to package.json."
+      return 1
+    fi
   fi
 }
 
@@ -233,11 +286,16 @@ case "$CHECK" in
     ;;
   app:lint)
     load_project_info
-    if [[ -f .oxlintrc.json || -f .oxlintrc.yaml || -f .oxlintrc.yml || -f oxlint.config.js || -f oxlint.config.mjs || -f oxlint.config.ts ]]; then
-      npx --yes oxlint@1.81.0 .
-    else
-      npx --yes oxlint@1.81.0 --config "$ACTION_DIR/.oxlintrc.json" .
+    lint_args=(npx --yes oxlint@1.81.0)
+    if [[ "$FRAMEWORK" == next ]]; then
+      lint_args+=(--react-plugin --nextjs-plugin --ignore-pattern '.next/**' --ignore-pattern 'out/**')
     fi
+    if [[ -f .oxlintrc.json || -f .oxlintrc.yaml || -f .oxlintrc.yml || -f oxlint.config.js || -f oxlint.config.mjs || -f oxlint.config.ts ]]; then
+      lint_args+=(.)
+    else
+      lint_args+=(--config "$ACTION_DIR/.oxlintrc.json" .)
+    fi
+    "${lint_args[@]}"
     echo "oxlint: no issues found."
     if [[ "$REACT" == true ]]; then
       npx --yes react-doctor@0.9.12
@@ -251,6 +309,7 @@ case "$CHECK" in
   app:typecheck)
     load_project_info
     install_dependencies
+    prepare_nuxt
     run_typecheck
     ;;
   app:test)

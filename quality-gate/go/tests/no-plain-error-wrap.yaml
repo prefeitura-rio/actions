@@ -6,6 +6,8 @@ valid:
     return fmt.Errorf("database connection failed: %w", err)
   - |
     return fmt.Errorf("unmarshal: %w", err)
+  - |
+    return fmt.Errorf("user %s (id %d): %w", name, id, err)
 invalid:
   - |
     return fmt.Errorf("failed to open file: %v", err)
@@ -13,3 +15,5 @@ invalid:
     return fmt.Errorf("database connection failed: %s", err)
   - |
     return fmt.Errorf("decode error: %v", err)
+  - |
+    return fmt.Errorf("user %s (id %d): %v", name, id, err)

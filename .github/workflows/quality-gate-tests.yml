@@ -104,6 +104,7 @@ jobs:
         with:
           check: ${{ matrix.check }}
           working-directory: ${{ matrix.fail }}
+          expected-failure: true
         continue-on-error: true
 
       - name: assert fail was detected
@@ -116,6 +117,46 @@ jobs:
           }
           [[ -n "$ERROR_MESSAGE" ]] || {
             echo "::error::Expected a diagnostic error message for ${{ matrix.fail }}"
+            exit 1
+          }
+
+      - name: assert lint failure
+        if: matrix.check == 'app:lint'
+        env:
+          ERROR_MESSAGE: ${{ steps.go-fail.outputs.error_message }}
+        run: |
+          [[ "$ERROR_MESSAGE" == *"main.go"* ]] || {
+            echo "::error::Expected golangci-lint to identify main.go in the failure output"
+            exit 1
+          }
+
+      - name: assert strlint failure
+        if: matrix.check == 'app:strlint'
+        env:
+          ERROR_MESSAGE: ${{ steps.go-fail.outputs.error_message }}
+        run: |
+          [[ "$ERROR_MESSAGE" == *"no-panic"* ]] || {
+            echo "::error::Expected ast-grep to report no-panic rule violation"
+            exit 1
+          }
+
+      - name: assert typecheck failure
+        if: matrix.check == 'app:typecheck'
+        env:
+          ERROR_MESSAGE: ${{ steps.go-fail.outputs.error_message }}
+        run: |
+          [[ "$ERROR_MESSAGE" == *"undefined: undefinedVar"* ]] || {
+            echo "::error::Expected go compiler to report undefined: undefinedVar"
+            exit 1
+          }
+
+      - name: assert test failure
+        if: matrix.check == 'app:test'
+        env:
+          ERROR_MESSAGE: ${{ steps.go-fail.outputs.error_message }}
+        run: |
+          [[ "$ERROR_MESSAGE" == *"FAIL: TestFail"* || "$ERROR_MESSAGE" == *"got 1, want 2"* ]] || {
+            echo "::error::Expected go test to report failing TestFail test"
             exit 1
           }
 
@@ -203,6 +244,7 @@ jobs:
         with:
           check: ${{ matrix.check }}
           working-directory: ${{ matrix.fail }}
+          expected-failure: true
         continue-on-error: true
 
       - name: assert fail was detected
@@ -215,6 +257,36 @@ jobs:
           }
           [[ -n "$ERROR_MESSAGE" ]] || {
             echo "::error::Expected a diagnostic error message for ${{ matrix.fail }}"
+            exit 1
+          }
+
+      - name: assert ruff lint failure
+        if: matrix.check == 'app:lint' && matrix.failure_kind == 'ruff'
+        env:
+          ERROR_MESSAGE: ${{ steps.py-fail.outputs.error_message }}
+        run: |
+          [[ "$ERROR_MESSAGE" == *"F401"* || "$ERROR_MESSAGE" == *"os"* ]] || {
+            echo "::error::Expected Ruff to report unused import violation"
+            exit 1
+          }
+
+      - name: assert strlint failure
+        if: matrix.check == 'app:strlint'
+        env:
+          ERROR_MESSAGE: ${{ steps.py-fail.outputs.error_message }}
+        run: |
+          [[ "$ERROR_MESSAGE" == *"no-eval"* ]] || {
+            echo "::error::Expected ast-grep to report no-eval rule violation"
+            exit 1
+          }
+
+      - name: assert pytest failure
+        if: matrix.check == 'app:test'
+        env:
+          ERROR_MESSAGE: ${{ steps.py-fail.outputs.error_message }}
+        run: |
+          [[ "$ERROR_MESSAGE" == *"FAILED"* || "$ERROR_MESSAGE" == *"test_process_values"* ]] || {
+            echo "::error::Expected pytest to report failing test_process_values"
             exit 1
           }
 
@@ -341,6 +413,26 @@ jobs:
             check: app:test
             fixture: quality-gate/typescript/fixtures/nuxt/pass
             fail: quality-gate/typescript/fixtures/nuxt/test-fail
+          - framework: next
+            check: app:format
+            fixture: quality-gate/typescript/fixtures/next/pass
+            fail: quality-gate/typescript/fixtures/next/format-fail
+          - framework: next
+            check: app:lint
+            fixture: quality-gate/typescript/fixtures/next/pass
+            fail: quality-gate/typescript/fixtures/next/lint-fail
+          - framework: next
+            check: app:strlint
+            fixture: quality-gate/typescript/fixtures/next/pass
+            fail: quality-gate/typescript/fixtures/next/strlint-fail
+          - framework: next
+            check: app:typecheck
+            fixture: quality-gate/typescript/fixtures/next/pass
+            fail: quality-gate/typescript/fixtures/next/typecheck-fail
+          - framework: next
+            check: app:test
+            fixture: quality-gate/typescript/fixtures/next/pass
+            fail: quality-gate/typescript/fixtures/next/test-fail
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -365,6 +457,7 @@ jobs:
         with:
           check: ${{ matrix.check }}
           working-directory: ${{ matrix.fail }}
+          expected-failure: true
         continue-on-error: true
 
       - name: assert fail was detected
@@ -380,11 +473,61 @@ jobs:
             exit 1
           }
 
+      - name: assert lint failure
+        if: matrix.check == 'app:lint' && matrix.framework != 'next'
+        env:
+          ERROR_MESSAGE: ${{ steps.ts-fail.outputs.error_message }}
+        run: |
+          [[ "$ERROR_MESSAGE" == *"no-var"* || "$ERROR_MESSAGE" == *"react-doctor"* || "$ERROR_MESSAGE" == *"oxlint"* || "$ERROR_MESSAGE" == *"var "* ]] || {
+            echo "::error::Expected oxlint to report lint violation"
+            exit 1
+          }
+
+      - name: assert Next.js lint failure
+        if: matrix.framework == 'next' && matrix.check == 'app:lint'
+        env:
+          ERROR_MESSAGE: ${{ steps.ts-fail.outputs.error_message }}
+        run: |
+          [[ "$ERROR_MESSAGE" == *"no-img-element"* ]] || {
+            echo "::error::Expected the Oxlint Next.js plugin to report no-img-element"
+            exit 1
+          }
+
+      - name: assert strlint failure
+        if: matrix.check == 'app:strlint'
+        env:
+          ERROR_MESSAGE: ${{ steps.ts-fail.outputs.error_message }}
+        run: |
+          [[ "$ERROR_MESSAGE" == *"no-any-assertion"* || "$ERROR_MESSAGE" == *"no-console"* ]] || {
+            echo "::error::Expected ast-grep to report structural lint violation"
+            exit 1
+          }
+
+      - name: assert typecheck failure
+        if: matrix.check == 'app:typecheck'
+        env:
+          ERROR_MESSAGE: ${{ steps.ts-fail.outputs.error_message }}
+        run: |
+          [[ "$ERROR_MESSAGE" == *"Type"* || "$ERROR_MESSAGE" == *"undefined"* || "$ERROR_MESSAGE" == *"toUpperCase"* || "$ERROR_MESSAGE" == *"error TS"* ]] || {
+            echo "::error::Expected TypeScript compiler to report typecheck failure"
+            exit 1
+          }
+
+      - name: assert test failure
+        if: matrix.check == 'app:test'
+        env:
+          ERROR_MESSAGE: ${{ steps.ts-fail.outputs.error_message }}
+        run: |
+          [[ "$ERROR_MESSAGE" == *"FAIL"* || "$ERROR_MESSAGE" == *"AssertionError"* || "$ERROR_MESSAGE" == *"expected"* ]] || {
+            echo "::error::Expected test runner to report failing test"
+            exit 1
+          }
+
       - name: assert format failure is actionable
         if: matrix.check == 'app:format'
         env:
           ERROR_MESSAGE: ${{ steps.ts-fail.outputs.error_message }}
-          EXPECTED_FILE: ${{ matrix.framework == 'typescript' && 'src/app.ts' || matrix.framework == 'vue' && 'src/App.vue' || 'nuxt.config.ts' }}
+          EXPECTED_FILE: ${{ matrix.framework == 'typescript' && 'src/app.ts' || matrix.framework == 'vue' && 'src/App.vue' || matrix.framework == 'next' && 'app/page.tsx' || 'nuxt.config.ts' }}
         run: |
           [[ "$ERROR_MESSAGE" == *"oxfmt found formatting differences in"* ]] || {
             echo "::error::Expected Oxfmt details in the format failure"
@@ -416,6 +559,7 @@ jobs:
           case "$FRAMEWORK" in
             vue) EXPECTED_SUMMARY="Format (Typescript - Vue)" ;;
             nuxt) EXPECTED_SUMMARY="Format (Typescript - Nuxt)" ;;
+            next) EXPECTED_SUMMARY="Format (Typescript - Next.js)" ;;
             *) EXPECTED_SUMMARY="Format (Typescript)" ;;
           esac
           [[ "$SUMMARY_NAME" == "$EXPECTED_SUMMARY" ]] || {
@@ -442,6 +586,7 @@ jobs:
         uses: ./quality-gate
         with:
           check: ${{ matrix.check }}
+          expected-failure: true
         continue-on-error: true
       - name: assert invalid check was rejected
         run: |
@@ -500,6 +645,10 @@ jobs:
             framework: nuxt
             fixture: quality-gate/typescript/fixtures/nuxt/pass
             expected: '["typescript"]'
+          - language: typescript
+            framework: next
+            fixture: quality-gate/typescript/fixtures/next/pass
+            expected: '["typescript"]'
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -551,6 +700,7 @@ jobs:
         with:
           check: detect-only
           working-directory: quality-gate/fixtures/error/no-language
+          expected-failure: true
         continue-on-error: true
       - name: assert no-language error
         run: |
@@ -594,11 +744,18 @@ jobs:
           check: app:format
           working-directory: ${{ matrix.fixture }}
           language: ${{ matrix.language }}
+          expected-failure: true
         continue-on-error: true
       - name: assert override was rejected
+        env:
+          ERROR_MESSAGE: ${{ steps.override.outputs.error_message }}
         run: |
           [[ "${{ steps.override.outcome }}" == "failure" ]] || {
             echo "::error::Expected failure when requesting ${{ matrix.language }} on ${{ matrix.project }} project"
+            exit 1
+          }
+          [[ "$ERROR_MESSAGE" == *"Requested language '${{ matrix.language }}' not detected in project."* ]] || {
+            echo "::error::Expected rejection diagnostic for ${{ matrix.language }} on ${{ matrix.project }}"
             exit 1
           }
 
@@ -648,11 +805,18 @@ jobs:
         with:
           check: app:strlint
           working-directory: quality-gate/fixtures/${{ matrix.language }}/repo-rule-fail
+          expected-failure: true
         continue-on-error: true
       - name: assert repository-local violation failed
+        env:
+          ERROR_MESSAGE: ${{ steps.repo-rule.outputs.error_message }}
         run: |
           [[ "${{ steps.repo-rule.outcome }}" == "failure" ]] || {
             echo "::error::Expected repository-local ${{ matrix.language }} rule to fail"
+            exit 1
+          }
+          [[ "$ERROR_MESSAGE" == *"no-local-forbidden"* ]] || {
+            echo "::error::Expected repository-local rule no-local-forbidden to be reported"
             exit 1
           }
 
@@ -682,11 +846,18 @@ jobs:
         with:
           check: app:strlint
           working-directory: quality-gate/fixtures/${{ matrix.language }}/policy-fail/${{ matrix.rule }}
+          expected-failure: true
         continue-on-error: true
       - name: assert mandatory policy failed
+        env:
+          ERROR_MESSAGE: ${{ steps.policy-rule.outputs.error_message }}
         run: |
           [[ "${{ steps.policy-rule.outcome }}" == "failure" ]] || {
             echo "::error::Expected mandatory policy ${{ matrix.rule }} to fail"
+            exit 1
+          }
+          [[ "$ERROR_MESSAGE" == *"${{ matrix.rule }}"* ]] || {
+            echo "::error::Expected mandatory policy ${{ matrix.rule }} to be reported"
             exit 1
           }
 
@@ -721,6 +892,7 @@ jobs:
         with:
           check: app:format
           working-directory: quality-gate/fixtures/error/no-language
+          expected-failure: true
         continue-on-error: true
       - name: assert no-language error
         run: |
@@ -748,6 +920,7 @@ jobs:
         with:
           check: app:typecheck
           working-directory: quality-gate/fixtures/error/ts-no-lockfile
+          expected-failure: true
         continue-on-error: true
       - name: assert lockfile error
         run: |
@@ -775,6 +948,7 @@ jobs:
         with:
           check: app:typecheck
           working-directory: quality-gate/fixtures/error/py-no-lockfile
+          expected-failure: true
         continue-on-error: true
       - name: assert lockfile error
         env:
@@ -800,6 +974,7 @@ jobs:
         with:
           check: app:format
           working-directory: quality-gate/fixtures/error/ts-no-tsconfig
+          expected-failure: true
         continue-on-error: true
       - name: assert no-language error (not TypeScript)
         run: |
@@ -824,9 +999,39 @@ jobs:
       - name: Install mock curl (writes garbage to output file)
         run: |
           mkdir -p "$HOME/.local/bin"
-          # shellcheck disable=SC2016
-          printf '#!/usr/bin/env bash\necho "corrupted" > "${@: -1}"\n' \
-            > "$HOME/.local/bin/curl"
+          cat <<'EOF' > "$HOME/.local/bin/curl"
+          #!/usr/bin/env bash
+          set -euo pipefail
+          output_file=""
+          url=""
+          while [[ $# -gt 0 ]]; do
+            case "$1" in
+              -o)
+                output_file="$2"
+                shift 2
+                ;;
+              -fsSL|-sSL|-fL|-L|-s|-f)
+                shift
+                ;;
+              http*://*)
+                url="$1"
+                shift
+                ;;
+              *)
+                shift
+                ;;
+            esac
+          done
+          if [[ -z "$output_file" ]]; then
+            echo "mock curl error: missing -o destination" >&2
+            exit 2
+          fi
+          if [[ "$url" != *"gofumpt"* ]]; then
+            echo "mock curl error: unexpected URL: $url" >&2
+            exit 2
+          fi
+          echo "corrupted-gofumpt" > "$output_file"
+          EOF
           chmod +x "$HOME/.local/bin/curl"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: run format on go project with corrupted download
@@ -835,6 +1040,7 @@ jobs:
         with:
           check: app:format
           working-directory: quality-gate/go/fixtures/pass
+          expected-failure: true
         continue-on-error: true
       - name: assert sha mismatch detected, message correct, file cleaned up
         run: |
@@ -861,9 +1067,39 @@ jobs:
       - name: Install mock curl (writes garbage to output file)
         run: |
           mkdir -p "$HOME/.local/bin"
-          # shellcheck disable=SC2016
-          printf '#!/usr/bin/env bash\necho "corrupted" > "${@: -1}"\n' \
-            > "$HOME/.local/bin/curl"
+          cat <<'EOF' > "$HOME/.local/bin/curl"
+          #!/usr/bin/env bash
+          set -euo pipefail
+          output_file=""
+          url=""
+          while [[ $# -gt 0 ]]; do
+            case "$1" in
+              -o)
+                output_file="$2"
+                shift 2
+                ;;
+              -fsSL|-sSL|-fL|-L|-s|-f)
+                shift
+                ;;
+              http*://*)
+                url="$1"
+                shift
+                ;;
+              *)
+                shift
+                ;;
+            esac
+          done
+          if [[ -z "$output_file" ]]; then
+            echo "mock curl error: missing -o destination" >&2
+            exit 2
+          fi
+          if [[ "$url" != *"ast-grep"* ]]; then
+            echo "mock curl error: unexpected URL: $url" >&2
+            exit 2
+          fi
+          echo "corrupted-ast-grep" > "$output_file"
+          EOF
           chmod +x "$HOME/.local/bin/curl"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: run strlint on go project with corrupted download
@@ -872,6 +1108,7 @@ jobs:
         with:
           check: app:strlint
           working-directory: quality-gate/go/fixtures/pass
+          expected-failure: true
         continue-on-error: true
       - name: assert sha mismatch detected, message correct, file cleaned up
         run: |
@@ -887,5 +1124,64 @@ jobs:
           }
           [[ ! -f "$HOME/.quality-gate-tools/dl/sg.zip" ]] || {
             echo "::error::Corrupted ast-grep archive was not deleted after sha mismatch"
+            exit 1
+          }
+
+  error-multi-language-no-override:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: run format on multi-language directory without override
+        id: multi-lang
+        uses: ./quality-gate
+        with:
+          check: app:format
+          working-directory: quality-gate/fixtures/error/multiple-languages
+          expected-failure: true
+        continue-on-error: true
+      - name: assert multi-language error
+        run: |
+          [[ "${{ steps.multi-lang.outcome }}" == "failure" ]] || {
+            echo "::error::Expected action to fail on multi-language repo without override"
+            exit 1
+          }
+      - name: assert exact error message
+        run: |
+          ACTUAL="${{ steps.multi-lang.outputs.error_message }}"
+          EXPECTED="Multiple supported languages detected: go python typescript. Run quality-gate once per language, or use the detect-only check to enumerate languages."
+          [[ "$ACTUAL" == "$EXPECTED" ]] || {
+            echo "::error::Wrong error message. Expected: '${EXPECTED}' — Got: '${ACTUAL}'"
+            exit 1
+          }
+
+  repo-rule-precedence:
+    name: repo-rule configuration precedence
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: run strlint on multiple-rule-configs fixture
+        id: precedence
+        uses: ./quality-gate
+        with:
+          check: app:strlint
+          working-directory: quality-gate/fixtures/error/multiple-rule-configs
+          expected-failure: true
+        continue-on-error: true
+      - name: assert precedence rule was executed
+        env:
+          ERROR_MESSAGE: ${{ steps.precedence.outputs.error_message }}
+        run: |
+          [[ "${{ steps.precedence.outcome }}" == "failure" ]] || {
+            echo "::error::Expected multiple-rule-configs fixture to fail"
+            exit 1
+          }
+          [[ "$ERROR_MESSAGE" == *"root-precedence-rule"* ]] || {
+            echo "::error::Expected root-precedence-rule to be detected"
+            exit 1
+          }
+          [[ "$ERROR_MESSAGE" != *"dot-qg-shadowed-rule"* ]] || {
+            echo "::error::Shadowed .quality-gate rule should not have run when root config is present"
             exit 1
           }

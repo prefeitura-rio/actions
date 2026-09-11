@@ -1,0 +1,6 @@
+id: dot-qg-shadowed-rule
+language: Go
+severity: error
+message: This rule should not run because root config takes precedence
+rule:
+  pattern: package $PKG

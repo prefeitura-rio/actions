@@ -72,7 +72,21 @@ EOF
     return 1
   fi
 
-  diff_output=$(uvx ruff@0.16.4 format --diff . 2>&1 || true)
+  local diff_status=0
+  diff_output=$(uvx ruff@0.16.4 format --diff . 2>&1) || diff_status=$?
+  if [[ "$diff_status" -ne 0 && "$diff_status" -ne 1 ]] || [[ -z "$diff_output" ]]; then
+    printf '%s\n' "$diff_output"
+    qg_error "$(cat <<EOF
+ruff format could not complete the formatting check.
+
+Formatter output:
+$diff_output
+
+Fix locally with: uvx ruff@0.16.4 format .
+EOF
+)"
+    return 1
+  fi
   printf '%s\n' "$check_output"
   printf '%s\n' "$diff_output"
   qg_error "$(cat <<EOF
@@ -106,8 +120,15 @@ run_strlint() {
   if [[ -f sgconfig.yaml || -d rules ]]; then
     ast-grep scan
     echo "Repo-local Python ast-grep rules passed."
-  elif [[ -f .quality-gate/sgconfig.yaml || -d .quality-gate/rules ]]; then
+  elif [[ -f .quality-gate/sgconfig.yaml ]]; then
     ast-grep scan --config .quality-gate/sgconfig.yaml
+    echo "Repo-local Python ast-grep rules passed."
+  elif [[ -d .quality-gate/rules ]]; then
+    local repo_config
+    repo_config=$(mktemp "${TMPDIR:-/tmp}/quality-gate-local.XXXXXX.yaml")
+    printf 'ruleDirs:\n  - .quality-gate/rules\n' > "$repo_config"
+    ast-grep scan --config "$repo_config"
+    rm -f "$repo_config"
     echo "Repo-local Python ast-grep rules passed."
   else
     echo "No repo-local sgconfig.yaml or rules/ found - skipping."
@@ -139,7 +160,7 @@ case "$CHECK" in
   app:typecheck)
     sync_project
     if [[ -f pyrightconfig.json ]] || {
-      [[ -f pyproject.toml ]] && grep -qE '^\[tool\.(basedpyright|pyright)\]$' pyproject.toml
+      [[ -f pyproject.toml ]] && grep -qE '^\[tool\.(basedpyright|pyright)' pyproject.toml
     }; then
       uvx "basedpyright@${BASEDPYRIGHT_VERSION}" --project "$PROJECT_DIR"
     else
@@ -150,7 +171,11 @@ case "$CHECK" in
     ;;
   app:test)
     sync_project
-    uv run pytest --cov=src --cov-report=term-missing
+    if [[ -d src ]]; then
+      uv run pytest --cov=src --cov-report=term-missing
+    else
+      uv run pytest --cov-report=term-missing
+    fi
     ;;
   *)
     qg_error "Unknown check: $CHECK"
