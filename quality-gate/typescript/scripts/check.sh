@@ -199,7 +199,6 @@ EOF
 
   cleanup_format
   trap - EXIT
-  echo "oxfmt found formatting differences in $file_count file(s)." >&2
   return 1
 }
 

@@ -85,8 +85,6 @@ EOF
 )"
       return 1
     fi
-    printf '%s\n' "$unformatted"
-    printf '%s\n' "$diff_output"
     qg_error "$(cat <<EOF
 gofumpt found unformatted files.
 
@@ -121,8 +119,6 @@ EOF
 )"
       return 1
     fi
-    printf '%s\n' "$unformatted"
-    printf '%s\n' "$diff_output"
     qg_error "$(cat <<EOF
 goimports found files with unorganised imports.
 
