@@ -214,6 +214,9 @@ run_strlint() {
 ruleDirs:
   - ${ACTION_DIR}/rules
 languageGlobs:
+  typescript:
+    - '*.ts'
+    - '*.tsx'
   html:
     - '*.vue'
 languageInjections:
@@ -284,11 +287,16 @@ case "$CHECK" in
     ;;
   app:lint)
     load_project_info
-    if [[ -f .oxlintrc.json || -f .oxlintrc.yaml || -f .oxlintrc.yml || -f oxlint.config.js || -f oxlint.config.mjs || -f oxlint.config.ts ]]; then
-      npx --yes oxlint@1.81.0 .
-    else
-      npx --yes oxlint@1.81.0 --config "$ACTION_DIR/.oxlintrc.json" .
+    lint_args=(npx --yes oxlint@1.81.0)
+    if [[ "$FRAMEWORK" == next ]]; then
+      lint_args+=(--react-plugin --nextjs-plugin --ignore-pattern '.next/**' --ignore-pattern 'out/**')
     fi
+    if [[ -f .oxlintrc.json || -f .oxlintrc.yaml || -f .oxlintrc.yml || -f oxlint.config.js || -f oxlint.config.mjs || -f oxlint.config.ts ]]; then
+      lint_args+=(.)
+    else
+      lint_args+=(--config "$ACTION_DIR/.oxlintrc.json" .)
+    fi
+    "${lint_args[@]}"
     echo "oxlint: no issues found."
     if [[ "$REACT" == true ]]; then
       npx --yes react-doctor@0.9.12

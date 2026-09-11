@@ -100,6 +100,16 @@ bash "$ROOT/scripts/render-summary.sh" \
 assert_equal "Format (Typescript - Vue)" "$(<"$SUMMARY_NAME_FILE")" "summary name"
 assert_contains "$(<"$SUMMARY_FILE")" "Outcome: failure" "summary outcome"
 
+bash "$ROOT/scripts/render-summary.sh" \
+  --check app:format \
+  --language typescript \
+  --framework next \
+  --error-file "$ERROR_FILE" \
+  --success-file "$SUCCESS_FILE" \
+  --name-file "$SUMMARY_NAME_FILE" \
+  --summary-file "$SUMMARY_FILE"
+assert_equal "Format (Typescript - Next.js)" "$(<"$SUMMARY_NAME_FILE")" "Next.js summary name"
+
 EXPECTED_FAILURE_SUMMARY=$(mktemp)
 bash "$ROOT/scripts/render-summary.sh" \
   --check app:typecheck \
@@ -133,6 +143,10 @@ rm -f "$EXPECTED_FAILURE_SUMMARY" "$SUCCESS_FILE"
 project_info=$(node "$ROOT/typescript/scripts/project-info.js" "$ROOT/typescript/fixtures/vue/pass")
 assert_contains "$project_info" "framework=vue" "Vue framework detection"
 assert_contains "$project_info" "react=false" "React detection"
+
+project_info=$(node "$ROOT/typescript/scripts/project-info.js" "$ROOT/typescript/fixtures/next/pass")
+assert_contains "$project_info" "framework=next" "Next.js framework detection"
+assert_contains "$project_info" "react=true" "Next.js React detection"
 
 project_info=$(node "$ROOT/typescript/scripts/project-info.js" "$ROOT/typescript/fixtures/nuxt/pass" --check app:test)
 assert_contains "$project_info" "manager=pnpm" "pnpm detection"

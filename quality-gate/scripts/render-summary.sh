@@ -65,6 +65,7 @@ case "$LANGUAGE" in
   python) LANGUAGE_NAME=Python ;;
   typescript)
     case "$FRAMEWORK" in
+      next) LANGUAGE_NAME='Typescript - Next.js' ;;
       vue) LANGUAGE_NAME='Typescript - Vue' ;;
       nuxt) LANGUAGE_NAME='Typescript - Nuxt' ;;
       *) LANGUAGE_NAME=Typescript ;;

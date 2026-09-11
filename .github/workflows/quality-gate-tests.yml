@@ -413,6 +413,26 @@ jobs:
             check: app:test
             fixture: quality-gate/typescript/fixtures/nuxt/pass
             fail: quality-gate/typescript/fixtures/nuxt/test-fail
+          - framework: next
+            check: app:format
+            fixture: quality-gate/typescript/fixtures/next/pass
+            fail: quality-gate/typescript/fixtures/next/format-fail
+          - framework: next
+            check: app:lint
+            fixture: quality-gate/typescript/fixtures/next/pass
+            fail: quality-gate/typescript/fixtures/next/lint-fail
+          - framework: next
+            check: app:strlint
+            fixture: quality-gate/typescript/fixtures/next/pass
+            fail: quality-gate/typescript/fixtures/next/strlint-fail
+          - framework: next
+            check: app:typecheck
+            fixture: quality-gate/typescript/fixtures/next/pass
+            fail: quality-gate/typescript/fixtures/next/typecheck-fail
+          - framework: next
+            check: app:test
+            fixture: quality-gate/typescript/fixtures/next/pass
+            fail: quality-gate/typescript/fixtures/next/test-fail
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -463,6 +483,16 @@ jobs:
             exit 1
           }
 
+      - name: assert Next.js lint failure
+        if: matrix.framework == 'next' && matrix.check == 'app:lint'
+        env:
+          ERROR_MESSAGE: ${{ steps.ts-fail.outputs.error_message }}
+        run: |
+          [[ "$ERROR_MESSAGE" == *"no-img-element"* ]] || {
+            echo "::error::Expected the Oxlint Next.js plugin to report no-img-element"
+            exit 1
+          }
+
       - name: assert strlint failure
         if: matrix.check == 'app:strlint'
         env:
@@ -497,7 +527,7 @@ jobs:
         if: matrix.check == 'app:format'
         env:
           ERROR_MESSAGE: ${{ steps.ts-fail.outputs.error_message }}
-          EXPECTED_FILE: ${{ matrix.framework == 'typescript' && 'src/app.ts' || matrix.framework == 'vue' && 'src/App.vue' || 'nuxt.config.ts' }}
+          EXPECTED_FILE: ${{ matrix.framework == 'typescript' && 'src/app.ts' || matrix.framework == 'vue' && 'src/App.vue' || matrix.framework == 'next' && 'app/page.tsx' || 'nuxt.config.ts' }}
         run: |
           [[ "$ERROR_MESSAGE" == *"oxfmt found formatting differences in"* ]] || {
             echo "::error::Expected Oxfmt details in the format failure"
@@ -529,6 +559,7 @@ jobs:
           case "$FRAMEWORK" in
             vue) EXPECTED_SUMMARY="Format (Typescript - Vue)" ;;
             nuxt) EXPECTED_SUMMARY="Format (Typescript - Nuxt)" ;;
+            next) EXPECTED_SUMMARY="Format (Typescript - Next.js)" ;;
             *) EXPECTED_SUMMARY="Format (Typescript)" ;;
           esac
           [[ "$SUMMARY_NAME" == "$EXPECTED_SUMMARY" ]] || {
@@ -613,6 +644,10 @@ jobs:
           - language: typescript
             framework: nuxt
             fixture: quality-gate/typescript/fixtures/nuxt/pass
+            expected: '["typescript"]'
+          - language: typescript
+            framework: next
+            fixture: quality-gate/typescript/fixtures/next/pass
             expected: '["typescript"]'
     steps:
       - name: Checkout
