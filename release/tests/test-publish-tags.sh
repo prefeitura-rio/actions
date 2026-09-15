@@ -27,14 +27,17 @@ validation=$(bash "$validate_target" \
   --target-sha "$target_sha")
 [[ "$validation" == *'skip=false'* ]]
 
-bash "$publish_tags" \
+publish_output=$(bash "$publish_tags" \
   --repository "$repo" \
+  --release-branch master \
   --target-sha "$target_sha" \
   --version-tag v1.0.0 \
-  --floating-tag latest
+  --floating-tag latest)
+[[ "$publish_output" == $'version_tag=v1.0.0\nfloating_tag=latest' ]]
 
 bash "$publish_tags" \
   --repository "$repo" \
+  --release-branch master \
   --target-sha "$target_sha" \
   --version-tag v1.0.0 \
   --floating-tag latest
@@ -56,10 +59,26 @@ stale_validation=$(bash "$validate_target" \
   --target-sha "$target_sha")
 [[ "$stale_validation" == *'skip=true'* ]]
 
+if bash "$publish_tags" \
+  --repository "$repo" \
+  --release-branch master \
+  --target-sha "$target_sha" \
+  --version-tag v1.0.1 \
+  --floating-tag latest; then
+  printf 'Expected stale target publication to fail\n' >&2
+  exit 1
+fi
+if git --git-dir "$remote" rev-parse --verify refs/tags/v1.0.1 >/dev/null 2>&1; then
+  printf 'Stale target publication created a version tag\n' >&2
+  exit 1
+fi
+git -C "$repo" tag -d v1.0.1 >/dev/null
+
 target_sha="$new_target_sha"
 
 bash "$publish_tags" \
   --repository "$repo" \
+  --release-branch master \
   --target-sha "$target_sha" \
   --version-tag v1.0.1 \
   --floating-tag latest

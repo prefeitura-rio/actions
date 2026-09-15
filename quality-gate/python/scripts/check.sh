@@ -49,25 +49,44 @@ sync_project() {
 }
 
 has_coverage_threshold_override() {
-  if [[ -f pyproject.toml ]] && awk '
-    /^[[:space:]]*\[tool\.coverage\.report\][[:space:]]*$/ { in_report=1; next }
-    /^[[:space:]]*\[/ { in_report=0 }
-    in_report && /^[[:space:]]*fail_under[[:space:]]*=/ { found=1 }
-    END { exit !found }
-  ' pyproject.toml; then
-    return 0
+  local config_file="${COVERAGE_RCFILE:-}"
+  local config_format=ini
+
+  if [[ -z "$config_file" ]]; then
+    if [[ -f .coveragerc ]]; then
+      config_file=.coveragerc
+    elif [[ -f .coveragerc.toml ]]; then
+      config_file=.coveragerc.toml
+      config_format=toml
+    elif [[ -f setup.cfg ]] && grep -qE '^[[:space:]]*\[coverage:' setup.cfg; then
+      config_file=setup.cfg
+    elif [[ -f tox.ini ]] && grep -qE '^[[:space:]]*\[coverage:' tox.ini; then
+      config_file=tox.ini
+    elif [[ -f pyproject.toml ]]; then
+      config_file=pyproject.toml
+      config_format=toml
+    fi
+  elif [[ "$config_file" == *.toml ]]; then
+    config_format=toml
   fi
 
-  if [[ -f .coveragerc ]] && awk '
-    /^[[:space:]]*\[report\][[:space:]]*$/ { in_report=1; next }
-    /^[[:space:]]*\[/ { in_report=0 }
-    in_report && /^[[:space:]]*fail_under[[:space:]]*=/ { found=1 }
-    END { exit !found }
-  ' .coveragerc; then
-    return 0
-  fi
+  [[ -n "$config_file" && -f "$config_file" ]] || return 1
 
-  return 1
+  if [[ "$config_format" == toml ]]; then
+    awk '
+      /^[[:space:]]*\[tool\.coverage\.report\]([[:space:]]*#.*)?$/ { in_report=1; next }
+      /^[[:space:]]*\[/ { in_report=0 }
+      in_report && /^[[:space:]]*fail_under[[:space:]]*=/ { found=1 }
+      END { exit !found }
+    ' "$config_file"
+  else
+    awk '
+      /^[[:space:]]*\[(report|coverage:report)\]([[:space:]]*[#;].*)?$/ { in_report=1; next }
+      /^[[:space:]]*\[/ { in_report=0 }
+      in_report && /^[[:space:]]*fail_under[[:space:]]*=/ { found=1 }
+      END { exit !found }
+    ' "$config_file"
+  fi
 }
 
 format_python() {

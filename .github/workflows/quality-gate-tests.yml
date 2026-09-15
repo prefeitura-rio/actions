@@ -63,6 +63,17 @@ jobs:
       - name: Run provider-neutral script tests
         run: bash quality-gate/tests/scripts/test-portable.sh
 
+  release-scripts:
+    name: Release scripts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Run version calculation tests
+        run: bash release/tests/test-version.sh
+      - name: Run tag publication tests
+        run: bash release/tests/test-publish-tags.sh
+
   go:
     name: Go / ${{ matrix.check }}
     runs-on: ubuntu-latest

@@ -4,6 +4,7 @@ set -euo pipefail
 
 repository="."
 remote="origin"
+release_branch=""
 target_sha=""
 version_tag=""
 floating_tag=""
@@ -12,11 +13,12 @@ author_email="ci-release@example.invalid"
 
 usage() {
   cat >&2 <<'EOF'
-Usage: publish-tags.sh --target-sha SHA --version-tag TAG [options]
+Usage: publish-tags.sh --release-branch BRANCH --target-sha SHA --version-tag TAG [options]
 
 Options:
   --repository PATH       Git repository path (default: .)
   --remote NAME           Git remote name (default: origin)
+  --release-branch BRANCH Branch whose tip must remain target (required)
   --target-sha SHA        Commit to tag (required)
   --version-tag TAG       Immutable version tag (required)
   --floating-tag TAG      Mutable tag to update (optional)
@@ -33,6 +35,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --remote)
       remote="$2"
+      shift 2
+      ;;
+    --release-branch)
+      release_branch="$2"
       shift 2
       ;;
     --target-sha)
@@ -67,8 +73,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -z "$target_sha" || -z "$version_tag" ]]; then
-  echo "--target-sha and --version-tag are required." >&2
+if [[ -z "$release_branch" || -z "$target_sha" || -z "$version_tag" ]]; then
+  echo "--release-branch, --target-sha, and --version-tag are required." >&2
   usage
   exit 2
 fi
@@ -92,12 +98,20 @@ else
     tag -a "$version_tag" "$target_sha" -m "Release ${version_tag}"
 fi
 
-git -C "$repository" push "$remote" "refs/tags/${version_tag}"
-
+push_refspecs=(
+  "${target_sha}:refs/heads/${release_branch}"
+  "refs/tags/${version_tag}"
+)
 if [[ -n "$floating_tag" ]]; then
   git -C "$repository" tag -f "$floating_tag" "$target_sha"
-  git -C "$repository" push --force "$remote" "refs/tags/${floating_tag}"
+  push_refspecs+=("+${target_sha}:refs/tags/${floating_tag}")
 fi
+
+git -C "$repository" push \
+  --atomic \
+  "--force-with-lease=refs/heads/${release_branch}:${target_sha}" \
+  "$remote" \
+  "${push_refspecs[@]}" >&2
 
 printf 'version_tag=%s\n' "$version_tag"
 printf 'floating_tag=%s\n' "$floating_tag"
