@@ -386,7 +386,7 @@ jobs:
           - case: coveragerc-auto-detect
             fixture: quality-gate/python/fixtures/coverage-config-overrides
             expected_failure: true
-            expected_message: "fail_under"
+            expected_message: "Required test coverage of 100"
             coverage_rcfile: ""
           - case: coveragerc-toml-override
             fixture: quality-gate/python/fixtures/coverage-config-overrides
