@@ -175,20 +175,8 @@ Formatting checks never modify project files. Formatting differences include the
 affected files, a bounded diff, and a local remediation command. Formatter
 execution failures may only include the formatter output and remediation command.
 
-### Python Coverage
-
-Python `app:test` checks use `pytest-cov` and enforce a default total coverage
-threshold of 80%. A project can override that threshold with `fail_under` in
-the effective coverage configuration. Coverage configuration discovery follows
-coverage.py precedence: `COVERAGE_RCFILE`, `.coveragerc`, `.coveragerc.toml`,
-`setup.cfg`, `tox.ini`, and then `pyproject.toml`. For example:
-
-```toml
-[tool.coverage.report]
-fail_under = 70
-```
-
-An explicit `fail_under = 0` disables the minimum threshold for that project.
+Python `app:test` includes coverage; see the [Python Coverage Policy](#python-coverage-policy)
+for the default threshold and override rules.
 
 ## TypeScript Metadata
 
@@ -228,20 +216,29 @@ Projects with a `pyproject.toml` must commit a matching `uv.lock` for this check
 
 ### Python Coverage Policy
 
-The Python `app:test` check runs pytest with coverage and applies an organization
-default threshold of 80%. Projects can explicitly override that threshold in
-the configuration consumed by coverage.py:
+The Python `app:test` check runs pytest with `pytest-cov` and applies an
+organization default total coverage threshold of 80%. Projects can explicitly
+override that threshold in the configuration consumed by coverage.py.
+
+Configuration discovery follows coverage.py precedence: `COVERAGE_RCFILE`,
+`.coveragerc`, `.coveragerc.toml`, `setup.cfg`, `tox.ini`, and then
+`pyproject.toml`. TOML files use the `[tool.coverage]` namespace:
 
 ```toml
 [tool.coverage.report]
-fail_under = 65
+fail_under = 70
 ```
 
-The equivalent `.coveragerc` configuration is:
+The equivalent INI configurations are:
 
 ```ini
+# .coveragerc or a file selected with COVERAGE_RCFILE
 [report]
-fail_under = 65
+fail_under = 70
+
+# setup.cfg or tox.ini
+[coverage:report]
+fail_under = 70
 ```
 
 When either local setting is present, the quality gate does not inject its

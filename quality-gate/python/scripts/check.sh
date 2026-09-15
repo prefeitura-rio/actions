@@ -73,6 +73,7 @@ has_coverage_threshold_override() {
   [[ -n "$config_file" && -f "$config_file" ]] || return 1
 
   if [[ "$config_format" == toml ]]; then
+    # coverage.py uses the tool.coverage namespace for every TOML config file.
     awk '
       /^[[:space:]]*\[tool\.coverage\.report\]([[:space:]]*#.*)?$/ { in_report=1; next }
       /^[[:space:]]*\[/ { in_report=0 }

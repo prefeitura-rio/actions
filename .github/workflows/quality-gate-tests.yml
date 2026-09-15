@@ -374,12 +374,23 @@ jobs:
             fixture: quality-gate/python/fixtures/coverage-default-fail
             expected_failure: true
             expected_message: "Required test coverage of 80% not reached"
+            coverage_rcfile: ""
           - case: pyproject-override
             fixture: quality-gate/python/fixtures/coverage-pyproject-override
             expected_failure: false
-          - case: coveragerc-override
+            coverage_rcfile: ""
+          - case: coveragerc-toml-override
             fixture: quality-gate/python/fixtures/coverage-coveragerc-override
             expected_failure: false
+            coverage_rcfile: ""
+          - case: coverage-rcfile-toml-override
+            fixture: quality-gate/python/fixtures/coverage-coveragerc-override
+            expected_failure: false
+            coverage_rcfile: .coveragerc.toml
+          - case: coverage-rcfile-ini-override
+            fixture: quality-gate/python/fixtures/coverage-coveragerc-override
+            expected_failure: false
+            coverage_rcfile: coverage.ini
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -387,6 +398,8 @@ jobs:
       - name: Run coverage policy
         id: coverage
         uses: ./quality-gate
+        env:
+          COVERAGE_RCFILE: ${{ matrix.coverage_rcfile }}
         with:
           check: app:test
           working-directory: ${{ matrix.fixture }}
