@@ -383,18 +383,26 @@ jobs:
             fixture: quality-gate/python/fixtures/coverage-pyproject-override
             expected_failure: false
             coverage_rcfile: ""
-          - case: coveragerc-toml-override
-            fixture: quality-gate/python/fixtures/coverage-coveragerc-override
+          - case: coveragerc-override
+            fixture: quality-gate/python/fixtures/coverage-config-overrides
             expected_failure: false
             coverage_rcfile: ""
-          - case: coverage-rcfile-toml-override
-            fixture: quality-gate/python/fixtures/coverage-coveragerc-override
+          - case: coveragerc-toml-override
+            fixture: quality-gate/python/fixtures/coverage-config-overrides
             expected_failure: false
             coverage_rcfile: .coveragerc.toml
-          - case: coverage-rcfile-ini-override
-            fixture: quality-gate/python/fixtures/coverage-coveragerc-override
+          - case: coverage-ini-override
+            fixture: quality-gate/python/fixtures/coverage-config-overrides
             expected_failure: false
             coverage_rcfile: coverage.ini
+          - case: setup-cfg-override
+            fixture: quality-gate/python/fixtures/coverage-config-overrides
+            expected_failure: false
+            coverage_rcfile: setup.cfg
+          - case: tox-ini-override
+            fixture: quality-gate/python/fixtures/coverage-config-overrides
+            expected_failure: false
+            coverage_rcfile: tox.ini
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
