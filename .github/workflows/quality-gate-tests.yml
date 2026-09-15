@@ -383,9 +383,10 @@ jobs:
             fixture: quality-gate/python/fixtures/coverage-pyproject-override
             expected_failure: false
             coverage_rcfile: ""
-          - case: coveragerc-override
+          - case: coveragerc-auto-detect
             fixture: quality-gate/python/fixtures/coverage-config-overrides
-            expected_failure: false
+            expected_failure: true
+            expected_message: "fail_under"
             coverage_rcfile: ""
           - case: coveragerc-toml-override
             fixture: quality-gate/python/fixtures/coverage-config-overrides
