@@ -330,8 +330,8 @@ jobs:
         env:
           ERROR_MESSAGE: ${{ steps.py-fail.outputs.error_message }}
         run: |
-          [[ "$ERROR_MESSAGE" == *"__init__.py"* ]] || {
-            echo "::error::Expected basedpyright to identify the failing Python file"
+          [[ "$ERROR_MESSAGE" == *"__init__.py"* && "$ERROR_MESSAGE" == *"reportReturnType"* ]] || {
+            echo "::error::Expected basedpyright to identify __init__.py with reportReturnType error"
             exit 1
           }
 
@@ -594,8 +594,8 @@ jobs:
         env:
           ERROR_MESSAGE: ${{ steps.ts-fail.outputs.error_message }}
         run: |
-          [[ "$ERROR_MESSAGE" == *"Type"* || "$ERROR_MESSAGE" == *"undefined"* || "$ERROR_MESSAGE" == *"toUpperCase"* || "$ERROR_MESSAGE" == *"error TS"* ]] || {
-            echo "::error::Expected TypeScript compiler to report typecheck failure"
+          [[ "$ERROR_MESSAGE" == *"error TS2322"* ]] || {
+            echo "::error::Expected TypeScript compiler to report error TS2322 (type mismatch)"
             exit 1
           }
 
@@ -1238,6 +1238,124 @@ jobs:
           EXPECTED="Multiple supported languages detected: go python typescript. Run quality-gate once per language, or use the detect-only check to enumerate languages."
           [[ "$ACTUAL" == "$EXPECTED" ]] || {
             echo "::error::Wrong error message. Expected: '${EXPECTED}' — Got: '${ACTUAL}'"
+            exit 1
+          }
+
+  python-org-fallback:
+    name: Python / org-fallback / ${{ matrix.check }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - check: app:lint
+            fixture: quality-gate/python/fixtures/lint-fail-org-fallback
+            expected_pattern: "B006"
+            description: "ruff (org config) to report B006 mutable default argument"
+          - check: app:typecheck
+            fixture: quality-gate/python/fixtures/typecheck-fail-org-fallback
+            expected_pattern: "reportMissingParameterType"
+            description: "basedpyright (org config) to report reportMissingParameterType"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: run ${{ matrix.check }} using org-fallback config
+        id: org-fallback
+        uses: ./quality-gate
+        with:
+          check: ${{ matrix.check }}
+          working-directory: ${{ matrix.fixture }}
+          expected-failure: true
+        continue-on-error: true
+      - name: assert org-config violation detected
+        env:
+          ERROR_MESSAGE: ${{ steps.org-fallback.outputs.error_message }}
+          EXPECTED_PATTERN: ${{ matrix.expected_pattern }}
+          DESCRIPTION: ${{ matrix.description }}
+        run: |
+          [[ "${{ steps.org-fallback.outcome }}" == "failure" ]] || {
+            echo "::error::Expected ${{ matrix.check }} to fail using org fallback config but gate passed"
+            exit 1
+          }
+          [[ "$ERROR_MESSAGE" == *"$EXPECTED_PATTERN"* ]] || {
+            echo "::error::Expected $DESCRIPTION but pattern '$EXPECTED_PATTERN' not found in error message"
+            exit 1
+          }
+
+  python-setup-py-rejected:
+    name: Python / setup.py-only / ${{ matrix.check }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [app:lint, app:typecheck, app:test]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: run ${{ matrix.check }} on setup.py-only project
+        id: setup-py
+        uses: ./quality-gate
+        with:
+          check: ${{ matrix.check }}
+          working-directory: quality-gate/fixtures/error/setup-py-only
+          expected-failure: true
+        continue-on-error: true
+      - name: assert setup.py project was rejected
+        env:
+          ERROR_MESSAGE: ${{ steps.setup-py.outputs.error_message }}
+        run: |
+          [[ "${{ steps.setup-py.outcome }}" == "failure" ]] || {
+            echo "::error::Expected ${{ matrix.check }} to fail on setup.py-only project but it succeeded"
+            exit 1
+          }
+          [[ "$ERROR_MESSAGE" == *"setup.py-only projects are not supported"* ]] || {
+            echo "::error::Expected explicit setup.py rejection in ${{ matrix.check }} error message"
+            exit 1
+          }
+
+  typescript-typecheck-bad-script:
+    name: TypeScript / typecheck-bad-script validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: run typecheck on project with invalid typecheck script
+        id: bad-script
+        uses: ./quality-gate
+        with:
+          check: app:typecheck
+          working-directory: quality-gate/typescript/fixtures/typecheck-bad-script
+          expected-failure: true
+        continue-on-error: true
+      - name: assert invalid typecheck script was rejected
+        env:
+          ERROR_MESSAGE: ${{ steps.bad-script.outputs.error_message }}
+        run: |
+          [[ "${{ steps.bad-script.outcome }}" == "failure" ]] || {
+            echo "::error::Expected app:typecheck to fail on project with 'exit 0' typecheck script"
+            exit 1
+          }
+          [[ "$ERROR_MESSAGE" == *"does not invoke a recognised type-checker"* ]] || {
+            echo "::error::Expected explicit rejection of invalid typecheck script"
+            exit 1
+          }
+
+  typescript-test-unknown-script:
+    name: TypeScript / test-unknown-script advisory
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: run app:test on project with unrecognised test script
+        id: unknown-test
+        uses: ./quality-gate
+        with:
+          check: app:test
+          working-directory: quality-gate/typescript/fixtures/test-unknown-script
+      - name: assert advisory warning did not block the gate
+        run: |
+          [[ "${{ steps.unknown-test.outcome }}" == "success" ]] || {
+            echo "::error::Expected advisory mode to not block the gate for unknown test script"
             exit 1
           }
 

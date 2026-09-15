@@ -1,0 +1,11 @@
+{
+  "name": "fixture-typecheck-bad-script",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "typecheck": "exit 0"
+  },
+  "devDependencies": {
+    "typescript": "5.8.3"
+  }
+}

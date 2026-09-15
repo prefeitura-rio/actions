@@ -15,3 +15,5 @@ invalid:
     function getLength(input: unknown) {
       return (input as any).length;
     }
+  - |
+    const value = <any>someUntypedValue;

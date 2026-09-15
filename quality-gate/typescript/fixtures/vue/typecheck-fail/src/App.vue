@@ -1,7 +1,7 @@
 <script setup lang="ts">
-const count = 1
+const count: number = "not a number"
 </script>
 
 <template>
-  <div>{{ count.toUpperCase() }}</div>
+  <div>{{ count }}</div>
 </template>

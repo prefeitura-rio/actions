@@ -109,6 +109,30 @@ if (dependencies.next || hasNextConfig) {
 
 const hasReact = Boolean(dependencies.react || dependencies['react-dom']);
 const hasTypecheckScript = Boolean(project.scripts && project.scripts.typecheck);
+
+// Validate that scripts.typecheck actually invokes a known type-checker binary.
+// Reject shell built-ins and echo-like no-ops that silently pass without checking types.
+if (checkRequiresRuntime && hasTypecheckScript) {
+  const typecheckCmd = project.scripts.typecheck;
+  const knownTypecheckBinaries = ['tsc', 'vue-tsc', 'nuxt'];
+  const hasValidTypecheckScript = knownTypecheckBinaries.some((bin) => typecheckCmd.includes(bin));
+  if (!hasValidTypecheckScript) {
+    throw new Error(
+      `scripts.typecheck does not invoke a recognised type-checker binary (tsc, vue-tsc, nuxt). ` +
+        `Got: "${typecheckCmd}". Update scripts.typecheck to run a real type-checker.`,
+    );
+  }
+}
+
+const hasKnownTestScript = Boolean(
+  project.scripts &&
+    project.scripts.test &&
+    ['vitest', 'jest', 'mocha', 'jasmine', 'tap', 'ava'].some((bin) =>
+      project.scripts.test.includes(bin),
+    ),
+);
+
 console.log(`framework=${framework}`);
 console.log(`react=${hasReact}`);
 console.log(`has_typecheck_script=${hasTypecheckScript}`);
+console.log(`has_known_test_script=${hasKnownTestScript}`);
