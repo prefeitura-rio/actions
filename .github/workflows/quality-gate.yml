@@ -23,7 +23,7 @@ jobs:
       languages: ${{ steps.detect.outputs.languages }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - uses: prefeitura-rio/actions/quality-gate@master
+      - uses: prefeitura-rio/actions/quality-gate@quality-gate-latest
         id: detect
         with:
           check: detect-only
@@ -39,7 +39,7 @@ jobs:
         language: ${{ fromJson(needs.detect.outputs.languages) }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - uses: prefeitura-rio/actions/quality-gate@master
+      - uses: prefeitura-rio/actions/quality-gate@quality-gate-latest
         with:
           check: app:format
           working-directory: ${{ inputs.working-directory }}
@@ -55,7 +55,7 @@ jobs:
         language: ${{ fromJson(needs.detect.outputs.languages) }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - uses: prefeitura-rio/actions/quality-gate@master
+      - uses: prefeitura-rio/actions/quality-gate@quality-gate-latest
         with:
           check: app:lint
           working-directory: ${{ inputs.working-directory }}
@@ -71,7 +71,7 @@ jobs:
         language: ${{ fromJson(needs.detect.outputs.languages) }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - uses: prefeitura-rio/actions/quality-gate@master
+      - uses: prefeitura-rio/actions/quality-gate@quality-gate-latest
         with:
           check: app:strlint
           working-directory: ${{ inputs.working-directory }}
@@ -87,7 +87,7 @@ jobs:
         language: ${{ fromJson(needs.detect.outputs.languages) }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - uses: prefeitura-rio/actions/quality-gate@master
+      - uses: prefeitura-rio/actions/quality-gate@quality-gate-latest
         with:
           check: app:typecheck
           working-directory: ${{ inputs.working-directory }}
@@ -103,7 +103,7 @@ jobs:
         language: ${{ fromJson(needs.detect.outputs.languages) }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - uses: prefeitura-rio/actions/quality-gate@master
+      - uses: prefeitura-rio/actions/quality-gate@quality-gate-latest
         with:
           check: app:test
           working-directory: ${{ inputs.working-directory }}
