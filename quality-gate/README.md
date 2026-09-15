@@ -111,7 +111,7 @@ checksums before execution.
 The public entrypoint remains:
 
 ```yaml
-- uses: prefeitura-rio/actions/quality-gate@master
+- uses: prefeitura-rio/actions/quality-gate@quality-gate-v1.0.0
   with:
     check: app:format
 ```
@@ -304,7 +304,7 @@ For a project with one or more language markers:
 ```yaml
 jobs:
   quality:
-    uses: prefeitura-rio/actions/.github/workflows/quality-gate.yml@master
+     uses: prefeitura-rio/actions/.github/workflows/quality-gate.yml@quality-gate-v1.0.0
     with:
       project-name: my-project
       working-directory: .

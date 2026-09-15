@@ -32,14 +32,17 @@ jobs:
       release_branch: main
       target_sha: ${{ github.sha }}
       toolkit_ref: <toolkit-sha>
-      floating_tag: latest
+      floating_tag: my-app-latest
+      tag_prefix: my-app-v
       bump: patch
 ```
 
 Both `<workflow-sha>` and `<toolkit-sha>` must be immutable commit SHAs. The
 workflow checks out the calling repository for tagging and checks out the
 central toolkit at `toolkit_ref` for executing the scripts. The caller's
-`GITHUB_TOKEN` needs `contents: write` to create and update tags.
+`GITHUB_TOKEN` needs `contents: write` to create and update tags. Use a
+component-specific `tag_prefix` and `floating_tag` when a repository contains
+more than one releasable action or application.
 
 Run the contract tests with:
 

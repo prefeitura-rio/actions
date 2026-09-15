@@ -52,4 +52,11 @@ output=$(bash "$calculate_version" --repository "$repo" --target-sha "$target_sh
 assert_output "$output" 'version=2.0.0'
 assert_output "$output" 'version_tag=v2.0.0'
 
+scoped_output=$(bash "$calculate_version" \
+  --repository "$repo" \
+  --target-sha "$target_sha" \
+  --tag-prefix quality-gate-v)
+assert_output "$scoped_output" 'version=1.0.0'
+assert_output "$scoped_output" 'version_tag=quality-gate-v1.0.0'
+
 printf 'version calculation tests passed\n'

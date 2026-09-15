@@ -25,5 +25,5 @@ jobs:
       toolkit_ref: ${{ github.event.workflow_run.head_sha }}
       initial_version: 1.0.0
       bump: minor
-      floating_tag: latest
-      tag_prefix: v
+      floating_tag: quality-gate-latest
+      tag_prefix: quality-gate-v

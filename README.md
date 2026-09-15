@@ -14,7 +14,7 @@ Consumed by all `repo-templates` projects and any project following org conventi
 ## Quick start — quality-gate
 
 ```yaml
-- uses: prefeitura-rio/actions/quality-gate@master
+- uses: prefeitura-rio/actions/quality-gate@quality-gate-v1.0.0
   with:
     check: app:format
 ```
@@ -32,13 +32,13 @@ explicit project path:
 ```yaml
 jobs:
   api-quality:
-    uses: prefeitura-rio/actions/.github/workflows/quality-gate.yml@master
+    uses: prefeitura-rio/actions/.github/workflows/quality-gate.yml@quality-gate-v1.0.0
     with:
       project-name: api
       working-directory: services/api
 
   library-quality:
-    uses: prefeitura-rio/actions/.github/workflows/quality-gate.yml@master
+    uses: prefeitura-rio/actions/.github/workflows/quality-gate.yml@quality-gate-v1.0.0
     with:
       project-name: library
       working-directory: libraries/shared
