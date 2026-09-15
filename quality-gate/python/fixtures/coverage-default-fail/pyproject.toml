@@ -14,5 +14,4 @@ dev = [
 testpaths = ["tests"]
 pythonpath = ["."]
 
-[tool.coverage.report]
-fail_under = 0
+

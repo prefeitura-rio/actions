@@ -7,7 +7,9 @@ message: >
   a type guard instead. If suppression is truly necessary, add a comment
   explaining why.
 rule:
-  pattern: $EXPR as any
+  any:
+    - pattern: $EXPR as any
+    - pattern: <any>$EXPR
 ignores:
   - "**/*.test.*"
   - "**/*.spec.*"

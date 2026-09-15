@@ -15,3 +15,5 @@ invalid:
     exec(code_string)
   - |
     exec("import os; os.system('rm -rf /')")
+  - |
+    code = compile("import os", "<string>", "exec")

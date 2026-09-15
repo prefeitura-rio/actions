@@ -48,6 +48,49 @@ sync_project() {
   fi
 }
 
+get_coverage_fail_under_value() {
+  local config_file="${COVERAGE_RCFILE:-}"
+  local config_format=ini
+
+  if [[ -z "$config_file" ]]; then
+    if [[ -f .coveragerc ]]; then
+      config_file=.coveragerc
+    elif [[ -f .coveragerc.toml ]]; then
+      config_file=.coveragerc.toml
+      config_format=toml
+    elif [[ -f setup.cfg ]] && grep -qE '^[[:space:]]*\[coverage:' setup.cfg; then
+      config_file=setup.cfg
+    elif [[ -f tox.ini ]] && grep -qE '^[[:space:]]*\[coverage:' tox.ini; then
+      config_file=tox.ini
+    elif [[ -f pyproject.toml ]]; then
+      config_file=pyproject.toml
+      config_format=toml
+    fi
+  elif [[ "$config_file" == *.toml ]]; then
+    config_format=toml
+  fi
+
+  [[ -n "$config_file" && -f "$config_file" ]] || return 0
+
+  if [[ "$config_format" == toml ]]; then
+    awk '
+      /^[[:space:]]*\[tool\.coverage\.report\]([[:space:]]*#.*)?$/ { in_report=1; next }
+      /^[[:space:]]*\[/ { in_report=0 }
+      in_report && /^[[:space:]]*fail_under[[:space:]]*=/ {
+        sub(/^[^=]*=[[:space:]]*/, ""); sub(/[[:space:]].*$/, ""); print; exit
+      }
+    ' "$config_file"
+  else
+    awk '
+      /^[[:space:]]*\[(report|coverage:report)\]([[:space:]]*[#;].*)?$/ { in_report=1; next }
+      /^[[:space:]]*\[/ { in_report=0 }
+      in_report && /^[[:space:]]*fail_under[[:space:]]*=/ {
+        sub(/^[^=]*=[[:space:]]*/, ""); sub(/[[:space:]].*$/, ""); print; exit
+      }
+    ' "$config_file"
+  fi
+}
+
 has_coverage_threshold_override() {
   local config_file="${COVERAGE_RCFILE:-}"
   local config_format=ini
@@ -184,13 +227,17 @@ case "$CHECK" in
     format_python
     ;;
   app:lint)
+    if [[ ! -f pyproject.toml ]]; then
+      qg_error "app:lint requires a pyproject.toml with uv configuration. setup.py-only projects are not supported for this check."
+      exit 1
+    fi
     sync_project
     if [[ -f ruff.toml || -f .ruff.toml ]]; then
-      uv run ruff check .
-    elif [[ -f pyproject.toml ]] && grep -q '^\[tool\.ruff' pyproject.toml; then
-      uv run ruff check .
+      uvx ruff@0.16.4 check .
+    elif grep -q '^\[tool\.ruff' pyproject.toml; then
+      uvx ruff@0.16.4 check .
     else
-      uv run ruff check --config "$ACTION_DIR/ruff.toml" .
+      uvx ruff@0.16.4 check --config "$ACTION_DIR/ruff.toml" .
     fi
     echo "ruff check: no issues found."
     uvx complexipy@7.0.1 .
@@ -201,6 +248,10 @@ case "$CHECK" in
     run_strlint
     ;;
   app:typecheck)
+    if [[ ! -f pyproject.toml ]]; then
+      qg_error "app:typecheck requires a pyproject.toml with uv configuration. setup.py-only projects are not supported for this check."
+      exit 1
+    fi
     sync_project
     if [[ -f pyrightconfig.json ]] || {
       [[ -f pyproject.toml ]] && grep -qE '^\[tool\.(basedpyright|pyright)' pyproject.toml
@@ -213,6 +264,10 @@ case "$CHECK" in
     echo "basedpyright: no type errors found."
     ;;
   app:test)
+    if [[ ! -f pyproject.toml ]]; then
+      qg_error "app:test requires a pyproject.toml with uv configuration. setup.py-only projects are not supported for this check."
+      exit 1
+    fi
     sync_project
     pytest_args=(--cov-report=term-missing)
     if [[ -d src ]]; then
@@ -222,6 +277,11 @@ case "$CHECK" in
     fi
     if ! has_coverage_threshold_override; then
       pytest_args+=(--cov-fail-under="$DEFAULT_COVERAGE_THRESHOLD")
+    else
+      fail_under_value=$(get_coverage_fail_under_value)
+      if [[ "$fail_under_value" == "0" ]]; then
+        echo "Warning: fail_under = 0 detected in project coverage config. Coverage enforcement is effectively disabled for this project."
+      fi
     fi
     uv run pytest "${pytest_args[@]}"
     ;;

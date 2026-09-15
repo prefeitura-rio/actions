@@ -3,7 +3,9 @@ language: Go
 severity: error
 message: >
   Wrap errors with %w instead of %v or %s so the original error is preserved
-  for errors.Is / errors.As unwrapping.
+  for errors.Is / errors.As unwrapping. Also avoid string concatenation forms
+  such as fmt.Errorf("msg: " + err.Error()) — they produce the same unwrapped
+  error. Use fmt.Errorf("msg: %w", err) instead.
 rule:
   pattern: fmt.Errorf($FORMAT, $$$ARGS)
 constraints:

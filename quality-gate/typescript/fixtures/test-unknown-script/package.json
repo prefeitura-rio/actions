@@ -1,0 +1,11 @@
+{
+  "name": "fixture-test-unknown-script",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "test": "echo all tests pass"
+  },
+  "devDependencies": {
+    "typescript": "5.8.3"
+  }
+}

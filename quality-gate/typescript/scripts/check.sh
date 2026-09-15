@@ -42,6 +42,7 @@ MANAGER=
 FRAMEWORK=none
 REACT=false
 HAS_TYPECHECK_SCRIPT=false
+HAS_KNOWN_TEST_SCRIPT=false
 
 load_project_info() {
   local info
@@ -57,6 +58,7 @@ load_project_info() {
       framework) FRAMEWORK=$value ;;
       react) REACT=$value ;;
       has_typecheck_script) HAS_TYPECHECK_SCRIPT=$value ;;
+      has_known_test_script) HAS_KNOWN_TEST_SCRIPT=$value ;;
     esac
   done <<< "$info"
 }
@@ -216,6 +218,8 @@ languageGlobs:
   typescript:
     - '*.ts'
     - '*.tsx'
+    - '*.mts'
+    - '*.cts'
   html:
     - '*.vue'
 languageInjections:
@@ -316,6 +320,9 @@ case "$CHECK" in
     load_project_info
     install_dependencies
     prepare_nuxt
+    if [[ "$HAS_KNOWN_TEST_SCRIPT" != true ]]; then
+      echo "Warning: scripts.test does not invoke a recognised test binary (vitest, jest, mocha, jasmine, tap, ava). Verify that tests are actually being executed."
+    fi
     if [[ "$MANAGER" == npm ]]; then npm test; else pnpm test; fi
     ;;
   *)

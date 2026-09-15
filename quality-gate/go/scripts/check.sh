@@ -58,7 +58,7 @@ install_lint_tool() {
   if [[ -x "$target" ]]; then
     local version_output
     version_output=$("$target" version 2>&1 || true)
-    if [[ "$version_output" == *"$GOLANGCI_LINT_VERSION"* ]]; then
+    if echo "$version_output" | grep -qE "(^|[[:space:]])${GOLANGCI_LINT_VERSION//./\\.}([[:space:]]|$)"; then
       is_valid=true
     fi
   fi
