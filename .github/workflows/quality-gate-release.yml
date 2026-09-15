@@ -1,0 +1,28 @@
+name: Quality Gate Release
+
+on:
+  workflow_run:
+    workflows: ["Quality Gate Tests"]
+    types: [completed]
+    branches: [master]
+
+concurrency:
+  group: quality-gate-release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push'
+    uses: ./.github/workflows/release.yml
+    with:
+      release_branch: master
+      target_sha: ${{ github.event.workflow_run.head_sha }}
+      initial_version: 1.0.0
+      bump: minor
+      floating_tag: latest
+      tag_prefix: v

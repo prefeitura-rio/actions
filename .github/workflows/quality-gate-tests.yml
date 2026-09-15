@@ -5,14 +5,20 @@ on:
     branches: [master]
     paths:
       - "quality-gate/**"
+      - "release/**"
       - ".github/workflows/quality-gate.yml"
       - ".github/workflows/quality-gate-tests.yml"
+      - ".github/workflows/release.yml"
+      - ".github/workflows/quality-gate-release.yml"
   push:
     branches: [master]
     paths:
       - "quality-gate/**"
+      - "release/**"
       - ".github/workflows/quality-gate.yml"
       - ".github/workflows/quality-gate-tests.yml"
+      - ".github/workflows/release.yml"
+      - ".github/workflows/quality-gate-release.yml"
   workflow_dispatch:
 
 concurrency:
