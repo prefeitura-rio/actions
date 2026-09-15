@@ -94,7 +94,7 @@ jobs:
           language: ${{ matrix.language }}
 
   test:
-    name: ${{ inputs.project-name }} / Test (${{ matrix.language == 'typescript' && 'Typescript' || matrix.language == 'python' && 'Python' || 'Go' }})
+    name: ${{ inputs.project-name }} / Test
     needs: [detect, format, lint, strlint, typecheck]
     runs-on: ubuntu-latest
     strategy:
