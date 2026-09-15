@@ -44,6 +44,13 @@ central toolkit at `toolkit_ref` for executing the scripts. The caller's
 component-specific `tag_prefix` and `floating_tag` when a repository contains
 more than one releasable action or application.
 
+Floating tags are annotated after a successful atomic publication. Their tag
+message identifies the immutable version they point to, for example:
+
+```text
+Latest release: quality-gate-v1.1.0
+```
+
 ## Manual Quality-Gate Release
 
 Run **Manual Quality Gate Release** from the Actions tab and provide the full

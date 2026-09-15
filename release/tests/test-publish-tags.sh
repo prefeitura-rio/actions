@@ -47,6 +47,10 @@ version_sha=$(git --git-dir "$remote" rev-list -n 1 refs/tags/v1.0.0)
 latest_sha=$(git --git-dir "$remote" rev-list -n 1 refs/tags/latest)
 [[ "$version_sha" == "$target_sha" ]]
 [[ "$latest_sha" == "$target_sha" ]]
+[[ "$(git --git-dir "$remote" cat-file -t refs/tags/latest)" == tag ]]
+[[ "$(git --git-dir "$remote" for-each-ref --format='%(contents)' refs/tags/latest)" == 'Latest release: v1.0.0' ]]
+
+latest_message=$(git --git-dir "$remote" for-each-ref --format='%(contents)' refs/tags/latest)
 
 printf 'second\n' >> "$repo/file.txt"
 git -C "$repo" add file.txt
@@ -77,6 +81,8 @@ if git -C "$repo" rev-parse --verify refs/tags/v1.0.1 >/dev/null 2>&1; then
   printf 'Stale target publication left a local version tag\n' >&2
   exit 1
 fi
+[[ "$(git --git-dir "$remote" for-each-ref --format='%(contents)' refs/tags/latest)" == "$latest_message" ]]
+[[ "$(git --git-dir "$remote" cat-file -t refs/tags/latest)" == tag ]]
 
 target_sha="$new_target_sha"
 
@@ -89,5 +95,7 @@ bash "$publish_tags" \
 
 latest_sha=$(git --git-dir "$remote" rev-list -n 1 refs/tags/latest)
 [[ "$latest_sha" == "$target_sha" ]]
+[[ "$(git --git-dir "$remote" cat-file -t refs/tags/latest)" == tag ]]
+[[ "$(git --git-dir "$remote" for-each-ref --format='%(contents)' refs/tags/latest)" == 'Latest release: v1.0.1' ]]
 
 printf 'tag publication tests passed\n'

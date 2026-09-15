@@ -87,12 +87,18 @@ fi
 target_sha=$(git -C "$repository" rev-parse --verify "${target_sha}^{commit}")
 
 version_tag_created=false
-cleanup_local_tag() {
-  if [[ "$version_tag_created" == true ]]; then
+floating_tag_created=false
+floating_local_tag="release-floating-${target_sha}"
+publication_succeeded=false
+cleanup_local_tags() {
+  if [[ "$publication_succeeded" != true && "$version_tag_created" == true ]]; then
     git -C "$repository" tag -d "$version_tag" >/dev/null 2>&1 || true
   fi
+  if [[ "$floating_tag_created" == true ]]; then
+    git -C "$repository" tag -d "$floating_local_tag" >/dev/null 2>&1 || true
+  fi
 }
-trap cleanup_local_tag EXIT
+trap cleanup_local_tags EXIT
 
 if existing_sha=$(git -C "$repository" rev-list -n 1 "$version_tag" 2>/dev/null); then
   if [[ "$existing_sha" != "$target_sha" ]]; then
@@ -112,7 +118,13 @@ push_refspecs=(
   "refs/tags/${version_tag}"
 )
 if [[ -n "$floating_tag" ]]; then
-  push_refspecs+=("+${target_sha}:refs/tags/${floating_tag}")
+  git -C "$repository" \
+    -c user.name="$author_name" \
+    -c user.email="$author_email" \
+    tag -a "$floating_local_tag" "$target_sha" \
+    -m "Latest release: ${version_tag}"
+  floating_tag_created=true
+  push_refspecs+=("+refs/tags/${floating_local_tag}:refs/tags/${floating_tag}")
 fi
 
 git -C "$repository" push \
@@ -121,6 +133,9 @@ git -C "$repository" push \
   "$remote" \
   "${push_refspecs[@]}" >&2
 
+publication_succeeded=true
+git -C "$repository" tag -d "$floating_local_tag" >/dev/null 2>&1 || true
+floating_tag_created=false
 trap - EXIT
 
 printf 'version_tag=%s\n' "$version_tag"
