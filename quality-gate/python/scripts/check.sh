@@ -12,6 +12,7 @@ CHECK=
 PROJECT_DIR=.
 ACTION_DIR="$SCRIPT_DIR/.."
 BASEDPYRIGHT_VERSION="1.39.10"
+DEFAULT_COVERAGE_THRESHOLD="80"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -44,6 +45,48 @@ sync_project() {
     uv sync --frozen --all-groups
   else
     echo "No pyproject.toml found - skipping uv sync"
+  fi
+}
+
+has_coverage_threshold_override() {
+  local config_file="${COVERAGE_RCFILE:-}"
+  local config_format=ini
+
+  if [[ -z "$config_file" ]]; then
+    if [[ -f .coveragerc ]]; then
+      config_file=.coveragerc
+    elif [[ -f .coveragerc.toml ]]; then
+      config_file=.coveragerc.toml
+      config_format=toml
+    elif [[ -f setup.cfg ]] && grep -qE '^[[:space:]]*\[coverage:' setup.cfg; then
+      config_file=setup.cfg
+    elif [[ -f tox.ini ]] && grep -qE '^[[:space:]]*\[coverage:' tox.ini; then
+      config_file=tox.ini
+    elif [[ -f pyproject.toml ]]; then
+      config_file=pyproject.toml
+      config_format=toml
+    fi
+  elif [[ "$config_file" == *.toml ]]; then
+    config_format=toml
+  fi
+
+  [[ -n "$config_file" && -f "$config_file" ]] || return 1
+
+  if [[ "$config_format" == toml ]]; then
+    # coverage.py uses the tool.coverage namespace for every TOML config file.
+    awk '
+      /^[[:space:]]*\[tool\.coverage\.report\]([[:space:]]*#.*)?$/ { in_report=1; next }
+      /^[[:space:]]*\[/ { in_report=0 }
+      in_report && /^[[:space:]]*fail_under[[:space:]]*=/ { found=1 }
+      END { exit !found }
+    ' "$config_file"
+  else
+    awk '
+      /^[[:space:]]*\[(report|coverage:report)\]([[:space:]]*[#;].*)?$/ { in_report=1; next }
+      /^[[:space:]]*\[/ { in_report=0 }
+      in_report && /^[[:space:]]*fail_under[[:space:]]*=/ { found=1 }
+      END { exit !found }
+    ' "$config_file"
   fi
 }
 
@@ -171,11 +214,16 @@ case "$CHECK" in
     ;;
   app:test)
     sync_project
+    pytest_args=(--cov-report=term-missing)
     if [[ -d src ]]; then
-      uv run pytest --cov=src --cov-report=term-missing
+      pytest_args+=(--cov=src)
     else
-      uv run pytest --cov-report=term-missing
+      pytest_args+=(--cov)
     fi
+    if ! has_coverage_threshold_override; then
+      pytest_args+=(--cov-fail-under="$DEFAULT_COVERAGE_THRESHOLD")
+    fi
+    uv run pytest "${pytest_args[@]}"
     ;;
   *)
     qg_error "Unknown check: $CHECK"

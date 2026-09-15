@@ -175,6 +175,9 @@ Formatting checks never modify project files. Formatting differences include the
 affected files, a bounded diff, and a local remediation command. Formatter
 execution failures may only include the formatter output and remediation command.
 
+Python `app:test` includes coverage; see the [Python Coverage Policy](#python-coverage-policy)
+for the default threshold and override rules.
+
 ## TypeScript Metadata
 
 `typescript/scripts/project-info.js` is provider-neutral and reports:
@@ -210,6 +213,38 @@ Python typechecks use pinned `basedpyright@1.39.10`, synchronize the project wit
 `[tool.basedpyright]`/`[tool.pyright]` configuration before using the organization
 fallback.
 Projects with a `pyproject.toml` must commit a matching `uv.lock` for this check.
+
+### Python Coverage Policy
+
+The Python `app:test` check runs pytest with `pytest-cov` and applies an
+organization default total coverage threshold of 80%. Projects can explicitly
+override that threshold in the configuration consumed by coverage.py.
+
+Configuration discovery follows coverage.py precedence: `COVERAGE_RCFILE`,
+`.coveragerc`, `.coveragerc.toml`, `setup.cfg`, `tox.ini`, and then
+`pyproject.toml`. TOML files use the `[tool.coverage]` namespace:
+
+```toml
+[tool.coverage.report]
+fail_under = 70
+```
+
+The equivalent INI configurations are:
+
+```ini
+# .coveragerc or a file selected with COVERAGE_RCFILE
+[report]
+fail_under = 70
+
+# setup.cfg or tox.ini
+[coverage:report]
+fail_under = 70
+```
+
+When either local setting is present, the quality gate does not inject its
+default and coverage.py enforces the project value, including `fail_under = 0`.
+Projects with a `src/` directory are measured with `--cov=src`; other layouts
+use pytest-cov's `--cov` mode to measure imported Python modules.
 
 For checks that support configuration, project configuration takes precedence
 over the organization fallback. Formatting uses pinned tool defaults. Structural

@@ -1,2 +1,6 @@
 .devenv
 .pre-commit-config.yaml
+.coverage
+.coverage.*
+__pycache__/
+*.py[cod]

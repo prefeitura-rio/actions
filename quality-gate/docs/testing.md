@@ -37,6 +37,13 @@ action setup, configuration precedence, strict organization fallbacks, React,
 Next.js, Vue, and Nuxt framework detection, Vue SFC handling, and the quality
 command, rather than only isolated shell conditions.
 
+Python coverage policy fixtures additionally verify that a project without an
+explicit threshold fails below the organization default of 80%, while
+`pyproject.toml`, `.coveragerc.toml`, and `COVERAGE_RCFILE` overrides are
+respected. The release script tests also verify that abbreviated commit SHAs
+are normalized and that a failed stale-target publication cleans up locally
+created tags so a retry in the same checkout remains safe.
+
 The passing Next.js fixture uses the existing project-script path for route-aware
 typechecking with `next typegen && tsc --noEmit`. This keeps route type generation
 opt-in while the action's generic TypeScript fallback remains `tsc --noEmit`.
@@ -60,8 +67,10 @@ match the project's markers (rejected) and by requesting the correct language
 | `reusable-workflow` | End-to-end smoke test of the reusable workflow on a Go project |
 | `ast-grep-rules` | ast-grep rule correctness for Go, Python, TypeScript |
 | `portable-scripts` | Provider-neutral shell and Node entrypoint contracts without GitHub variables |
+| `release-scripts` | Release version calculation and atomic tag publication contracts |
 | `go` | All 5 checks (format, lint, strlint, typecheck, test) pass/fail for Go |
 | `python` | All 5 checks (format, lint, strlint, typecheck, test) pass/fail for Python |
+| `python-coverage` | Organization coverage default and Python project overrides |
 | `typescript` | All 5 checks pass/fail for TypeScript, Next.js, Vue, and Nuxt fixtures, including framework-aware summary names |
 | `error-invalid-check` | Invalid check names are rejected with exact error message |
 | `setup-py-success` | `setup.py`-only project is accepted as Python |
