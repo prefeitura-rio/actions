@@ -55,7 +55,7 @@ if [[ -z "$release_branch" || -z "$target_sha" ]]; then
   exit 2
 fi
 
-git -C "$repository" rev-parse --verify "${target_sha}^{commit}" >/dev/null
+target_sha=$(git -C "$repository" rev-parse --verify "${target_sha}^{commit}")
 
 branch_ref=$(git -C "$repository" ls-remote "$remote" "refs/heads/${release_branch}")
 branch_sha="${branch_ref%%[[:space:]]*}"

@@ -37,10 +37,9 @@ on:
         type: string
         default: prefeitura-rio/actions
       toolkit_ref:
-        description: Ref of the release toolkit to use.
-        required: false
+        description: Full commit SHA of the release toolkit to use.
+        required: true
         type: string
-        default: master
       git_author_name:
         description: Git author name for annotated release tags.
         required: false
@@ -87,6 +86,17 @@ jobs:
           ref: ${{ inputs.target_sha }}
           fetch-depth: 0
           path: target
+
+      - name: Validate immutable toolkit ref
+        shell: bash
+        env:
+          TOOLKIT_REF: ${{ inputs.toolkit_ref }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$TOOLKIT_REF" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "toolkit_ref must be a full 40-character commit SHA." >&2
+            exit 1
+          fi
 
       - name: Checkout release toolkit
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0

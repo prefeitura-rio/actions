@@ -21,10 +21,11 @@ git -C "$repo" remote add origin "$remote"
 git -C "$repo" push -q -u origin master
 
 target_sha=$(git -C "$repo" rev-parse HEAD)
+short_target_sha=$(git -C "$repo" rev-parse --short HEAD)
 validation=$(bash "$validate_target" \
   --repository "$repo" \
   --release-branch master \
-  --target-sha "$target_sha")
+  --target-sha "$short_target_sha")
 [[ "$validation" == *'skip=false'* ]]
 
 publish_output=$(bash "$publish_tags" \
@@ -72,7 +73,10 @@ if git --git-dir "$remote" rev-parse --verify refs/tags/v1.0.1 >/dev/null 2>&1; 
   printf 'Stale target publication created a version tag\n' >&2
   exit 1
 fi
-git -C "$repo" tag -d v1.0.1 >/dev/null
+if git -C "$repo" rev-parse --verify refs/tags/v1.0.1 >/dev/null 2>&1; then
+  printf 'Stale target publication left a local version tag\n' >&2
+  exit 1
+fi
 
 target_sha="$new_target_sha"
 

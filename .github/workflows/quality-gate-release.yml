@@ -22,6 +22,7 @@ jobs:
     with:
       release_branch: master
       target_sha: ${{ github.event.workflow_run.head_sha }}
+      toolkit_ref: ${{ github.event.workflow_run.head_sha }}
       initial_version: 1.0.0
       bump: minor
       floating_tag: latest

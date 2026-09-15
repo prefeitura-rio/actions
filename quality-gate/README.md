@@ -175,6 +175,21 @@ Formatting checks never modify project files. Formatting differences include the
 affected files, a bounded diff, and a local remediation command. Formatter
 execution failures may only include the formatter output and remediation command.
 
+### Python Coverage
+
+Python `app:test` checks use `pytest-cov` and enforce a default total coverage
+threshold of 80%. A project can override that threshold with `fail_under` in
+the effective coverage configuration. Coverage configuration discovery follows
+coverage.py precedence: `COVERAGE_RCFILE`, `.coveragerc`, `.coveragerc.toml`,
+`setup.cfg`, `tox.ini`, and then `pyproject.toml`. For example:
+
+```toml
+[tool.coverage.report]
+fail_under = 70
+```
+
+An explicit `fail_under = 0` disables the minimum threshold for that project.
+
 ## TypeScript Metadata
 
 `typescript/scripts/project-info.js` is provider-neutral and reports:

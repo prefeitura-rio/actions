@@ -41,8 +41,9 @@ printf 'second\n' >> "$repo/file.txt"
 git -C "$repo" add file.txt
 git -C "$repo" commit -qm second
 target_sha=$(git -C "$repo" rev-parse HEAD)
+short_target_sha=$(git -C "$repo" rev-parse --short HEAD)
 
-output=$(bash "$calculate_version" --repository "$repo" --target-sha "$target_sha" --bump patch)
+output=$(bash "$calculate_version" --repository "$repo" --target-sha "$short_target_sha" --bump patch)
 assert_output "$output" 'version=1.2.4'
 assert_output "$output" 'version_tag=v1.2.4'
 

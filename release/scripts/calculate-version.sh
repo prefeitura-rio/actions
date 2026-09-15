@@ -74,7 +74,7 @@ case "$bump" in
     ;;
 esac
 
-git -C "$repository" rev-parse --verify "${target_sha}^{commit}" >/dev/null
+target_sha=$(git -C "$repository" rev-parse --verify "${target_sha}^{commit}")
 
 is_stable_tag() {
   local tag="$1"
