@@ -1,10 +1,21 @@
-name: Quality Gate Release
+name: Manual Quality Gate Release
 
 on:
-  workflow_run:
-    workflows: ["Quality Gate Tests", "Security"]
-    types: [completed]
-    branches: [master]
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: Full commit SHA to release from master.
+        required: true
+        type: string
+      bump:
+        description: Semantic version component to bump.
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
 
 concurrency:
   group: quality-gate-release
@@ -16,7 +27,6 @@ permissions:
 
 jobs:
   release-gate:
-    if: github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -27,7 +37,7 @@ jobs:
       - name: Checkout release gate
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ inputs.target_sha }}
           fetch-depth: 1
       - name: Check quality and security gates
         id: gates
@@ -35,7 +45,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
-          TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
+          TARGET_SHA: ${{ inputs.target_sha }}
         run: |
           set -euo pipefail
           bash .github/scripts/check-workflow-gates.sh \
@@ -47,12 +57,13 @@ jobs:
   release:
     needs: release-gate
     if: needs.release-gate.outputs.ready == 'true'
+    permissions:
+      contents: write
     uses: ./.github/workflows/release.yml
     with:
       release_branch: master
-      target_sha: ${{ github.event.workflow_run.head_sha }}
-      toolkit_ref: ${{ github.event.workflow_run.head_sha }}
-      initial_version: 1.0.0
-      bump: minor
+      target_sha: ${{ inputs.target_sha }}
+      toolkit_ref: ${{ inputs.target_sha }}
+      bump: ${{ inputs.bump }}
       floating_tag: quality-gate-latest
       tag_prefix: quality-gate-v

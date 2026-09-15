@@ -7,7 +7,14 @@ on:
     paths:
       - ".github/workflows/ci.yml"
       - ".github/workflows/sast.yml"
+      - ".github/workflows/quality-gate.yml"
+      - ".github/workflows/quality-gate-tests.yml"
+      - ".github/workflows/quality-gate-release.yml"
+      - ".github/workflows/quality-gate-manual-release.yml"
+      - ".github/workflows/release.yml"
+      - ".github/scripts/**"
       - "quality-gate/**"
+      - "release/**"
       - "sast/**"
       - "setup-devenv/**"
 

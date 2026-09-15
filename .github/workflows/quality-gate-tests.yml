@@ -10,6 +10,8 @@ on:
       - ".github/workflows/quality-gate-tests.yml"
       - ".github/workflows/release.yml"
       - ".github/workflows/quality-gate-release.yml"
+      - ".github/workflows/quality-gate-manual-release.yml"
+      - ".github/scripts/**"
   push:
     branches: [master]
     paths:
@@ -19,6 +21,8 @@ on:
       - ".github/workflows/quality-gate-tests.yml"
       - ".github/workflows/release.yml"
       - ".github/workflows/quality-gate-release.yml"
+      - ".github/workflows/quality-gate-manual-release.yml"
+      - ".github/scripts/**"
   workflow_dispatch:
 
 concurrency:
