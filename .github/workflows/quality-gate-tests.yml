@@ -346,6 +346,58 @@ jobs:
             exit 1
           }
 
+  python-coverage:
+    name: Python / coverage / ${{ matrix.case }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - case: default-threshold
+            fixture: quality-gate/python/fixtures/coverage-default-fail
+            expected_failure: true
+            expected_message: "Required test coverage of 80% not reached"
+          - case: pyproject-override
+            fixture: quality-gate/python/fixtures/coverage-pyproject-override
+            expected_failure: false
+          - case: coveragerc-override
+            fixture: quality-gate/python/fixtures/coverage-coveragerc-override
+            expected_failure: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Run coverage policy
+        id: coverage
+        uses: ./quality-gate
+        with:
+          check: app:test
+          working-directory: ${{ matrix.fixture }}
+          expected-failure: ${{ matrix.expected_failure }}
+        continue-on-error: ${{ matrix.expected_failure }}
+
+      - name: Assert coverage policy
+        env:
+          ERROR_MESSAGE: ${{ steps.coverage.outputs.error_message }}
+          EXPECTED_FAILURE: ${{ matrix.expected_failure }}
+          EXPECTED_MESSAGE: ${{ matrix.expected_message }}
+        run: |
+          if [[ "$EXPECTED_FAILURE" == true ]]; then
+            [[ "${{ steps.coverage.outcome }}" == "failure" ]] || {
+              echo "::error::Expected the coverage policy to fail on ${{ matrix.fixture }}"
+              exit 1
+            }
+            [[ "$ERROR_MESSAGE" == *"$EXPECTED_MESSAGE"* ]] || {
+              echo "::error::Expected coverage diagnostic '$EXPECTED_MESSAGE'"
+              exit 1
+            }
+          else
+            [[ "${{ steps.coverage.outcome }}" == "success" ]] || {
+              echo "::error::Expected the local coverage override to pass on ${{ matrix.fixture }}"
+              exit 1
+            }
+          fi
+
   typescript:
     name: TypeScript / ${{ matrix.framework == 'typescript' && 'plain' || matrix.framework }} / ${{ matrix.check }}
     runs-on: ubuntu-latest

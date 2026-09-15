@@ -211,6 +211,29 @@ Python typechecks use pinned `basedpyright@1.39.10`, synchronize the project wit
 fallback.
 Projects with a `pyproject.toml` must commit a matching `uv.lock` for this check.
 
+### Python Coverage Policy
+
+The Python `app:test` check runs pytest with coverage and applies an organization
+default threshold of 80%. Projects can explicitly override that threshold in
+the configuration consumed by coverage.py:
+
+```toml
+[tool.coverage.report]
+fail_under = 65
+```
+
+The equivalent `.coveragerc` configuration is:
+
+```ini
+[report]
+fail_under = 65
+```
+
+When either local setting is present, the quality gate does not inject its
+default and coverage.py enforces the project value, including `fail_under = 0`.
+Projects with a `src/` directory are measured with `--cov=src`; other layouts
+use pytest-cov's `--cov` mode to measure imported Python modules.
+
 For checks that support configuration, project configuration takes precedence
 over the organization fallback. Formatting uses pinned tool defaults. Structural
 lint always runs organization rules first, then the selected additive
