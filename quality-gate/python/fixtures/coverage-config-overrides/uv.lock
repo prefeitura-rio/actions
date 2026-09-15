@@ -96,7 +96,7 @@ wheels = [
 ]
 
 [[package]]
-name = "fixture-coverage-coveragerc-override"
+name = "fixture-coverage-config-overrides"
 version = "0.1.0"
 source = { virtual = "." }
 

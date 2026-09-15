@@ -39,8 +39,9 @@ command, rather than only isolated shell conditions.
 
 Python coverage policy fixtures additionally verify that a project without an
 explicit threshold fails below the organization default of 80%, while
-`pyproject.toml`, `.coveragerc.toml`, and `COVERAGE_RCFILE` overrides are
-respected. The release script tests also verify that abbreviated commit SHAs
+`pyproject.toml`, `.coveragerc`, `.coveragerc.toml`, `setup.cfg`, `tox.ini`,
+and `COVERAGE_RCFILE` overrides are respected. The release script tests also
+verify that abbreviated commit SHAs
 are normalized and that a failed stale-target publication cleans up locally
 created tags so a retry in the same checkout remains safe.
 
