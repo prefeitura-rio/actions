@@ -48,88 +48,71 @@ sync_project() {
   fi
 }
 
-get_coverage_fail_under_value() {
-  local config_file="${COVERAGE_RCFILE:-}"
-  local config_format=ini
+_resolve_coverage_config() {
+  _COVERAGE_CONFIG_FILE="${COVERAGE_RCFILE:-}"
+  _COVERAGE_CONFIG_FORMAT=ini
 
-  if [[ -z "$config_file" ]]; then
+  if [[ -z "$_COVERAGE_CONFIG_FILE" ]]; then
     if [[ -f .coveragerc ]]; then
-      config_file=.coveragerc
+      _COVERAGE_CONFIG_FILE=.coveragerc
     elif [[ -f .coveragerc.toml ]]; then
-      config_file=.coveragerc.toml
-      config_format=toml
+      _COVERAGE_CONFIG_FILE=.coveragerc.toml
+      _COVERAGE_CONFIG_FORMAT=toml
     elif [[ -f setup.cfg ]] && grep -qE '^[[:space:]]*\[coverage:' setup.cfg; then
-      config_file=setup.cfg
+      _COVERAGE_CONFIG_FILE=setup.cfg
     elif [[ -f tox.ini ]] && grep -qE '^[[:space:]]*\[coverage:' tox.ini; then
-      config_file=tox.ini
+      _COVERAGE_CONFIG_FILE=tox.ini
     elif [[ -f pyproject.toml ]]; then
-      config_file=pyproject.toml
-      config_format=toml
+      _COVERAGE_CONFIG_FILE=pyproject.toml
+      _COVERAGE_CONFIG_FORMAT=toml
     fi
-  elif [[ "$config_file" == *.toml ]]; then
-    config_format=toml
-  fi
-
-  [[ -n "$config_file" && -f "$config_file" ]] || return 0
-
-  if [[ "$config_format" == toml ]]; then
-    awk '
-      /^[[:space:]]*\[tool\.coverage\.report\]([[:space:]]*#.*)?$/ { in_report=1; next }
-      /^[[:space:]]*\[/ { in_report=0 }
-      in_report && /^[[:space:]]*fail_under[[:space:]]*=/ {
-        sub(/^[^=]*=[[:space:]]*/, ""); sub(/[[:space:]].*$/, ""); print; exit
-      }
-    ' "$config_file"
-  else
-    awk '
-      /^[[:space:]]*\[(report|coverage:report)\]([[:space:]]*[#;].*)?$/ { in_report=1; next }
-      /^[[:space:]]*\[/ { in_report=0 }
-      in_report && /^[[:space:]]*fail_under[[:space:]]*=/ {
-        sub(/^[^=]*=[[:space:]]*/, ""); sub(/[[:space:]].*$/, ""); print; exit
-      }
-    ' "$config_file"
+  elif [[ "$_COVERAGE_CONFIG_FILE" == *.toml ]]; then
+    _COVERAGE_CONFIG_FORMAT=toml
   fi
 }
 
 has_coverage_threshold_override() {
-  local config_file="${COVERAGE_RCFILE:-}"
-  local config_format=ini
+  _resolve_coverage_config
+  [[ -n "$_COVERAGE_CONFIG_FILE" && -f "$_COVERAGE_CONFIG_FILE" ]] || return 1
 
-  if [[ -z "$config_file" ]]; then
-    if [[ -f .coveragerc ]]; then
-      config_file=.coveragerc
-    elif [[ -f .coveragerc.toml ]]; then
-      config_file=.coveragerc.toml
-      config_format=toml
-    elif [[ -f setup.cfg ]] && grep -qE '^[[:space:]]*\[coverage:' setup.cfg; then
-      config_file=setup.cfg
-    elif [[ -f tox.ini ]] && grep -qE '^[[:space:]]*\[coverage:' tox.ini; then
-      config_file=tox.ini
-    elif [[ -f pyproject.toml ]]; then
-      config_file=pyproject.toml
-      config_format=toml
-    fi
-  elif [[ "$config_file" == *.toml ]]; then
-    config_format=toml
-  fi
-
-  [[ -n "$config_file" && -f "$config_file" ]] || return 1
-
-  if [[ "$config_format" == toml ]]; then
+  if [[ "$_COVERAGE_CONFIG_FORMAT" == toml ]]; then
     # coverage.py uses the tool.coverage namespace for every TOML config file.
     awk '
       /^[[:space:]]*\[tool\.coverage\.report\]([[:space:]]*#.*)?$/ { in_report=1; next }
       /^[[:space:]]*\[/ { in_report=0 }
       in_report && /^[[:space:]]*fail_under[[:space:]]*=/ { found=1 }
       END { exit !found }
-    ' "$config_file"
+    ' "$_COVERAGE_CONFIG_FILE"
   else
     awk '
       /^[[:space:]]*\[(report|coverage:report)\]([[:space:]]*[#;].*)?$/ { in_report=1; next }
       /^[[:space:]]*\[/ { in_report=0 }
       in_report && /^[[:space:]]*fail_under[[:space:]]*=/ { found=1 }
       END { exit !found }
-    ' "$config_file"
+    ' "$_COVERAGE_CONFIG_FILE"
+  fi
+}
+
+get_coverage_fail_under_value() {
+  _resolve_coverage_config
+  [[ -n "$_COVERAGE_CONFIG_FILE" && -f "$_COVERAGE_CONFIG_FILE" ]] || return 0
+
+  if [[ "$_COVERAGE_CONFIG_FORMAT" == toml ]]; then
+    awk '
+      /^[[:space:]]*\[tool\.coverage\.report\]([[:space:]]*#.*)?$/ { in_report=1; next }
+      /^[[:space:]]*\[/ { in_report=0 }
+      in_report && /^[[:space:]]*fail_under[[:space:]]*=/ {
+        sub(/^[^=]*=[[:space:]]*/, ""); sub(/[[:space:]].*$/, ""); print; exit
+      }
+    ' "$_COVERAGE_CONFIG_FILE"
+  else
+    awk '
+      /^[[:space:]]*\[(report|coverage:report)\]([[:space:]]*[#;].*)?$/ { in_report=1; next }
+      /^[[:space:]]*\[/ { in_report=0 }
+      in_report && /^[[:space:]]*fail_under[[:space:]]*=/ {
+        sub(/^[^=]*=[[:space:]]*/, ""); sub(/[[:space:]].*$/, ""); print; exit
+      }
+    ' "$_COVERAGE_CONFIG_FILE"
   fi
 }
 
