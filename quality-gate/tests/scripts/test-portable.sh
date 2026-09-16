@@ -177,11 +177,39 @@ fi
 
 capture_env="$TEMP_DIR/bash-env"
 capture_log="$TEMP_DIR/capture.log"
-printf 'QUALITY_GATE_ERROR_FILE=%q\nQUALITY_GATE_OUTPUT_LOG=%q\nsource %q\n' \
+printf 'QUALITY_GATE_ERROR_FILE=%q\nQUALITY_GATE_OUTPUT_LOG=%q\nQUALITY_GATE_CHECK=app:lint\nsource %q\n' \
   "$ERROR_FILE" "$capture_log" "$ROOT/scripts/capture-failure.sh" > "$capture_env"
 BASH_ENV="$capture_env" bash -c 'printf "outer\\n"; bash -c '\''printf "inner\\n"'\''' >/dev/null
 assert_equal "1" "$(awk '$0 == "outer" { count++ } END { print count + 0 }' "$capture_log")" "outer capture count"
 assert_equal "1" "$(awk '$0 == "inner" { count++ } END { print count + 0 }' "$capture_log")" "nested capture count"
+
+: > "$ERROR_FILE"
+capture_failure_env="$TEMP_DIR/capture-failure-env"
+capture_failure_log="$TEMP_DIR/capture-failure.log"
+printf 'QUALITY_GATE_ERROR_FILE=%q\nQUALITY_GATE_OUTPUT_LOG=%q\nQUALITY_GATE_CHECK=app:lint\nsource %q\n' \
+  "$ERROR_FILE" "$capture_failure_log" "$ROOT/scripts/capture-failure.sh" > "$capture_failure_env"
+set +e
+BASH_ENV="$capture_failure_env" bash -c 'printf "lint diagnostic\\n"; false' >/dev/null
+capture_status=$?
+set -e
+assert_equal "1" "$capture_status" "non-typecheck captured command status"
+non_typecheck_error=$(<"$ERROR_FILE")
+assert_contains "$non_typecheck_error" "Recent output:" "non-typecheck recent output fallback"
+assert_contains "$non_typecheck_error" "lint diagnostic" "non-typecheck tool output fallback"
+
+: > "$ERROR_FILE"
+printf 'QUALITY_GATE_ERROR_FILE=%q\nQUALITY_GATE_OUTPUT_LOG=%q\nQUALITY_GATE_CHECK=app:typecheck\nsource %q\n' \
+  "$ERROR_FILE" "$capture_failure_log" "$ROOT/scripts/capture-failure.sh" > "$capture_failure_env"
+set +e
+BASH_ENV="$capture_failure_env" bash -c 'printf "typecheck noise\\n"; false' >/dev/null
+capture_status=$?
+set -e
+assert_equal "1" "$capture_status" "typecheck captured command status"
+typecheck_fallback=$(<"$ERROR_FILE")
+assert_contains "$typecheck_fallback" "Command failed (exit 1): false" "typecheck concise fallback"
+if [[ "$typecheck_fallback" == *"Recent output:"* || "$typecheck_fallback" == *"typecheck noise"* ]]; then
+  fail "typecheck fallback should omit recent output"
+fi
 
 EXPECTED_FAILURE_SUMMARY=$(mktemp)
 bash "$ROOT/scripts/render-summary.sh" \

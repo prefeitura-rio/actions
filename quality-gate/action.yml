@@ -47,6 +47,7 @@ runs:
       shell: bash
       env:
         ACTION_DIRECTORY: ${{ github.action_path }}
+        CHECK: ${{ inputs.check }}
       run: |
         set -euo pipefail
         relay="$RUNNER_TEMP/quality-gate-error.txt"
@@ -60,6 +61,7 @@ runs:
         cat > "$bash_env" <<EOF
         QUALITY_GATE_ERROR_FILE="$relay"
         QUALITY_GATE_OUTPUT_LOG="$log"
+        QUALITY_GATE_CHECK="$CHECK"
         source "$ACTION_DIRECTORY/scripts/capture-failure.sh"
         EOF
         echo "BASH_ENV=$bash_env" >> "$GITHUB_ENV"

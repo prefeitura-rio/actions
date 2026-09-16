@@ -256,7 +256,7 @@ Notes for discussion:
 - The expected section states only the command success contract; it must not invent a root cause.
 - Tool hints such as `uv`'s `hint:` lines are preserved in the remediation section.
 - One box represents one failed command or phase. Multiple diagnostics from that command remain together.
-- Setup, download, and generic recent-output noise must not be copied into the summary.
+- For typecheck summaries, setup, download, and generic recent-output noise must not be copied into the summary.
 - Diagnostic output is bounded; the complete tool output remains in the job logs.
 - If a tool provides no remediation hint, show the exact command and neutral guidance to resolve the reported diagnostics.
 

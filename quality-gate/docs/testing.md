@@ -58,7 +58,9 @@ errors actionable instead of reducing them to an unexplained exit code.
 Typecheck failures use a compact diagnostic template. Tool output and hints are
 copied dynamically, while the action supplies only the section labels and the
 command-success expectation. Setup output, download progress, and the generic
-recent-output fallback are not included in the summary.
+recent-output fallback are not included in typecheck summaries. Other checks
+retain their existing recent-output fallback for compatibility with their
+diagnostic assertions.
 
 Multi-language detection is tested with `detect-only` checks on single-language
 and polyglot directories, verifying that the correct JSON array is output.
