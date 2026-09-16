@@ -120,7 +120,7 @@ render_detected_languages() {
   done
 }
 
-render_typecheck_error() {
+render_structured_error() {
   if grep -q '^Error:' "$ERROR_FILE"; then
     cat "$ERROR_FILE"
     return
@@ -147,9 +147,9 @@ printf '%s\n' "$SUMMARY_NAME" > "$NAME_FILE"
       printf 'Error: None\n'
     fi
     render_detected_languages
-  elif [[ "$CHECK" == app:typecheck ]]; then
+  elif [[ "$CHECK" == app:typecheck || "$CHECK" == app:format ]]; then
     if [[ -s "$ERROR_FILE" ]]; then
-      render_typecheck_error
+      render_structured_error
     else
       printf 'Error:\nNone\n'
     fi

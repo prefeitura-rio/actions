@@ -83,44 +83,30 @@ Verify that source files match the formatter and import-organization rules. A
 failure should emphasize the affected files and the command that fixes them,
 not make the user search through a diff in the job log.
 
-### Proposed layout
+### Layout
 
 ````markdown
-## Format - <language/framework>
+### Quality Gate: Format (<language/framework>)
+Outcome: failure
 
-**Status:** Passed | Failed
-**Project:** `<working-directory>`
-**Formatter:** `<gofumpt + goimports | Ruff | oxfmt>`
+Error:
+```text
+<formatter diagnostic and affected files>
+```
 
-### Result
-
-<All files are correctly formatted.>
-
-### Files requiring changes
-
-- `path/to/file`
-
-### How to fix
-
-```bash
+How to fix it:
+```text
 <formatter remediation command>
 ```
-
-<details>
-<summary>Formatting diff</summary>
-
-```diff
-<bounded diff>
-```
-</details>
 ````
 
 Notes for discussion:
 
 - Go runs both `gofumpt` and `goimports`; the summary should identify which formatter failed, or show two result rows when both run.
-- Python should report Ruff's file list and bounded diff.
+- Python should report Ruff's file list without copying its complete diff into the summary.
 - TypeScript should report the framework-aware file paths, including `.vue` and Next.js route files where applicable.
-- Do not include a diff on success.
+- Complete formatting diffs remain available in the job logs, but are not copied into the summary.
+- Format setup failures should use the same diagnostic and remediation template when the tool provides a hint.
 
 ## Lint
 

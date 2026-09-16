@@ -26,8 +26,9 @@ runs:
       run: |
         set -euo pipefail
         if ! output=$(node "${ACTION_DIRECTORY}/scripts/project-info.js" "$PWD" --check "$CHECK" 2>&1); then
-          printf '%s\n' "$output" > "$QUALITY_GATE_ERROR_FILE"
-          printf '%s\n' "$output"
+          # shellcheck disable=SC1091
+          source "${ACTION_DIRECTORY}/../scripts/lib/diagnostics.sh"
+          qg_tool_error project-info "$output"
           exit 1
         fi
         printf '%s\n' "$output" >> "$GITHUB_OUTPUT"

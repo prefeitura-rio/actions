@@ -172,8 +172,9 @@ to detect once and run each language in parallel.
 | `app:test` | `go test -race` | pytest with coverage | npm or pnpm test |
 
 Formatting checks never modify project files. Formatting differences include the
-affected files, a bounded diff, and a local remediation command. Formatter
-execution failures may only include the formatter output and remediation command.
+affected files and a local remediation command. The complete formatting diff is
+written to the job log rather than the summary. Formatter execution failures
+include formatter output when available and the remediation command.
 
 Python `app:test` includes coverage; see the [Python Coverage Policy](#python-coverage-policy)
 for the default threshold and override rules.

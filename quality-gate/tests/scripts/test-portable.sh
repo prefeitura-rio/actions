@@ -141,6 +141,71 @@ bash "$ROOT/scripts/render-summary.sh" \
 assert_equal "Format (Typescript - Vue)" "$(<"$SUMMARY_NAME_FILE")" "summary name"
 assert_contains "$(<"$SUMMARY_FILE")" "Outcome: failure" "summary outcome"
 
+QUALITY_GATE_ERROR_FILE="$ERROR_FILE" qg_format_error \
+  $'oxfmt found formatting differences in 2 file(s).\n\nFiles requiring formatting:\n- src/app.ts\n- src/app.test.ts' \
+  'npx --yes --loglevel=error oxfmt@0.66.0 --write .' \
+  2>/dev/null
+bash "$ROOT/scripts/render-summary.sh" \
+  --check app:format \
+  --language typescript \
+  --framework vue \
+  --error-file "$ERROR_FILE" \
+  --success-file "$SUCCESS_FILE" \
+  --name-file "$SUMMARY_NAME_FILE" \
+  --summary-file "$SUMMARY_FILE"
+format_summary=$(<"$SUMMARY_FILE")
+assert_equal \
+  $'### Quality Gate: Format (Typescript - Vue)\nOutcome: failure\nError:\n```text\noxfmt found formatting differences in 2 file(s).\n\nFiles requiring formatting:\n- src/app.ts\n- src/app.test.ts\n```\n\nHow to fix it:\n```text\nnpx --yes --loglevel=error oxfmt@0.66.0 --write .\n```' \
+  "$format_summary" \
+  "format summary layout"
+assert_contains "$format_summary" "Error:" "format error section"
+assert_contains "$format_summary" "How to fix it:" "format remediation section"
+assert_contains "$format_summary" "src/app.ts" "format affected file"
+if [[ "$format_summary" == *"Formatting diff:"* ]]; then
+  fail "format summary should omit the complete diff"
+fi
+
+large_formatter_output=$(printf 'formatter line %03d\n' $(seq 1 201))
+QUALITY_GATE_ERROR_FILE="$ERROR_FILE" qg_format_error \
+  "oxfmt could not complete the formatting check." \
+  'npx --yes --loglevel=error oxfmt@0.66.0 --write .' \
+  "$large_formatter_output" \
+  2>/dev/null
+bash "$ROOT/scripts/render-summary.sh" \
+  --check app:format \
+  --language typescript \
+  --framework vue \
+  --error-file "$ERROR_FILE" \
+  --success-file "$SUCCESS_FILE" \
+  --name-file "$SUMMARY_NAME_FILE" \
+  --summary-file "$SUMMARY_FILE"
+bounded_format_summary=$(<"$SUMMARY_FILE")
+assert_contains "$bounded_format_summary" "... diagnostics truncated; see the job logs for the complete output." "format output truncation"
+if [[ "$bounded_format_summary" == *"formatter line 201"* ]]; then
+  fail "format formatter output should be bounded"
+fi
+
+set +e
+QUALITY_GATE_ERROR_FILE="$ERROR_FILE" qg_run_tool uv bash -c \
+  'printf "setup noise\\nerror: The lockfile needs to be updated.\\nhint: To update the lockfile, run uv lock.\\n"; exit 2' \
+  2>/dev/null
+tool_status=$?
+set -e
+assert_equal "2" "$tool_status" "format tool failure status"
+bash "$ROOT/scripts/render-summary.sh" \
+  --check app:format \
+  --language python \
+  --error-file "$ERROR_FILE" \
+  --success-file "$SUCCESS_FILE" \
+  --name-file "$SUMMARY_NAME_FILE" \
+  --summary-file "$SUMMARY_FILE"
+format_tool_summary=$(<"$SUMMARY_FILE")
+assert_contains "$format_tool_summary" "error: The lockfile needs to be updated." "format tool diagnostic"
+assert_contains "$format_tool_summary" "hint: To update the lockfile, run uv lock." "format tool hint"
+if [[ "$format_tool_summary" == *"setup noise"* ]]; then
+  fail "format tool summary should omit setup noise"
+fi
+
 bash "$ROOT/scripts/render-summary.sh" \
   --check app:format \
   --language typescript \
@@ -225,6 +290,20 @@ typecheck_fallback=$(<"$ERROR_FILE")
 assert_contains "$typecheck_fallback" "Command failed (exit 1): false" "typecheck concise fallback"
 if [[ "$typecheck_fallback" == *"Recent output:"* || "$typecheck_fallback" == *"typecheck noise"* || "$typecheck_fallback" == *"How to fix it:"* ]]; then
   fail "typecheck fallback should omit recent output"
+fi
+
+: > "$ERROR_FILE"
+printf 'QUALITY_GATE_ERROR_FILE=%q\nQUALITY_GATE_OUTPUT_LOG=%q\nQUALITY_GATE_CHECK=app:format\nsource %q\n' \
+  "$ERROR_FILE" "$capture_failure_log" "$ROOT/scripts/capture-failure.sh" > "$capture_failure_env"
+set +e
+BASH_ENV="$capture_failure_env" bash -c 'printf "format setup noise\\n"; false' >/dev/null
+capture_status=$?
+set -e
+assert_equal "1" "$capture_status" "format captured command status"
+format_fallback=$(<"$ERROR_FILE")
+assert_contains "$format_fallback" "Command failed (exit 1): false" "format concise fallback"
+if [[ "$format_fallback" == *"Recent output:"* || "$format_fallback" == *"format setup noise"* ]]; then
+  fail "format fallback should omit recent output"
 fi
 
 EXPECTED_FAILURE_SUMMARY=$(mktemp)

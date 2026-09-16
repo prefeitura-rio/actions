@@ -114,16 +114,13 @@ format_typescript() {
   fi
 
   if [[ "$status" -gt 1 || ( "$status" -eq 1 && -z "$files" ) ]]; then
-    cat "$stderr_file"
-    qg_error "$(cat <<EOF
-oxfmt could not complete the formatting check.
-
-Formatter output:
-$(cat "$stderr_file")
-
-Fix locally with: npx --yes --loglevel=error oxfmt@0.66.0 --write .
-EOF
-)"
+    local formatter_output
+    formatter_output=$(<"$stderr_file")
+    [[ -z "$formatter_output" ]] || printf '%s\n' "$formatter_output" >&2
+    qg_format_error \
+      "oxfmt could not complete the formatting check." \
+      "npx --yes --loglevel=error oxfmt@0.66.0 --write ." \
+      "$formatter_output"
     rm -f "$stderr_file"
     trap - EXIT
     return "$status"
@@ -172,15 +169,11 @@ EOF
       rm -f "$oxfmt_write_err"
       cleanup_format
       trap - EXIT
-      qg_error "$(cat <<EOF
-oxfmt could not complete the formatting check.
-
-Formatter output:
-$write_output
-
-Fix locally with: npx --yes --loglevel=error oxfmt@0.66.0 --write .
-EOF
-)"
+      [[ -z "$write_output" ]] || printf '%s\n' "$write_output" >&2
+      qg_format_error \
+        "oxfmt could not complete the formatting check." \
+        "npx --yes --loglevel=error oxfmt@0.66.0 --write ." \
+        "$write_output"
       return 1
     fi
     rm -f "$oxfmt_write_err"
@@ -196,28 +189,21 @@ EOF
   if [[ ! -s "$diff_file" ]]; then
     cleanup_format
     trap - EXIT
-    qg_error "$(cat <<EOF
+    qg_format_error "$(cat <<EOF
 oxfmt could not complete the formatting check.
-
-Fix locally with: npx --yes --loglevel=error oxfmt@0.66.0 --write .
 EOF
-)"
+)" "npx --yes --loglevel=error oxfmt@0.66.0 --write ."
     return 1
   fi
 
   cat "$diff_file"
-  qg_error "$(cat <<EOF
+  qg_format_error "$(cat <<EOF
 oxfmt found formatting differences in $file_count file(s).
 
 Files requiring formatting:
 $(printf '%s\n' "${original_files[@]}" | while IFS= read -r file; do printf -- '- %s\n' "$file"; done)
-
-Formatting diff:
-$(awk 'NR <= 200 { print } NR == 201 { print "... diff truncated; run the command below for the complete result." }' "$diff_file")
-
-Fix locally with: npx --yes --loglevel=error oxfmt@0.66.0 --write .
 EOF
-)"
+)" "npx --yes --loglevel=error oxfmt@0.66.0 --write ."
 
   cleanup_format
   trap - EXIT

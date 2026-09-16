@@ -42,13 +42,33 @@ GOLANGCI_LINT_VERSION="2.12.2"
 
 install_format_tools() {
   local output="$QUALITY_GATE_TOOL_DOWNLOADS/gofumpt"
-  qg_download_verified \
+  local install_output
+
+  if ! install_output=$(qg_download_verified \
     "https://github.com/mvdan/gofumpt/releases/download/v0.8.0/gofumpt_v0.8.0_linux_amd64" \
     "$output" \
     "11604bbaf7321abcc2fca2c6a37b7e9198bb1e76e5a86f297c07201e8ab1fda9" \
-    gofumpt
-  install -m 0755 "$output" "$QUALITY_GATE_TOOL_BIN/gofumpt"
-  GOBIN="$QUALITY_GATE_TOOL_BIN" go install golang.org/x/tools/cmd/goimports@v0.35.0
+    gofumpt 2>&1); then
+    qg_format_error \
+      "gofumpt could not be installed." \
+      "Retry the quality gate after verifying network access." \
+      "$install_output"
+    return 1
+  fi
+  if ! install_output=$(install -m 0755 "$output" "$QUALITY_GATE_TOOL_BIN/gofumpt" 2>&1); then
+    qg_format_error \
+      "gofumpt could not be installed." \
+      "Retry the quality gate after verifying the tool cache." \
+      "$install_output"
+    return 1
+  fi
+  if ! install_output=$(GOBIN="$QUALITY_GATE_TOOL_BIN" go install golang.org/x/tools/cmd/goimports@v0.35.0 2>&1); then
+    qg_format_error \
+      "goimports could not be installed." \
+      "Run GOBIN=\"$QUALITY_GATE_TOOL_BIN\" go install golang.org/x/tools/cmd/goimports@v0.35.0 locally." \
+      "$install_output"
+    return 1
+  fi
 }
 
 install_lint_tool() {
@@ -74,29 +94,20 @@ format_gofumpt() {
   if [[ -n "$unformatted" ]]; then
     diff_output=$(gofumpt -d . 2>&1) || diff_status=$?
     if [[ "$diff_status" -ne 0 && "$diff_status" -ne 1 ]] || [[ -z "$diff_output" ]]; then
-      qg_error "$(cat <<EOF
-gofumpt could not complete the formatting check.
-
-Formatter output:
-$diff_output
-
-Fix locally with: gofumpt -w .
-EOF
-)"
+      qg_format_error \
+        "gofumpt could not complete the formatting check." \
+        "gofumpt -w ." \
+        "$diff_output"
       return 1
     fi
-    qg_error "$(cat <<EOF
+    printf '%s\n' "$diff_output" >&2
+    qg_format_error "$(cat <<EOF
 gofumpt found unformatted files.
 
 Files requiring formatting:
 $(printf '%s\n' "$unformatted" | while IFS= read -r file; do printf -- '- %s\n' "$file"; done)
-
-Formatting diff:
-$(printf '%s\n' "$diff_output" | awk 'NR <= 200 { print } NR == 201 { print "... diff truncated; run the command below for the complete result." }')
-
-Fix locally with: gofumpt -w .
 EOF
-)"
+)" "gofumpt -w ."
     return 1
   fi
   echo "gofumpt: all files are correctly formatted."
@@ -108,29 +119,20 @@ format_goimports() {
   if [[ -n "$unformatted" ]]; then
     diff_output=$(goimports -d . 2>&1) || diff_status=$?
     if [[ "$diff_status" -ne 0 && "$diff_status" -ne 1 ]] || [[ -z "$diff_output" ]]; then
-      qg_error "$(cat <<EOF
-goimports could not complete the import organisation check.
-
-Formatter output:
-$diff_output
-
-Fix locally with: goimports -w .
-EOF
-)"
+      qg_format_error \
+        "goimports could not complete the import organisation check." \
+        "goimports -w ." \
+        "$diff_output"
       return 1
     fi
-    qg_error "$(cat <<EOF
+    printf '%s\n' "$diff_output" >&2
+    qg_format_error "$(cat <<EOF
 goimports found files with unorganised imports.
 
 Files requiring import organisation:
 $(printf '%s\n' "$unformatted" | while IFS= read -r file; do printf -- '- %s\n' "$file"; done)
-
-Formatting diff:
-$(printf '%s\n' "$diff_output" | awk 'NR <= 200 { print } NR == 201 { print "... diff truncated; run the command below for the complete result." }')
-
-Fix locally with: goimports -w .
 EOF
-)"
+)" "goimports -w ."
     return 1
   fi
   echo "goimports: all import blocks are correctly organised."
