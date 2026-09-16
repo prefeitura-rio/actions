@@ -150,6 +150,7 @@ runs:
         CHECK: ${{ inputs.check }}
         LANGUAGE: ${{ steps.lang.outputs.name }}
         FRAMEWORK: ${{ steps.typescript.outputs.framework }}
+        LANGUAGES: ${{ steps.lang.outputs.languages }}
         EXPECTED_FAILURE: ${{ inputs.expected-failure }}
       run: |
         set -euo pipefail
@@ -159,6 +160,7 @@ runs:
           --check "$CHECK"
           --language "$LANGUAGE"
           --framework "$FRAMEWORK"
+          --languages "$LANGUAGES"
           --error-file "$RUNNER_TEMP/quality-gate-error.txt"
           --success-file "$RUNNER_TEMP/quality-gate-success"
           --name-file "$name_file"
