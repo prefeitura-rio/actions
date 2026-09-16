@@ -115,46 +115,24 @@ Notes for discussion:
 Report conventional lint violations and, where applicable, complexity or
 React-specific diagnostics.
 
-### Proposed layout
+### Layout
 
 ````markdown
-## Lint - <language/framework>
+### Quality Gate: Lint (<language/framework>)
+Outcome: failure
 
-**Status:** Passed | Failed
-**Project:** `<working-directory>`
-**Tools:** `<tools that ran>`
-
-### Result
-
-<No lint violations found.>
-
-### Violations
-
-| File | Line | Rule | Message |
-|---|---:|---|---|
-| `path/to/file` | 12 | `rule-name` | Description |
-
-### How to fix
-
-```bash
-<relevant local command>
-```
-
-<details>
-<summary>Raw tool output</summary>
-
+Error:
 ```text
-<bounded output>
+<bounded lint diagnostic output>
 ```
-</details>
 ````
 
 Notes for discussion:
 
-- Keep tool names visible because a job can run more than one tool: golangci-lint; Ruff and complexipy; oxlint and react-doctor.
-- Prefer a normalized violation table when the tool output provides stable file, line, rule, and message fields.
-- If normalization is not reliable, retain the raw output but still provide a short failure headline.
-- Framework-specific TypeScript lint plugins should be named in the tools line or result details.
+- Keep the diagnostic output bounded; the complete tool output remains in the job logs.
+- Preserve the tool's native file, line, rule, and message details rather than guessing at a normalized table.
+- Render a `How to fix it` section only when the tool provides a remediation hint.
+- Framework-specific TypeScript lint diagnostics remain in the bounded oxlint output.
 
 ## Structural Lint
 

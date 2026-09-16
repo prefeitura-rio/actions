@@ -48,11 +48,7 @@ load_project_info() {
   local info
   local args=("$SCRIPT_DIR/project-info.js" "$PWD" --check "$CHECK")
   info=$(node "${args[@]}" 2>&1) || {
-    if [[ "$CHECK" == app:typecheck ]]; then
-      qg_typecheck_error project-info "$info"
-    else
-      qg_error "$info"
-    fi
+    qg_tool_error project-info "$info"
     return 1
   }
   while IFS='=' read -r key value; do
@@ -323,10 +319,10 @@ case "$CHECK" in
     else
       lint_args+=(--config "$ACTION_DIR/.oxlintrc.json" .)
     fi
-    "${lint_args[@]}"
+    qg_run_tool oxlint "${lint_args[@]}"
     echo "oxlint: no issues found."
     if [[ "$REACT" == true ]]; then
-      npx --yes react-doctor@0.9.12
+      qg_run_tool react-doctor npx --yes react-doctor@0.9.12
       echo "react-doctor: no issues found."
     fi
     ;;

@@ -176,3 +176,20 @@ The `## Test` section appears only when `expected-failure: true` is passed to
 the action. It signals that the failure is intentional and was asserted by the
 test job. In production workflows, this input is omitted and the summary remains
 a simple pass/fail report.
+
+**Lint failure invocation:**
+
+````text
+### Quality Gate: Lint (Python)
+
+Outcome: failure
+
+Error:
+```text
+<bounded lint diagnostic output>
+```
+````
+
+Lint summaries use the same structured error block as format and typecheck
+summaries. They do not include `Recent output`; complete diagnostics remain in
+the failed job logs.

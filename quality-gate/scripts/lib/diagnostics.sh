@@ -78,16 +78,11 @@ Error:
 $diagnostic
 \`\`\`
 EOF
-)
+  )
   if [[ -n "$hint" ]]; then
-    message+=$(cat <<EOF
-
-How to fix it:
-\`\`\`text
-$hint
-\`\`\`
-EOF
-)
+    message+=$'\n\nHow to fix it:\n```text\n'
+    message+="$hint"
+    message+=$'\n```'
   fi
   qg_error "$message"
 }

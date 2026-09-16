@@ -206,6 +206,47 @@ if [[ "$format_tool_summary" == *"setup noise"* ]]; then
   fail "format tool summary should omit setup noise"
 fi
 
+set +e
+QUALITY_GATE_ERROR_FILE="$ERROR_FILE" qg_run_tool uv bash -c \
+  'printf "setup noise\\nerror: The lockfile needs to be updated.\\nhint: To update the lockfile, run uv lock.\\n"; exit 2' \
+  2>/dev/null
+tool_status=$?
+set -e
+assert_equal "2" "$tool_status" "lint tool failure status"
+bash "$ROOT/scripts/render-summary.sh" \
+  --check app:lint \
+  --language python \
+  --error-file "$ERROR_FILE" \
+  --success-file "$SUCCESS_FILE" \
+  --name-file "$SUMMARY_NAME_FILE" \
+  --summary-file "$SUMMARY_FILE"
+lint_tool_summary=$(<"$SUMMARY_FILE")
+assert_equal \
+  $'### Quality Gate: Lint (Python)\nOutcome: failure\nError:\n```text\nerror: The lockfile needs to be updated.\n```\n\nHow to fix it:\n```text\nhint: To update the lockfile, run uv lock.\n```' \
+  "$lint_tool_summary" \
+  "lint summary layout"
+if [[ "$lint_tool_summary" == *"Recent output:"* || "$lint_tool_summary" == *"setup noise"* ]]; then
+  fail "lint summary should omit capture noise"
+fi
+
+QUALITY_GATE_ERROR_FILE="$ERROR_FILE" qg_tool_error \
+  golangci-lint-install \
+  $'download failed\nhint: verify network access and retry.' \
+  2>/dev/null
+bash "$ROOT/scripts/render-summary.sh" \
+  --check app:lint \
+  --language go \
+  --error-file "$ERROR_FILE" \
+  --success-file "$SUCCESS_FILE" \
+  --name-file "$SUMMARY_NAME_FILE" \
+  --summary-file "$SUMMARY_FILE"
+lint_install_summary=$(<"$SUMMARY_FILE")
+assert_contains "$lint_install_summary" "download failed" "lint installer diagnostic"
+assert_contains "$lint_install_summary" "How to fix it:" "lint installer remediation section"
+if [[ "$lint_install_summary" == *"Recent output:"* ]]; then
+  fail "lint installer summary should omit recent output"
+fi
+
 bash "$ROOT/scripts/render-summary.sh" \
   --check app:format \
   --language typescript \
@@ -273,10 +314,24 @@ set +e
 BASH_ENV="$capture_failure_env" bash -c 'printf "lint diagnostic\\n"; false' >/dev/null
 capture_status=$?
 set -e
-assert_equal "1" "$capture_status" "non-typecheck captured command status"
-non_typecheck_error=$(<"$ERROR_FILE")
-assert_contains "$non_typecheck_error" "Recent output:" "non-typecheck recent output fallback"
-assert_contains "$non_typecheck_error" "lint diagnostic" "non-typecheck tool output fallback"
+assert_equal "1" "$capture_status" "lint captured command status"
+lint_fallback=$(<"$ERROR_FILE")
+assert_contains "$lint_fallback" "Command failed (exit 1): false" "lint concise fallback"
+if [[ "$lint_fallback" == *"Recent output:"* || "$lint_fallback" == *"lint diagnostic"* ]]; then
+  fail "lint fallback should omit recent output"
+fi
+
+: > "$ERROR_FILE"
+printf 'QUALITY_GATE_ERROR_FILE=%q\nQUALITY_GATE_OUTPUT_LOG=%q\nQUALITY_GATE_CHECK=app:test\nsource %q\n' \
+  "$ERROR_FILE" "$capture_failure_log" "$ROOT/scripts/capture-failure.sh" > "$capture_failure_env"
+set +e
+BASH_ENV="$capture_failure_env" bash -c 'printf "test diagnostic\\n"; false' >/dev/null
+capture_status=$?
+set -e
+assert_equal "1" "$capture_status" "test captured command status"
+test_fallback=$(<"$ERROR_FILE")
+assert_contains "$test_fallback" "Recent output:" "test recent output fallback"
+assert_contains "$test_fallback" "test diagnostic" "test tool output fallback"
 
 : > "$ERROR_FILE"
 printf 'QUALITY_GATE_ERROR_FILE=%q\nQUALITY_GATE_OUTPUT_LOG=%q\nQUALITY_GATE_CHECK=app:typecheck\nsource %q\n' \

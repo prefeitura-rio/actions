@@ -147,7 +147,7 @@ printf '%s\n' "$SUMMARY_NAME" > "$NAME_FILE"
       printf 'Error: None\n'
     fi
     render_detected_languages
-  elif [[ "$CHECK" == app:typecheck || "$CHECK" == app:format ]]; then
+  elif [[ "$CHECK" == app:typecheck || "$CHECK" == app:format || "$CHECK" == app:lint ]]; then
     if [[ -s "$ERROR_FILE" ]]; then
       render_structured_error
     else
