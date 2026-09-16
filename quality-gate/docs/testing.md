@@ -55,12 +55,12 @@ downloads, and language override validation. The tests check both that the
 action fails and that the reported message is exact. This keeps configuration
 errors actionable instead of reducing them to an unexplained exit code.
 
-Typecheck failures use a compact diagnostic template. Tool output and hints are
-copied dynamically, while the action supplies only the section labels. Setup
-output, download progress, and the generic
-recent-output fallback are not included in typecheck summaries. Other checks
-retain their existing recent-output fallback for compatibility with their
-diagnostic assertions.
+Typecheck and format failures use a compact diagnostic template. Tool output
+and hints are copied dynamically, while the action supplies only the section
+labels. Setup output, download progress, complete formatting diffs, and the
+generic recent-output fallback are not included in these summaries. Other
+checks retain their existing recent-output fallback for compatibility with
+their diagnostic assertions.
 
 Multi-language detection is tested with `detect-only` checks on single-language
 and polyglot directories, verifying that the correct JSON array is output.
@@ -109,19 +109,21 @@ organization `pyrightconfig.json` fallback.
 For the quality checks, a failure identifies the language, check, and fixture
 that produced it. Error-path failures also show the expected and actual error
 message. Formatter failure assertions verify that the error output identifies
-the formatter, affected files, formatting diff, and a local remediation command;
-separate assertions verify friendly summary names. The final totals show whether
-the complete suite passed or whether one or more checks require investigation.
+the formatter, affected files, structured remediation section, and local
+remediation command; complete diffs remain in the job log. Separate assertions
+verify friendly summary names. The final totals show whether the complete suite
+passed or whether one or more checks require investigation.
 
 ## Summary Format
 
-The action writes a summary block to `GITHUB_STEP_SUMMARY`. The format
-distinguishes standard invocations from expected-failure test invocations:
+The action writes a summary block to `GITHUB_STEP_SUMMARY`. Typecheck and format
+failures use the same structured error layout. The format distinguishes
+standard invocations from expected-failure test invocations:
 
 **Standard invocation (production or passing fixture):**
 
 ```text
-### Quality Gate: Type Check (Python)
+### Quality Gate: Format (Python)
 
 Outcome: success
 Error:
@@ -149,18 +151,18 @@ the existing detection error is included after `Error:`.
 **Expected-failure test invocation:**
 
 ````text
-### Quality Gate: Type Check (Python)
+### Quality Gate: Format (Python)
 
 Outcome: failure
 
 Error:
 ```text
-<diagnostic output provided by basedpyright>
+<diagnostic output provided by the formatter or setup tool>
 ```
 
 How to fix it:
 ```text
-<tool-provided remediation, when available>
+<tool-provided remediation command>
 ```
 
 ## Test

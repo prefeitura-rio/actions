@@ -4,7 +4,7 @@ quality_gate_capture_failure() {
   local status=$?
 
   if [[ "$status" -ne 0 && ! -s "$QUALITY_GATE_ERROR_FILE" ]]; then
-    if [[ "${QUALITY_GATE_CHECK:-}" == app:typecheck ]]; then
+    if [[ "${QUALITY_GATE_CHECK:-}" == app:typecheck || "${QUALITY_GATE_CHECK:-}" == app:format ]]; then
       printf 'Command failed (exit %s): %s\n' "$status" "$BASH_COMMAND" > "$QUALITY_GATE_ERROR_FILE"
     else
       sleep 0.1

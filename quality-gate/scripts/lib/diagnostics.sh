@@ -9,7 +9,7 @@ qg_error() {
   printf '%s\n' "$message" >&2
 }
 
-qg_typecheck_output() {
+qg_tool_output() {
   local tool=$1
   local output=$2
   local diagnostic
@@ -33,7 +33,7 @@ qg_typecheck_output() {
   esac
 }
 
-qg_typecheck_hint() {
+qg_tool_hint() {
   local tool=$1
   local output=$2
   local hint
@@ -54,7 +54,7 @@ qg_typecheck_hint() {
   fi
 }
 
-qg_typecheck_limit() {
+qg_tool_limit() {
   local output=$1
 
   printf '%s\n' "$output" | awk '
@@ -63,14 +63,14 @@ qg_typecheck_limit() {
   '
 }
 
-qg_typecheck_error() {
+qg_tool_error() {
   local tool=$1
   local output=$2
   local diagnostic hint message
 
-  diagnostic=$(qg_typecheck_output "$tool" "$output")
-  hint=$(qg_typecheck_hint "$tool" "$output")
-  diagnostic=$(qg_typecheck_limit "$diagnostic")
+  diagnostic=$(qg_tool_output "$tool" "$output")
+  hint=$(qg_tool_hint "$tool" "$output")
+  diagnostic=$(qg_tool_limit "$diagnostic")
 
   message=$(cat <<EOF
 Error:
@@ -92,7 +92,50 @@ EOF
   qg_error "$message"
 }
 
-qg_run_typecheck() {
+qg_typecheck_output() {
+  qg_tool_output "$@"
+}
+
+qg_typecheck_hint() {
+  qg_tool_hint "$@"
+}
+
+qg_typecheck_limit() {
+  qg_tool_limit "$@"
+}
+
+qg_typecheck_error() {
+  qg_tool_error "$@"
+}
+
+qg_format_error() {
+  local diagnostic=$1
+  local fix=$2
+  local formatter_output=${3-}
+  local message
+
+  if [[ -n "$formatter_output" ]]; then
+    formatter_output=$(qg_tool_limit "$formatter_output")
+    diagnostic+=$'\n\nFormatter output:\n'
+    diagnostic+="$formatter_output"
+  fi
+  diagnostic=$(qg_tool_limit "$diagnostic")
+  message=$(cat <<EOF
+Error:
+\`\`\`text
+$diagnostic
+\`\`\`
+
+How to fix it:
+\`\`\`text
+$fix
+\`\`\`
+EOF
+)
+  qg_error "$message"
+}
+
+qg_run_tool() {
   local tool=$1
   shift
   local output status
@@ -104,6 +147,10 @@ qg_run_typecheck() {
     status=$?
   fi
 
-  qg_typecheck_error "$tool" "$output"
+  qg_tool_error "$tool" "$output"
   return "$status"
+}
+
+qg_run_typecheck() {
+  qg_run_tool "$@"
 }

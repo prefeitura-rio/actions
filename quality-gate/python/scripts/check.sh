@@ -42,8 +42,8 @@ cd "$PROJECT_DIR"
 
 sync_project() {
   if [[ -f pyproject.toml ]]; then
-    if [[ "$CHECK" == app:typecheck ]]; then
-      qg_run_typecheck \
+    if [[ "$CHECK" == app:typecheck || "$CHECK" == app:format ]]; then
+      qg_run_tool \
         uv \
         uv sync --frozen --all-groups
     else
@@ -135,15 +135,10 @@ format_python() {
   ' | sort -u)
   if [[ -z "$files" ]]; then
     printf '%s\n' "$check_output"
-    qg_error "$(cat <<EOF
-ruff format could not complete the formatting check.
-
-Formatter output:
-$check_output
-
-Fix locally with: uvx ruff@0.16.4 format .
-EOF
-)"
+    qg_format_error \
+      "ruff format could not complete the formatting check." \
+      "uvx ruff@0.16.4 format ." \
+      "$check_output"
     return 1
   fi
 
@@ -151,31 +146,21 @@ EOF
   diff_output=$(uvx ruff@0.16.4 format --diff . 2>&1) || diff_status=$?
   if [[ "$diff_status" -ne 0 && "$diff_status" -ne 1 ]] || [[ -z "$diff_output" ]]; then
     printf '%s\n' "$diff_output"
-    qg_error "$(cat <<EOF
-ruff format could not complete the formatting check.
-
-Formatter output:
-$diff_output
-
-Fix locally with: uvx ruff@0.16.4 format .
-EOF
-)"
+    qg_format_error \
+      "ruff format could not complete the formatting check." \
+      "uvx ruff@0.16.4 format ." \
+      "$diff_output"
     return 1
   fi
   printf '%s\n' "$check_output"
   printf '%s\n' "$diff_output"
-  qg_error "$(cat <<EOF
+  qg_format_error "$(cat <<EOF
 ruff format found formatting differences.
 
 Files requiring formatting:
 $(printf '%s\n' "$files" | while IFS= read -r file; do printf -- '- %s\n' "$file"; done)
-
-Formatting diff:
-$(printf '%s\n' "$diff_output" | awk 'NR <= 200 { print } NR == 201 { print "... diff truncated; run the command below for the complete result." }')
-
-Fix locally with: uvx ruff@0.16.4 format .
 EOF
-)"
+)" "uvx ruff@0.16.4 format ."
   return 1
 }
 
