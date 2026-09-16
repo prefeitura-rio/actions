@@ -104,12 +104,12 @@ jobs:
               }
               ;;
           esac
-      - name: Assert rendered step summary
+      - name: Assert rendered summary payload
         env:
           CASE: ${{ matrix.case }}
         run: |
           set -euo pipefail
-          summary=$(<"$GITHUB_STEP_SUMMARY")
+          summary=$(<"$RUNNER_TEMP/quality-gate-summary.md")
           case "$CASE" in
             single-language)
               expected=$'### Quality Gate: Detect Language\nOutcome: success\nError: None\nLanguages Detected:\n- Go'
