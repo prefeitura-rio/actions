@@ -142,45 +142,32 @@ Report organization and repository-local ast-grep rule violations. The key
 piece of context is the rule source, because failures can come from mandatory
 organization rules or additive repository-local rules.
 
-### Proposed layout
+### Failure layout
 
 ````markdown
-## Structural Lint - <language/framework>
+### Quality Gate: Structural Lint (<language/framework>)
 
-**Status:** Passed | Failed
-**Project:** `<working-directory>`
-**Rule sets:** Organization, Repository-local | Organization only
+Outcome: failure
 
-### Result
+Error:
+```text
+Command failed (exit 1): <quality-gate command>
+```
 
-<All structural rules passed.>
-
-### Violations
-
-| File | Line | Rule set | Rule | Message |
-|---|---:|---|---|---|
-| `path/to/file` | 8 | Organization | `no-panic` | Description |
-
-### How to fix
-
-Review the rule violation and update the matching code. If the rule is
-repository-local, see `<rule/config path>`.
-
-<details>
-<summary>Raw ast-grep output</summary>
+Recent output:
 
 ```text
 <bounded output>
 ```
-</details>
 ````
 
 Notes for discussion:
 
-- Explicitly distinguish organization rules from repository-local rules.
-- Include the rule name prominently; it is the fastest way to locate the policy and understand the violation.
-- On success, state whether repository-local rules were run or skipped.
-- Do not imply that repository-local rules replace organization rules; they are additive.
+- Keep the existing ast-grep output intact, including rule names, source excerpts, and summaries.
+- Fence the command failure separately from the recent tool output so Markdown punctuation cannot change the layout.
+- The recent output is bounded to the last 80 log lines by the failure-capture helper.
+- Do not add a generic `How to fix it` section; ast-grep does not provide a reliable remediation command.
+- On success, state whether repository-local rules were run or skipped in the job logs.
 
 ## Type Check
 

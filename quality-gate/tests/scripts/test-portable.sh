@@ -334,6 +334,32 @@ assert_contains "$test_fallback" "Recent output:" "test recent output fallback"
 assert_contains "$test_fallback" "test diagnostic" "test tool output fallback"
 
 : > "$ERROR_FILE"
+printf 'QUALITY_GATE_ERROR_FILE=%q\nQUALITY_GATE_OUTPUT_LOG=%q\nQUALITY_GATE_CHECK=app:strlint\nsource %q\n' \
+  "$ERROR_FILE" "$capture_failure_log" "$ROOT/scripts/capture-failure.sh" > "$capture_failure_env"
+set +e
+BASH_ENV="$capture_failure_env" bash -c 'printf "ast-grep diagnostic\n"; false' >/dev/null
+capture_status=$?
+set -e
+assert_equal "1" "$capture_status" "structural-lint captured command status"
+strlint_fallback=$(<"$ERROR_FILE")
+assert_contains "$strlint_fallback" "Recent output:" "structural-lint recent output fallback"
+assert_contains "$strlint_fallback" "ast-grep diagnostic" "structural-lint tool output fallback"
+bash "$ROOT/scripts/render-summary.sh" \
+  --check app:strlint \
+  --language python \
+  --error-file "$ERROR_FILE" \
+  --success-file "$SUCCESS_FILE" \
+  --name-file "$SUMMARY_NAME_FILE" \
+  --summary-file "$SUMMARY_FILE"
+strlint_summary=$(<"$SUMMARY_FILE")
+assert_contains "$strlint_summary" $'Error:\n```text\nCommand failed (exit 1): false\n```' "structural-lint command section"
+assert_contains "$strlint_summary" $'Recent output:\n```text\n' "structural-lint fenced output"
+assert_contains "$strlint_summary" "ast-grep diagnostic" "structural-lint diagnostic in summary"
+if [[ "$strlint_summary" == *$'Recent output:\nast-grep diagnostic'* ]]; then
+  fail "structural-lint output should be fenced"
+fi
+
+: > "$ERROR_FILE"
 printf 'QUALITY_GATE_ERROR_FILE=%q\nQUALITY_GATE_OUTPUT_LOG=%q\nQUALITY_GATE_CHECK=app:typecheck\nsource %q\n' \
   "$ERROR_FILE" "$capture_failure_log" "$ROOT/scripts/capture-failure.sh" > "$capture_failure_env"
 set +e
