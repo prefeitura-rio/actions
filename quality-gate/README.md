@@ -176,6 +176,10 @@ affected files and a local remediation command. The complete formatting diff is
 written to the job log rather than the summary. Formatter execution failures
 include formatter output when available and the remediation command.
 
+Lint failures use the same bounded `Error:` summary template. Tool-provided
+remediation hints are rendered under `How to fix it`; generic lint failures do
+not include the legacy `Recent output` section.
+
 Python `app:test` includes coverage; see the [Python Coverage Policy](#python-coverage-policy)
 for the default threshold and override rules.
 

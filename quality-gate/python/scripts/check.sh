@@ -42,7 +42,7 @@ cd "$PROJECT_DIR"
 
 sync_project() {
   if [[ -f pyproject.toml ]]; then
-    if [[ "$CHECK" == app:typecheck || "$CHECK" == app:format ]]; then
+    if [[ "$CHECK" == app:typecheck || "$CHECK" == app:format || "$CHECK" == app:lint ]]; then
       qg_run_tool \
         uv \
         uv sync --frozen --all-groups
@@ -206,15 +206,17 @@ case "$CHECK" in
       exit 1
     fi
     sync_project
+    lint_args=(uvx ruff@0.16.4 check)
     if [[ -f ruff.toml || -f .ruff.toml ]]; then
-      uvx ruff@0.16.4 check .
+      lint_args+=(.)
     elif grep -q '^\[tool\.ruff' pyproject.toml; then
-      uvx ruff@0.16.4 check .
+      lint_args+=(.)
     else
-      uvx ruff@0.16.4 check --config "$ACTION_DIR/ruff.toml" .
+      lint_args+=(--config "$ACTION_DIR/ruff.toml" .)
     fi
+    qg_run_tool ruff "${lint_args[@]}"
     echo "ruff check: no issues found."
-    uvx complexipy@7.0.1 .
+    qg_run_tool complexipy uvx complexipy@7.0.1 .
     echo "complexipy: no complexity issues found."
     ;;
   app:strlint)

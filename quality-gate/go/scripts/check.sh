@@ -84,7 +84,11 @@ install_lint_tool() {
   fi
 
   if [[ "$is_valid" != true ]]; then
-    GOBIN="$QUALITY_GATE_TOOL_BIN" go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v$GOLANGCI_LINT_VERSION"
+    local install_output
+    if ! install_output=$(GOBIN="$QUALITY_GATE_TOOL_BIN" go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v$GOLANGCI_LINT_VERSION" 2>&1); then
+      qg_tool_error golangci-lint-install "$install_output"
+      return 1
+    fi
   fi
 }
 
@@ -178,9 +182,9 @@ case "$CHECK" in
   app:lint)
     install_lint_tool
     if [[ -f .golangci.yml || -f .golangci.yaml ]]; then
-      golangci-lint run
+      qg_run_tool golangci-lint golangci-lint run
     else
-      golangci-lint run --config "$ACTION_DIR/.golangci.yml"
+      qg_run_tool golangci-lint golangci-lint run --config "$ACTION_DIR/.golangci.yml"
     fi
     ;;
   app:strlint)

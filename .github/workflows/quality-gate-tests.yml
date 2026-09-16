@@ -248,9 +248,18 @@ jobs:
         if: matrix.check == 'app:lint'
         env:
           ERROR_MESSAGE: ${{ steps.go-fail.outputs.error_message }}
+          SUMMARY: ${{ steps.go-fail.outputs.summary }}
         run: |
           [[ "$ERROR_MESSAGE" == *"main.go"* ]] || {
             echo "::error::Expected golangci-lint to identify main.go in the failure output"
+            exit 1
+          }
+          [[ "$ERROR_MESSAGE" == *"Error:"* && "$ERROR_MESSAGE" != *"Recent output:"* ]] || {
+            echo "::error::Expected the structured Go lint failure template"
+            exit 1
+          }
+          [[ "$SUMMARY" == *"### Quality Gate: Lint (Go)"* && "$SUMMARY" == *"Error:"* && "$SUMMARY" != *"Recent output:"* ]] || {
+            echo "::error::Expected the rendered Go lint summary"
             exit 1
           }
 
@@ -405,9 +414,18 @@ jobs:
         if: matrix.check == 'app:lint' && matrix.failure_kind == 'ruff'
         env:
           ERROR_MESSAGE: ${{ steps.py-fail.outputs.error_message }}
+          SUMMARY: ${{ steps.py-fail.outputs.summary }}
         run: |
           [[ "$ERROR_MESSAGE" == *"F401"* || "$ERROR_MESSAGE" == *"os"* ]] || {
             echo "::error::Expected Ruff to report unused import violation"
+            exit 1
+          }
+          [[ "$ERROR_MESSAGE" == *"Error:"* && "$ERROR_MESSAGE" != *"Recent output:"* ]] || {
+            echo "::error::Expected the structured Ruff lint failure template"
+            exit 1
+          }
+          [[ "$SUMMARY" == *"### Quality Gate: Lint (Python)"* && "$SUMMARY" == *"Error:"* && "$SUMMARY" != *"Recent output:"* ]] || {
+            echo "::error::Expected the rendered Ruff lint summary"
             exit 1
           }
 
@@ -435,6 +453,7 @@ jobs:
         if: matrix.failure_kind == 'complexipy'
         env:
           ERROR_MESSAGE: ${{ steps.py-fail.outputs.error_message }}
+          SUMMARY: ${{ steps.py-fail.outputs.summary }}
         run: |
           [[ "$ERROR_MESSAGE" == *"calculate_total"* ]] || {
             echo "::error::Expected the complexipy failure to identify calculate_total"
@@ -442,6 +461,14 @@ jobs:
           }
           [[ "$ERROR_MESSAGE" == *"FAILED"* ]] || {
             echo "::error::Expected complexipy to report the function as failed"
+            exit 1
+          }
+          [[ "$ERROR_MESSAGE" == *"Error:"* && "$ERROR_MESSAGE" != *"Recent output:"* ]] || {
+            echo "::error::Expected the structured complexipy lint failure template"
+            exit 1
+          }
+          [[ "$SUMMARY" == *"### Quality Gate: Lint (Python)"* && "$SUMMARY" == *"Error:"* && "$SUMMARY" != *"Recent output:"* ]] || {
+            echo "::error::Expected the rendered complexipy lint summary"
             exit 1
           }
 
@@ -713,9 +740,18 @@ jobs:
         if: matrix.check == 'app:lint' && matrix.framework != 'next'
         env:
           ERROR_MESSAGE: ${{ steps.ts-fail.outputs.error_message }}
+          SUMMARY: ${{ steps.ts-fail.outputs.summary }}
         run: |
           [[ "$ERROR_MESSAGE" == *"no-var"* || "$ERROR_MESSAGE" == *"react-doctor"* || "$ERROR_MESSAGE" == *"oxlint"* || "$ERROR_MESSAGE" == *"var "* ]] || {
             echo "::error::Expected oxlint to report lint violation"
+            exit 1
+          }
+          [[ "$ERROR_MESSAGE" == *"Error:"* && "$ERROR_MESSAGE" != *"Recent output:"* ]] || {
+            echo "::error::Expected the structured TypeScript lint failure template"
+            exit 1
+          }
+          [[ "$SUMMARY" == *"### Quality Gate: Lint (Typescript"* && "$SUMMARY" == *"Error:"* && "$SUMMARY" != *"Recent output:"* ]] || {
+            echo "::error::Expected the rendered TypeScript lint summary"
             exit 1
           }
 
@@ -723,9 +759,18 @@ jobs:
         if: matrix.framework == 'next' && matrix.check == 'app:lint'
         env:
           ERROR_MESSAGE: ${{ steps.ts-fail.outputs.error_message }}
+          SUMMARY: ${{ steps.ts-fail.outputs.summary }}
         run: |
           [[ "$ERROR_MESSAGE" == *"no-img-element"* ]] || {
             echo "::error::Expected the Oxlint Next.js plugin to report no-img-element"
+            exit 1
+          }
+          [[ "$ERROR_MESSAGE" == *"Error:"* && "$ERROR_MESSAGE" != *"Recent output:"* ]] || {
+            echo "::error::Expected the structured Next.js lint failure template"
+            exit 1
+          }
+          [[ "$SUMMARY" == *"### Quality Gate: Lint (Typescript - Next.js)"* && "$SUMMARY" == *"Error:"* && "$SUMMARY" != *"Recent output:"* ]] || {
+            echo "::error::Expected the rendered Next.js lint summary"
             exit 1
           }
 
