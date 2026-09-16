@@ -131,6 +131,26 @@ render_structured_error() {
   printf '\n```\n'
 }
 
+render_structural_error() {
+  local raw command_failure recent_output text_fence='```text' fence='```'
+
+  if [[ ! -s "$ERROR_FILE" ]]; then
+    printf 'Error:\nNone\n'
+    return
+  fi
+
+  raw=$(<"$ERROR_FILE")
+  if [[ "$raw" == *$'\n\nRecent output:\n'* ]]; then
+    command_failure=${raw%%$'\n\nRecent output:\n'*}
+    recent_output=${raw#*$'\n\nRecent output:\n'}
+    printf 'Error:\n%s\n%s\n%s\n\nRecent output:\n%s\n%s\n%s\n' \
+      "$text_fence" "$command_failure" "$fence" \
+      "$text_fence" "$recent_output" "$fence"
+  else
+    printf 'Error:\n%s\n%s\n%s\n' "$text_fence" "$raw" "$fence"
+  fi
+}
+
 printf '%s\n' "$SUMMARY_NAME" > "$NAME_FILE"
 {
   printf '### Quality Gate: %s\n' "$SUMMARY_NAME"
@@ -153,6 +173,8 @@ printf '%s\n' "$SUMMARY_NAME" > "$NAME_FILE"
     else
       printf 'Error:\nNone\n'
     fi
+  elif [[ "$CHECK" == app:strlint ]]; then
+    render_structural_error
   else
     printf 'Error:\n'
     if [[ -s "$ERROR_FILE" ]]; then

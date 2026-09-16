@@ -58,9 +58,9 @@ errors actionable instead of reducing them to an unexplained exit code.
 Typecheck and format failures use a compact diagnostic template. Tool output
 and hints are copied dynamically, while the action supplies only the section
 labels. Setup output, download progress, complete formatting diffs, and the
-generic recent-output fallback are not included in these summaries. Other
-checks retain their existing recent-output fallback for compatibility with
-their diagnostic assertions.
+generic recent-output fallback are not included in these summaries. Structural
+lint retains its recent-output fallback, but renders the command failure and
+ast-grep output in separate fenced sections.
 
 Multi-language detection is tested with `detect-only` checks on single-language
 and polyglot directories, verifying that the correct JSON array is output.
@@ -193,3 +193,25 @@ Error:
 Lint summaries use the same structured error block as format and typecheck
 summaries. They do not include `Recent output`; complete diagnostics remain in
 the failed job logs.
+
+**Structural-lint failure invocation:**
+
+````text
+### Quality Gate: Structural Lint (Python)
+
+Outcome: failure
+
+Error:
+```text
+Command failed (exit 1): <quality-gate command>
+```
+
+Recent output:
+```text
+<bounded ast-grep output>
+```
+````
+
+Structural-lint summaries preserve ast-grep's native source excerpts and rule
+messages. The command failure and recent output are fenced separately so
+Markdown punctuation in diagnostics does not alter the summary layout.
