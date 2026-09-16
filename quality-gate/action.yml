@@ -40,6 +40,9 @@ outputs:
   summary_name:
     description: Friendly check, language, and framework name used in the job summary.
     value: ${{ steps.summary.outputs.name }}
+  summary:
+    description: Rendered Markdown summary for the quality-gate check.
+    value: ${{ steps.summary.outputs.summary }}
 runs:
   using: composite
   steps:
@@ -173,6 +176,12 @@ runs:
         fi
         status=0
         bash "${ACTION_DIRECTORY}/scripts/render-summary.sh" "${summary_args[@]}" || status=$?
-        printf 'name=%s\n' "$(<"$name_file")" >> "$GITHUB_OUTPUT"
+        summary_delimiter="QUALITY_GATE_SUMMARY_$(date +%s%N)"
+        {
+          printf 'name=%s\n' "$(<"$name_file")"
+          printf 'summary<<%s\n' "$summary_delimiter"
+          cat "$summary_file"
+          printf '%s\n' "$summary_delimiter"
+        } >> "$GITHUB_OUTPUT"
         cat "$summary_file" >> "$GITHUB_STEP_SUMMARY"
         exit "$status"

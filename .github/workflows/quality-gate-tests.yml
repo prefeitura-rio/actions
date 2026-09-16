@@ -292,6 +292,7 @@ jobs:
         if: matrix.check == 'app:format'
         env:
           ERROR_MESSAGE: ${{ steps.go-fail.outputs.error_message }}
+          SUMMARY: ${{ steps.go-fail.outputs.summary }}
         run: |
           [[ "$ERROR_MESSAGE" == *"gofumpt found unformatted files."* ]] || {
             echo "::error::Expected gofumpt details in the format failure"
@@ -313,7 +314,6 @@ jobs:
             echo "::error::Expected the unformatted Go file in the format failure"
             exit 1
           }
-          SUMMARY=$(<"$GITHUB_STEP_SUMMARY")
           [[ "$SUMMARY" == *"### Quality Gate: Format (Go)"* && "$SUMMARY" == *"How to fix it:"* ]] || {
             echo "::error::Expected the rendered Go format summary"
             exit 1
@@ -467,6 +467,7 @@ jobs:
         if: matrix.check == 'app:format'
         env:
           ERROR_MESSAGE: ${{ steps.py-fail.outputs.error_message }}
+          SUMMARY: ${{ steps.py-fail.outputs.summary }}
         run: |
           [[ "$ERROR_MESSAGE" == *"ruff format found formatting differences."* ]] || {
             echo "::error::Expected Ruff format details in the format failure"
@@ -488,7 +489,6 @@ jobs:
             echo "::error::Expected the unformatted Python file in the format failure"
             exit 1
           }
-          SUMMARY=$(<"$GITHUB_STEP_SUMMARY")
           [[ "$SUMMARY" == *"### Quality Gate: Format (Python)"* && "$SUMMARY" == *"How to fix it:"* ]] || {
             echo "::error::Expected the rendered Python format summary"
             exit 1
@@ -768,6 +768,7 @@ jobs:
         env:
           ERROR_MESSAGE: ${{ steps.ts-fail.outputs.error_message }}
           EXPECTED_FILE: ${{ matrix.framework == 'typescript' && 'src/app.ts' || matrix.framework == 'vue' && 'src/App.vue' || matrix.framework == 'next' && 'app/page.tsx' || 'nuxt.config.ts' }}
+          SUMMARY: ${{ steps.ts-fail.outputs.summary }}
         run: |
           [[ "$ERROR_MESSAGE" == *"oxfmt found formatting differences in"* ]] || {
             echo "::error::Expected Oxfmt details in the format failure"
@@ -793,7 +794,6 @@ jobs:
             echo "::error::Expected the custom Oxfmt report to survive the error trap"
             exit 1
           }
-          SUMMARY=$(<"$GITHUB_STEP_SUMMARY")
           [[ "$SUMMARY" == *"### Quality Gate: Format (Typescript"* && "$SUMMARY" == *"How to fix it:"* ]] || {
             echo "::error::Expected the rendered TypeScript format summary"
             exit 1
@@ -1182,8 +1182,9 @@ jobs:
             exit 1
           }
       - name: assert exact error message
+        env:
+          ACTUAL: ${{ steps.no-lockfile.outputs.error_message }}
         run: |
-          ACTUAL="${{ steps.no-lockfile.outputs.error_message }}"
           [[ "$ACTUAL" == *"Error:"* && "$ACTUAL" == *"No lockfile found for TypeScript project."* && "$ACTUAL" == *"How to fix it:"* && "$ACTUAL" == *"Commit pnpm-lock.yaml (pnpm) or package-lock.json (npm)."* ]] || {
             echo "::error::Expected structured TypeScript metadata error, got: '${ACTUAL}'"
             exit 1
@@ -1295,12 +1296,13 @@ jobs:
           expected-failure: true
         continue-on-error: true
       - name: assert sha mismatch detected, message correct, file cleaned up
+        env:
+          ACTUAL: ${{ steps.gofumpt-mismatch.outputs.error_message }}
         run: |
           [[ "${{ steps.gofumpt-mismatch.outcome }}" == "failure" ]] || {
             echo "::error::Expected action to fail on gofumpt sha mismatch but it succeeded"
             exit 1
           }
-          ACTUAL="${{ steps.gofumpt-mismatch.outputs.error_message }}"
           [[ "$ACTUAL" == *"Error:"* && "$ACTUAL" == *"gofumpt could not be installed."* && "$ACTUAL" == *"sha256 mismatch for gofumpt"* && "$ACTUAL" == *"How to fix it:"* ]] || {
             echo "::error::Expected a structured gofumpt installation failure, got: '${ACTUAL}'"
             exit 1
