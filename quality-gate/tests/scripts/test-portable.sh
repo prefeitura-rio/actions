@@ -149,6 +149,40 @@ bash "$ROOT/scripts/render-summary.sh" \
   --summary-file "$SUMMARY_FILE"
 assert_equal "Format (Typescript - Next.js)" "$(<"$SUMMARY_NAME_FILE")" "Next.js summary name"
 
+(
+  export QUALITY_GATE_ERROR_FILE="$ERROR_FILE"
+  # shellcheck disable=SC1091
+  source "$ROOT/scripts/lib/diagnostics.sh"
+  qg_typecheck_error \
+    uv \
+    'uv sync --frozen --all-groups' \
+    $'setup noise\nerror: The lockfile needs to be updated.\nhint: To update the lockfile, run uv lock.'
+) 2>/dev/null
+rm -f "$SUCCESS_FILE"
+bash "$ROOT/scripts/render-summary.sh" \
+  --check app:typecheck \
+  --language python \
+  --error-file "$ERROR_FILE" \
+  --success-file "$SUCCESS_FILE" \
+  --name-file "$SUMMARY_NAME_FILE" \
+  --summary-file "$SUMMARY_FILE"
+typecheck_summary=$(<"$SUMMARY_FILE")
+assert_contains "$typecheck_summary" "#### Error" "typecheck diagnostic box"
+assert_contains "$typecheck_summary" "error: The lockfile needs to be updated." "typecheck tool diagnostic"
+assert_contains "$typecheck_summary" "hint: To update the lockfile, run uv lock." "typecheck tool hint"
+assert_contains "$typecheck_summary" "uv sync --frozen --all-groups" "typecheck expected command"
+if [[ "$typecheck_summary" == *"Recent output:"* || "$typecheck_summary" == *"setup noise"* ]]; then
+  fail "typecheck summary should omit capture noise"
+fi
+
+capture_env="$TEMP_DIR/bash-env"
+capture_log="$TEMP_DIR/capture.log"
+printf 'QUALITY_GATE_ERROR_FILE=%q\nQUALITY_GATE_OUTPUT_LOG=%q\nsource %q\n' \
+  "$ERROR_FILE" "$capture_log" "$ROOT/scripts/capture-failure.sh" > "$capture_env"
+BASH_ENV="$capture_env" bash -c 'printf "outer\\n"; bash -c '\''printf "inner\\n"'\''' >/dev/null
+assert_equal "1" "$(awk '$0 == "outer" { count++ } END { print count + 0 }' "$capture_log")" "outer capture count"
+assert_equal "1" "$(awk '$0 == "inner" { count++ } END { print count + 0 }' "$capture_log")" "nested capture count"
+
 EXPECTED_FAILURE_SUMMARY=$(mktemp)
 bash "$ROOT/scripts/render-summary.sh" \
   --check app:typecheck \

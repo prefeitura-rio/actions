@@ -226,47 +226,39 @@ Report compiler and static-analysis diagnostics with enough context to locate
 the error quickly. This job can use different checkers based on language,
 project configuration, and TypeScript framework.
 
-### Proposed layout
+### Layout
 
 ````markdown
-## Type Check - <language/framework>
+### Quality Gate: Type Check (<language/framework>)
+Outcome: failure
 
-**Status:** Passed | Failed
-**Project:** `<working-directory>`
-**Checker:** `<go vet/build | basedpyright | tsc/vue-tsc/nuxt typecheck/project script>`
+#### Error
 
-### Result
-
-<No type errors found.>
-
-### Diagnostics
-
-| File | Location | Code | Message |
-|---|---|---|---|
-| `path/to/file` | `12:4` | `TS2322` | Description |
-
-### How to fix
-
-```bash
-<local typecheck command>
-```
-
-<details>
-<summary>Raw checker output</summary>
-
+Error:
 ```text
-<bounded output>
+<diagnostic output provided by the failed tool>
 ```
-</details>
+
+What was expected:
+```text
+<the failed command should exit successfully>
+```
+
+How to fix it:
+```text
+<tool-provided hint, or a neutral command to rerun locally>
+```
 ````
 
 Notes for discussion:
 
-- Show the effective checker, especially when a project script overrides the fallback.
-- Include configuration failures such as a missing lockfile as a clear setup error rather than an empty diagnostics table.
-- For Go, represent `go vet` and `go build` as separate result rows if the implementation needs to identify which phase failed.
-- For Python, preserve diagnostic codes such as `reportReturnType` and `reportMissingParameterType`.
-- For TypeScript, preserve compiler codes and framework-specific checker names.
+- The template is static, but error and remediation contents come from the tool whenever available.
+- The expected section states only the command success contract; it must not invent a root cause.
+- Tool hints such as `uv`'s `hint:` lines are preserved in the remediation section.
+- One box represents one failed command or phase. Multiple diagnostics from that command remain together.
+- Setup, download, and generic recent-output noise must not be copied into the summary.
+- Diagnostic output is bounded; the complete tool output remains in the job logs.
+- If a tool provides no remediation hint, show the exact command and neutral guidance to resolve the reported diagnostics.
 
 ## Test
 

@@ -273,6 +273,10 @@ jobs:
             echo "::error::Expected go compiler to report undefined: undefinedVar"
             exit 1
           }
+          [[ "$ERROR_MESSAGE" == *"#### Error"* && "$ERROR_MESSAGE" == *"What was expected:"* && "$ERROR_MESSAGE" == *"How to fix it:"* ]] || {
+            echo "::error::Expected the Go typecheck diagnostic template"
+            exit 1
+          }
 
       - name: assert test failure
         if: matrix.check == 'app:test'
@@ -435,6 +439,14 @@ jobs:
         run: |
           [[ "$ERROR_MESSAGE" == *"__init__.py"* && "$ERROR_MESSAGE" == *"reportReturnType"* ]] || {
             echo "::error::Expected basedpyright to identify __init__.py with reportReturnType error"
+            exit 1
+          }
+          [[ "$ERROR_MESSAGE" == *"#### Error"* && "$ERROR_MESSAGE" == *"What was expected:"* && "$ERROR_MESSAGE" == *"How to fix it:"* ]] || {
+            echo "::error::Expected the typecheck diagnostic template"
+            exit 1
+          }
+          [[ "$ERROR_MESSAGE" != *"Recent output:"* ]] || {
+            echo "::error::Typecheck error should not include recent output noise"
             exit 1
           }
 
@@ -708,6 +720,10 @@ jobs:
         run: |
           [[ "$ERROR_MESSAGE" == *"error TS2322"* ]] || {
             echo "::error::Expected TypeScript compiler to report error TS2322 (type mismatch)"
+            exit 1
+          }
+          [[ "$ERROR_MESSAGE" == *"#### Error"* && "$ERROR_MESSAGE" == *"How to fix it:"* ]] || {
+            echo "::error::Expected the TypeScript typecheck diagnostic template"
             exit 1
           }
 
