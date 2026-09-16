@@ -273,7 +273,7 @@ jobs:
             echo "::error::Expected go compiler to report undefined: undefinedVar"
             exit 1
           }
-          [[ "$ERROR_MESSAGE" == *"#### Error"* && "$ERROR_MESSAGE" == *"What was expected:"* && "$ERROR_MESSAGE" == *"How to fix it:"* ]] || {
+          [[ "$ERROR_MESSAGE" == *"Error:"* && "$ERROR_MESSAGE" != *"What was expected:"* ]] || {
             echo "::error::Expected the Go typecheck diagnostic template"
             exit 1
           }
@@ -441,7 +441,7 @@ jobs:
             echo "::error::Expected basedpyright to identify __init__.py with reportReturnType error"
             exit 1
           }
-          [[ "$ERROR_MESSAGE" == *"#### Error"* && "$ERROR_MESSAGE" == *"What was expected:"* && "$ERROR_MESSAGE" == *"How to fix it:"* ]] || {
+          [[ "$ERROR_MESSAGE" == *"Error:"* && "$ERROR_MESSAGE" != *"What was expected:"* ]] || {
             echo "::error::Expected the typecheck diagnostic template"
             exit 1
           }
@@ -722,7 +722,7 @@ jobs:
             echo "::error::Expected TypeScript compiler to report error TS2322 (type mismatch)"
             exit 1
           }
-          [[ "$ERROR_MESSAGE" == *"#### Error"* && "$ERROR_MESSAGE" == *"How to fix it:"* ]] || {
+          [[ "$ERROR_MESSAGE" == *"Error:"* && "$ERROR_MESSAGE" != *"What was expected:"* && "$ERROR_MESSAGE" != *"See the typecheck diagnostics"* ]] || {
             echo "::error::Expected the TypeScript typecheck diagnostic template"
             exit 1
           }

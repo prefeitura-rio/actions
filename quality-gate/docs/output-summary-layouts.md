@@ -232,33 +232,26 @@ project configuration, and TypeScript framework.
 ### Quality Gate: Type Check (<language/framework>)
 Outcome: failure
 
-#### Error
-
 Error:
 ```text
 <diagnostic output provided by the failed tool>
 ```
 
-What was expected:
-```text
-<the failed command should exit successfully>
-```
-
 How to fix it:
 ```text
-<tool-provided hint, or a neutral command to rerun locally>
+<tool-provided remediation, when available>
 ```
 ````
 
 Notes for discussion:
 
 - The template is static, but error and remediation contents come from the tool whenever available.
-- The expected section states only the command success contract; it must not invent a root cause.
+- The remediation section is shown only when the tool provides a hint or suggested command.
 - Tool hints such as `uv`'s `hint:` lines are preserved in the remediation section.
-- One box represents one failed command or phase. Multiple diagnostics from that command remain together.
+- One error section represents one failed command or phase. Multiple diagnostics from that command remain together.
 - For typecheck summaries, setup, download, and generic recent-output noise must not be copied into the summary.
 - Diagnostic output is bounded; the complete tool output remains in the job logs.
-- If a tool provides no remediation hint, show the exact command and neutral guidance to resolve the reported diagnostics.
+- If a tool provides no remediation hint, only the error section is shown.
 
 ## Test
 
