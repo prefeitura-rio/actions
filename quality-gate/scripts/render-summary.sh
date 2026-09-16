@@ -4,6 +4,7 @@ set -euo pipefail
 CHECK=
 LANGUAGE=
 FRAMEWORK=
+LANGUAGES=
 ERROR_FILE=
 SUCCESS_FILE=
 NAME_FILE=
@@ -22,6 +23,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --framework)
       FRAMEWORK=${2-}
+      shift 2
+      ;;
+    --languages)
+      LANGUAGES=${2-}
       shift 2
       ;;
     --error-file)
@@ -57,6 +62,7 @@ case "$CHECK" in
   app:strlint) CHECK_NAME='Structural Lint' ;;
   app:typecheck) CHECK_NAME='Type Check' ;;
   app:test) CHECK_NAME=Test ;;
+  detect-only) CHECK_NAME='Detect Language' ;;
   *) CHECK_NAME=$CHECK ;;
 esac
 
@@ -86,6 +92,34 @@ else
   TEST_SCENARIO=
 fi
 
+render_detected_languages() {
+  local raw=$LANGUAGES
+  local language label
+  local -a detected=()
+
+  if [[ "$raw" == \[*\] ]]; then
+    raw=${raw:1:${#raw}-2}
+  fi
+  raw=${raw//\"/}
+
+  if [[ -z "$raw" ]]; then
+    printf 'Languages Detected: None\n'
+    return
+  fi
+
+  printf 'Languages Detected:\n'
+  IFS=',' read -r -a detected <<< "$raw"
+  for language in "${detected[@]}"; do
+    case "$language" in
+      go) label=Go ;;
+      python) label=Python ;;
+      typescript) label=TypeScript ;;
+      *) label=$language ;;
+    esac
+    printf -- '- %s\n' "$label"
+  done
+}
+
 printf '%s\n' "$SUMMARY_NAME" > "$NAME_FILE"
 {
   printf '### Quality Gate: %s\n' "$SUMMARY_NAME"
@@ -94,11 +128,21 @@ printf '%s\n' "$SUMMARY_NAME" > "$NAME_FILE"
   else
     printf 'Outcome: failure\n'
   fi
-  printf 'Error:\n'
-  if [[ -s "$ERROR_FILE" ]]; then
-    cat "$ERROR_FILE"
+  if [[ "$CHECK" == detect-only ]]; then
+    if [[ -s "$ERROR_FILE" ]]; then
+      error_message=$(<"$ERROR_FILE")
+      printf 'Error: %s\n' "$error_message"
+    else
+      printf 'Error: None\n'
+    fi
+    render_detected_languages
   else
-    printf 'None\n'
+    printf 'Error:\n'
+    if [[ -s "$ERROR_FILE" ]]; then
+      cat "$ERROR_FILE"
+    else
+      printf 'None\n'
+    fi
   fi
   if [[ "$EXPECTED_FAILURE" == true ]]; then
     printf '\n## Test\n\n'

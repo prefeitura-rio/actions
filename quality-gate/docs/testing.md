@@ -66,6 +66,7 @@ match the project's markers (rejected) and by requesting the correct language
 | Job | What it tests |
 |-----|---------------|
 | `reusable-workflow` | End-to-end smoke test of the reusable workflow on a Go project |
+| `detect-summary` | End-to-end detect-only action output and `GITHUB_STEP_SUMMARY` layout for single, multiple, and unsupported-language projects |
 | `ast-grep-rules` | ast-grep rule correctness for Go, Python, TypeScript |
 | `portable-scripts` | Provider-neutral shell and Node entrypoint contracts without GitHub variables |
 | `release-scripts` | Release version calculation and atomic tag publication contracts |
@@ -119,6 +120,24 @@ Outcome: success
 Error:
 None
 ```
+
+**Detect invocation with multiple languages:**
+
+```text
+### Quality Gate: Detect Language
+
+Outcome: success
+Error: None
+Languages Detected:
+- Go
+- Python
+- TypeScript
+```
+
+Detect summaries render one list item for a single language, one item per
+language for multiple languages, and `Languages Detected: None` when no
+supported language is detected. In the last case, the outcome is failure and
+the existing detection error is included after `Error:`.
 
 **Expected-failure test invocation:**
 

@@ -70,6 +70,45 @@ assert_equal \
   "$(<"$ERROR_FILE")" \
   "no-language diagnostic"
 
+: > "$ERROR_FILE"
+touch "$SUCCESS_FILE"
+bash "$ROOT/scripts/render-summary.sh" \
+  --check detect-only \
+  --languages '["go"]' \
+  --error-file "$ERROR_FILE" \
+  --success-file "$SUCCESS_FILE" \
+  --name-file "$SUMMARY_NAME_FILE" \
+  --summary-file "$SUMMARY_FILE"
+assert_equal "Detect Language" "$(<"$SUMMARY_NAME_FILE")" "single-language summary name"
+assert_equal \
+  $'### Quality Gate: Detect Language\nOutcome: success\nError: None\nLanguages Detected:\n- Go' \
+  "$(<"$SUMMARY_FILE")" \
+  "single-language summary layout"
+
+bash "$ROOT/scripts/render-summary.sh" \
+  --check detect-only \
+  --languages '["go","python","typescript"]' \
+  --error-file "$ERROR_FILE" \
+  --success-file "$SUCCESS_FILE" \
+  --name-file "$SUMMARY_NAME_FILE" \
+  --summary-file "$SUMMARY_FILE"
+assert_contains "$(<"$SUMMARY_FILE")" "- Go" "multi-language summary Go entry"
+assert_contains "$(<"$SUMMARY_FILE")" "- Python" "multi-language summary Python entry"
+assert_contains "$(<"$SUMMARY_FILE")" "- TypeScript" "multi-language summary TypeScript entry"
+
+rm -f "$SUCCESS_FILE"
+printf '%s\n' "Could not detect a supported language." > "$ERROR_FILE"
+bash "$ROOT/scripts/render-summary.sh" \
+  --check detect-only \
+  --languages '[]' \
+  --error-file "$ERROR_FILE" \
+  --success-file "$SUCCESS_FILE" \
+  --name-file "$SUMMARY_NAME_FILE" \
+  --summary-file "$SUMMARY_FILE"
+assert_contains "$(<"$SUMMARY_FILE")" "Outcome: failure" "no-language summary outcome"
+assert_contains "$(<"$SUMMARY_FILE")" "Error: Could not detect a supported language." "no-language summary error"
+assert_contains "$(<"$SUMMARY_FILE")" "Languages Detected: None" "no-language summary languages"
+
 if QUALITY_GATE_ERROR_FILE="$ERROR_FILE" bash "$ROOT/scripts/validate-check.sh" 'app:[f]ormat'; then
   fail "invalid check should be rejected"
 fi

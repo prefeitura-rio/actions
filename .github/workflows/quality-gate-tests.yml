@@ -39,6 +39,109 @@ jobs:
       project-name: reusable-workflow-smoke
       working-directory: quality-gate/go/fixtures/pass
 
+  detect-summary:
+    name: Detect summary / ${{ matrix.case }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - case: single-language
+            fixture: quality-gate/go/fixtures/pass
+            expected_failure: false
+          - case: multiple-languages
+            fixture: quality-gate/fixtures/error/multiple-languages
+            expected_failure: false
+          - case: no-language
+            fixture: quality-gate/fixtures/error/no-language
+            expected_failure: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Run detect-only action
+        id: detect
+        uses: ./quality-gate
+        with:
+          check: detect-only
+          working-directory: ${{ matrix.fixture }}
+          expected-failure: ${{ matrix.expected_failure }}
+        continue-on-error: ${{ matrix.expected_failure }}
+      - name: Assert action result and language output
+        env:
+          ACTION_OUTCOME: ${{ steps.detect.outcome }}
+          EXPECTED_FAILURE: ${{ matrix.expected_failure }}
+          LANGUAGES: ${{ steps.detect.outputs.languages }}
+        run: |
+          set -euo pipefail
+          if [[ "$EXPECTED_FAILURE" == true ]]; then
+            [[ "$ACTION_OUTCOME" == failure ]] || {
+              echo "::error::Expected detect-only action to fail but got $ACTION_OUTCOME"
+              exit 1
+            }
+          else
+            [[ "$ACTION_OUTCOME" == success ]] || {
+              echo "::error::Expected detect-only action to succeed but got $ACTION_OUTCOME"
+              exit 1
+            }
+          fi
+          case "${{ matrix.case }}" in
+            single-language)
+              [[ "$LANGUAGES" == '["go"]' ]] || {
+                echo "::error::Expected single-language output [\"go\"] but got $LANGUAGES"
+                exit 1
+              }
+              ;;
+            multiple-languages)
+              [[ "$LANGUAGES" == '["go","python","typescript"]' ]] || {
+                echo "::error::Expected multi-language output [\"go\",\"python\",\"typescript\"] but got $LANGUAGES"
+                exit 1
+              }
+              ;;
+            no-language)
+              [[ -z "$LANGUAGES" ]] || {
+                echo "::error::Expected no languages output but got $LANGUAGES"
+                exit 1
+              }
+              ;;
+          esac
+      - name: Assert rendered summary payload
+        env:
+          CASE: ${{ matrix.case }}
+        run: |
+          set -euo pipefail
+          summary=$(<"$RUNNER_TEMP/quality-gate-summary.md")
+          case "$CASE" in
+            single-language)
+              expected=$'### Quality Gate: Detect Language\nOutcome: success\nError: None\nLanguages Detected:\n- Go'
+              [[ "$summary" == *"$expected"* ]] || {
+                echo "::error::Unexpected single-language summary"
+                printf '%s\n' "$summary"
+                exit 1
+              }
+              ;;
+            multiple-languages)
+              expected=$'### Quality Gate: Detect Language\nOutcome: success\nError: None\nLanguages Detected:\n- Go\n- Python\n- TypeScript'
+              [[ "$summary" == *"$expected"* ]] || {
+                echo "::error::Unexpected multi-language summary"
+                printf '%s\n' "$summary"
+                exit 1
+              }
+              ;;
+            no-language)
+              expected=$'### Quality Gate: Detect Language\nOutcome: failure\nError: Could not detect a supported language. Expected go.mod, pyproject.toml, or package.json+tsconfig.json.\nLanguages Detected: None'
+              [[ "$summary" == *"$expected"* ]] || {
+                echo "::error::Unexpected no-language summary"
+                printf '%s\n' "$summary"
+                exit 1
+              }
+              ;;
+          esac
+          [[ "$summary" != *"Quality Gate: detect-only"* ]] || {
+            echo "::error::Summary still uses the old detect-only name"
+            printf '%s\n' "$summary"
+            exit 1
+          }
+
   ast-grep-rules:
     name: ast-grep rules / ${{ matrix.language }}
     runs-on: ubuntu-latest
