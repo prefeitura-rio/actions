@@ -121,21 +121,14 @@ render_detected_languages() {
 }
 
 render_typecheck_error() {
-  if grep -q '^#### Error ' "$ERROR_FILE"; then
+  if grep -q '^Error:' "$ERROR_FILE"; then
     cat "$ERROR_FILE"
     return
   fi
 
-  printf '#### Error\n\n'
   printf 'Error:\n```text\n'
   cat "$ERROR_FILE"
-  printf '\n```\n\n'
-  printf 'What was expected:\n```text\n'
-  printf 'The typecheck command must exit successfully (exit 0).\n'
-  printf '```\n\n'
-  printf 'How to fix it:\n```text\n'
-  printf 'See the typecheck diagnostics in the job logs and resolve the reported errors.\n'
-  printf '```\n'
+  printf '\n```\n'
 }
 
 printf '%s\n' "$SUMMARY_NAME" > "$NAME_FILE"

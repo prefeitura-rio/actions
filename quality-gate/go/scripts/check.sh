@@ -186,16 +186,14 @@ case "$CHECK" in
     run_strlint
     ;;
   app:typecheck)
-    qg_run_typecheck go 'go vet ./...' go vet ./...
+    qg_run_typecheck go go vet ./...
     if [[ -d cmd ]]; then
       qg_run_typecheck \
         go \
-        'go build -ldflags="-s -w" -o /dev/null ./cmd/...' \
         go build -ldflags='-s -w' -o /dev/null ./cmd/...
     else
       qg_run_typecheck \
         go \
-        'go build -ldflags="-s -w" -o /dev/null ./...' \
         go build -ldflags='-s -w' -o /dev/null ./...
     fi
     ;;

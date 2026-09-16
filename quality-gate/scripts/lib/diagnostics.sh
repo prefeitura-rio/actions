@@ -12,15 +12,20 @@ qg_error() {
 qg_typecheck_output() {
   local tool=$1
   local output=$2
+  local diagnostic
 
   case "$tool" in
     uv)
-      local diagnostic
       diagnostic=$(printf '%s\n' "$output" | awk '
         /^error:/ { started=1 }
+        /^hint:/ { exit }
         started { print }
       ')
+      diagnostic=$(printf '%s\n' "$diagnostic" | sed -E 's/[[:space:]]+To (create|update|install|run) .*([Rr]un `.*)$//')
       [[ -n "$diagnostic" ]] && printf '%s\n' "$diagnostic" || printf '%s\n' "$output"
+      ;;
+    project-info)
+      printf '%s\n' "$output" | sed -E 's/\.[[:space:]]+(Add|Commit|Update|Run) .*/./'
       ;;
     *)
       printf '%s\n' "$output"
@@ -44,6 +49,8 @@ qg_typecheck_hint() {
 
   if [[ "$tool" == uv ]]; then
     printf '%s\n' "$output" | sed -nE 's/^.*([Rr]un `.*)$/\1/p'
+  elif [[ "$tool" == project-info ]]; then
+    printf '%s\n' "$output" | sed -nE 's/^.*\. (Add|Commit|Update|Run) (.*)$/\1 \2/p'
   fi
 }
 
@@ -58,53 +65,36 @@ qg_typecheck_limit() {
 
 qg_typecheck_error() {
   local tool=$1
-  local command=$2
-  local output=$3
-  local expected=${4:-"$command must exit successfully (exit 0)."}
-  local fix=${5:-}
+  local output=$2
   local diagnostic hint message
 
   diagnostic=$(qg_typecheck_output "$tool" "$output")
+  hint=$(qg_typecheck_hint "$tool" "$output")
   diagnostic=$(qg_typecheck_limit "$diagnostic")
-  hint=$(qg_typecheck_hint "$tool" "$diagnostic")
-  if [[ -z "$fix" ]]; then
-    if [[ -n "$hint" ]]; then
-      fix="$hint"
-    else
-      fix=$(cat <<EOF
-Run the command locally and resolve the diagnostics shown above:
-$command
-EOF
-)
-    fi
-  fi
 
   message=$(cat <<EOF
-#### Error
-
 Error:
 \`\`\`text
 $diagnostic
 \`\`\`
-
-What was expected:
-\`\`\`text
-$expected
-\`\`\`
+EOF
+)
+  if [[ -n "$hint" ]]; then
+    message+=$(cat <<EOF
 
 How to fix it:
 \`\`\`text
-$fix
+$hint
 \`\`\`
 EOF
 )
+  fi
   qg_error "$message"
 }
 
 qg_run_typecheck() {
   local tool=$1
-  local command=$2
-  shift 2
+  shift
   local output status
 
   if output=$("$@" 2>&1); then
@@ -114,6 +104,6 @@ qg_run_typecheck() {
     status=$?
   fi
 
-  qg_typecheck_error "$tool" "$command" "$output"
+  qg_typecheck_error "$tool" "$output"
   return "$status"
 }

@@ -30,6 +30,8 @@ assert_contains() {
 }
 
 unset GITHUB_ACTION_PATH GITHUB_ENV GITHUB_OUTPUT GITHUB_PATH GITHUB_STEP_SUMMARY RUNNER_TEMP RUNNER_TOOL_CACHE
+# shellcheck disable=SC1091
+source "$ROOT/scripts/lib/diagnostics.sh"
 
 assert_equal \
   "name=go" \
@@ -149,15 +151,10 @@ bash "$ROOT/scripts/render-summary.sh" \
   --summary-file "$SUMMARY_FILE"
 assert_equal "Format (Typescript - Next.js)" "$(<"$SUMMARY_NAME_FILE")" "Next.js summary name"
 
-(
-  export QUALITY_GATE_ERROR_FILE="$ERROR_FILE"
-  # shellcheck disable=SC1091
-  source "$ROOT/scripts/lib/diagnostics.sh"
-  qg_typecheck_error \
-    uv \
-    'uv sync --frozen --all-groups' \
-    $'setup noise\nerror: The lockfile needs to be updated.\nhint: To update the lockfile, run uv lock.'
-) 2>/dev/null
+QUALITY_GATE_ERROR_FILE="$ERROR_FILE" qg_typecheck_error \
+  uv \
+  $'setup noise\nerror: The lockfile needs to be updated.\nhint: To update the lockfile, run uv lock.' \
+  2>/dev/null
 rm -f "$SUCCESS_FILE"
 bash "$ROOT/scripts/render-summary.sh" \
   --check app:typecheck \
@@ -167,12 +164,31 @@ bash "$ROOT/scripts/render-summary.sh" \
   --name-file "$SUMMARY_NAME_FILE" \
   --summary-file "$SUMMARY_FILE"
 typecheck_summary=$(<"$SUMMARY_FILE")
-assert_contains "$typecheck_summary" "#### Error" "typecheck diagnostic box"
+assert_contains "$typecheck_summary" "Error:" "typecheck error section"
 assert_contains "$typecheck_summary" "error: The lockfile needs to be updated." "typecheck tool diagnostic"
 assert_contains "$typecheck_summary" "hint: To update the lockfile, run uv lock." "typecheck tool hint"
-assert_contains "$typecheck_summary" "uv sync --frozen --all-groups" "typecheck expected command"
-if [[ "$typecheck_summary" == *"Recent output:"* || "$typecheck_summary" == *"setup noise"* ]]; then
+assert_contains "$typecheck_summary" "How to fix it:" "typecheck remediation section"
+if [[ "$typecheck_summary" == *"What was expected:"* || "$typecheck_summary" == *"#### Error"* || "$typecheck_summary" == *"setup noise"* ]]; then
   fail "typecheck summary should omit capture noise"
+fi
+
+QUALITY_GATE_ERROR_FILE="$ERROR_FILE" qg_typecheck_error \
+  project-info \
+  'Missing .node-version for TypeScript app:typecheck check. Add the Node.js major version used by the project.' \
+  2>/dev/null
+bash "$ROOT/scripts/render-summary.sh" \
+  --check app:typecheck \
+  --language typescript \
+  --error-file "$ERROR_FILE" \
+  --success-file "$SUCCESS_FILE" \
+  --name-file "$SUMMARY_NAME_FILE" \
+  --summary-file "$SUMMARY_FILE"
+project_info_summary=$(<"$SUMMARY_FILE")
+assert_contains "$project_info_summary" "Missing .node-version for TypeScript app:typecheck check." "project-info diagnostic"
+assert_contains "$project_info_summary" "How to fix it:" "project-info remediation section"
+assert_contains "$project_info_summary" "Add the Node.js major version used by the project." "project-info remediation"
+if [[ "$project_info_summary" == *"What was expected:"* || "$project_info_summary" == *"See the typecheck diagnostics"* ]]; then
+  fail "project-info summary should not include generated guidance"
 fi
 
 capture_env="$TEMP_DIR/bash-env"
@@ -207,7 +223,7 @@ set -e
 assert_equal "1" "$capture_status" "typecheck captured command status"
 typecheck_fallback=$(<"$ERROR_FILE")
 assert_contains "$typecheck_fallback" "Command failed (exit 1): false" "typecheck concise fallback"
-if [[ "$typecheck_fallback" == *"Recent output:"* || "$typecheck_fallback" == *"typecheck noise"* ]]; then
+if [[ "$typecheck_fallback" == *"Recent output:"* || "$typecheck_fallback" == *"typecheck noise"* || "$typecheck_fallback" == *"How to fix it:"* ]]; then
   fail "typecheck fallback should omit recent output"
 fi
 
