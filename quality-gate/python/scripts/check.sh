@@ -42,7 +42,14 @@ cd "$PROJECT_DIR"
 
 sync_project() {
   if [[ -f pyproject.toml ]]; then
-    uv sync --frozen --all-groups
+    if [[ "$CHECK" == app:typecheck ]]; then
+      qg_run_typecheck \
+        uv \
+        'uv sync --frozen --all-groups' \
+        uv sync --frozen --all-groups
+    else
+      uv sync --frozen --all-groups
+    fi
   else
     echo "No pyproject.toml found - skipping uv sync"
   fi
@@ -232,17 +239,28 @@ case "$CHECK" in
     ;;
   app:typecheck)
     if [[ ! -f pyproject.toml ]]; then
-      qg_error "app:typecheck requires a pyproject.toml with uv configuration. setup.py-only projects are not supported for this check."
+      qg_typecheck_error \
+        quality-gate \
+        'app:typecheck' \
+        'app:typecheck requires a pyproject.toml with uv configuration. setup.py-only projects are not supported for this check.' \
+        'A Python typecheck requires pyproject.toml with uv configuration.' \
+        'Add pyproject.toml with uv configuration, then rerun app:typecheck.'
       exit 1
     fi
     sync_project
     if [[ -f pyrightconfig.json ]] || {
       [[ -f pyproject.toml ]] && grep -qE '^\[tool\.(basedpyright|pyright)' pyproject.toml
     }; then
-      uvx "basedpyright@${BASEDPYRIGHT_VERSION}" --project "$PROJECT_DIR"
+      qg_run_typecheck \
+        basedpyright \
+        "uvx basedpyright@${BASEDPYRIGHT_VERSION} --project $PROJECT_DIR" \
+        uvx "basedpyright@${BASEDPYRIGHT_VERSION}" --project "$PROJECT_DIR"
     else
-      uvx "basedpyright@${BASEDPYRIGHT_VERSION}" \
-        --project "$ACTION_DIR/pyrightconfig.json" .
+      qg_run_typecheck \
+        basedpyright \
+        "uvx basedpyright@${BASEDPYRIGHT_VERSION} --project $ACTION_DIR/pyrightconfig.json ." \
+        uvx "basedpyright@${BASEDPYRIGHT_VERSION}" \
+          --project "$ACTION_DIR/pyrightconfig.json" .
     fi
     echo "basedpyright: no type errors found."
     ;;

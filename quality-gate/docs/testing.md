@@ -55,6 +55,13 @@ downloads, and language override validation. The tests check both that the
 action fails and that the reported message is exact. This keeps configuration
 errors actionable instead of reducing them to an unexplained exit code.
 
+Typecheck failures use a compact diagnostic template. Tool output and hints are
+copied dynamically, while the action supplies only the section labels and the
+command-success expectation. Setup output, download progress, and the generic
+recent-output fallback are not included in typecheck summaries. Other checks
+retain their existing recent-output fallback for compatibility with their
+diagnostic assertions.
+
 Multi-language detection is tested with `detect-only` checks on single-language
 and polyglot directories, verifying that the correct JSON array is output.
 Language override validation is tested by requesting a language that doesn't
@@ -141,20 +148,35 @@ the existing detection error is included after `Error:`.
 
 **Expected-failure test invocation:**
 
-```text
+````text
 ### Quality Gate: Type Check (Python)
 
 Outcome: failure
+
+#### Error
+
 Error:
-Command failed (exit 1): basedpyright ...
-...
+```text
+<diagnostic output provided by basedpyright>
+```
+
+What was expected:
+```text
+<basedpyright command> must exit successfully (exit 0).
+```
+
+How to fix it:
+```text
+Run the command locally and resolve the diagnostics shown above:
+<basedpyright command>
+```
 
 ## Test
 
 Test scenario: expected failure
 Outcome: failure
 Expected outcome: failure
-```
+````
 
 The `## Test` section appears only when `expected-failure: true` is passed to
 the action. It signals that the failure is intentional and was asserted by the

@@ -47,8 +47,13 @@ HAS_KNOWN_TEST_SCRIPT=false
 load_project_info() {
   local info
   local args=("$SCRIPT_DIR/project-info.js" "$PWD" --check "$CHECK")
+  local command="node ${args[*]}"
   info=$(node "${args[@]}" 2>&1) || {
-    qg_error "$info"
+    if [[ "$CHECK" == app:typecheck ]]; then
+      qg_typecheck_error project-info "$command" "$info"
+    else
+      qg_error "$info"
+    fi
     return 1
   }
   while IFS='=' read -r key value; do
@@ -65,18 +70,34 @@ load_project_info() {
 
 install_dependencies() {
   if [[ "$MANAGER" == npm ]]; then
-    npm ci
+    if [[ "$CHECK" == app:typecheck ]]; then
+      qg_run_typecheck npm 'npm ci' npm ci
+    else
+      npm ci
+    fi
   else
-    pnpm install --frozen-lockfile
+    if [[ "$CHECK" == app:typecheck ]]; then
+      qg_run_typecheck pnpm 'pnpm install --frozen-lockfile' pnpm install --frozen-lockfile
+    else
+      pnpm install --frozen-lockfile
+    fi
   fi
 }
 
 prepare_nuxt() {
   [[ "$FRAMEWORK" == nuxt ]] || return 0
   if [[ "$MANAGER" == npm ]]; then
-    npm exec --no -- nuxt prepare
+    if [[ "$CHECK" == app:typecheck ]]; then
+      qg_run_typecheck nuxt 'npm exec --no -- nuxt prepare' npm exec --no -- nuxt prepare
+    else
+      npm exec --no -- nuxt prepare
+    fi
   else
-    pnpm exec nuxt prepare
+    if [[ "$CHECK" == app:typecheck ]]; then
+      qg_run_typecheck nuxt 'pnpm exec nuxt prepare' pnpm exec nuxt prepare
+    else
+      pnpm exec nuxt prepare
+    fi
   fi
 }
 
@@ -269,16 +290,37 @@ EOF
 
 run_typecheck() {
   if [[ "$HAS_TYPECHECK_SCRIPT" == true ]]; then
-    if [[ "$MANAGER" == npm ]]; then npm run typecheck; else pnpm run typecheck; fi
+    if [[ "$MANAGER" == npm ]]; then
+      qg_run_typecheck typescript 'npm run typecheck' npm run typecheck
+    else
+      qg_run_typecheck typescript 'pnpm run typecheck' pnpm run typecheck
+    fi
   elif [[ "$FRAMEWORK" == vue ]]; then
-    if [[ "$MANAGER" == npm ]]; then npm exec --no -- vue-tsc --noEmit; else pnpm exec vue-tsc --noEmit; fi
+    if [[ "$MANAGER" == npm ]]; then
+      qg_run_typecheck vue-tsc 'npm exec --no -- vue-tsc --noEmit' npm exec --no -- vue-tsc --noEmit
+    else
+      qg_run_typecheck vue-tsc 'pnpm exec vue-tsc --noEmit' pnpm exec vue-tsc --noEmit
+    fi
   elif [[ "$FRAMEWORK" == nuxt ]]; then
-    if [[ "$MANAGER" == npm ]]; then npm exec --no -- nuxt typecheck; else pnpm exec nuxt typecheck; fi
+    if [[ "$MANAGER" == npm ]]; then
+      qg_run_typecheck nuxt 'npm exec --no -- nuxt typecheck' npm exec --no -- nuxt typecheck
+    else
+      qg_run_typecheck nuxt 'pnpm exec nuxt typecheck' pnpm exec nuxt typecheck
+    fi
   else
     if command -v tsc >/dev/null 2>&1 || [[ -x node_modules/.bin/tsc ]]; then
-      if [[ "$MANAGER" == npm ]]; then npm exec --no -- tsc --noEmit; else pnpm exec tsc --noEmit; fi
+      if [[ "$MANAGER" == npm ]]; then
+        qg_run_typecheck tsc 'npm exec --no -- tsc --noEmit' npm exec --no -- tsc --noEmit
+      else
+        qg_run_typecheck tsc 'pnpm exec tsc --noEmit' pnpm exec tsc --noEmit
+      fi
     else
-      qg_error "Missing typecheck script for TypeScript project. Add scripts.typecheck to package.json."
+      qg_typecheck_error \
+        quality-gate \
+        'TypeScript typecheck selection' \
+        'Missing typecheck script for TypeScript project. Add scripts.typecheck to package.json.' \
+        'A TypeScript project must provide scripts.typecheck or an installed supported typechecker.' \
+        'Add scripts.typecheck to package.json, then rerun app:typecheck.'
       return 1
     fi
   fi

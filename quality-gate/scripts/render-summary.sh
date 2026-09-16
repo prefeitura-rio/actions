@@ -120,6 +120,24 @@ render_detected_languages() {
   done
 }
 
+render_typecheck_error() {
+  if grep -q '^#### Error ' "$ERROR_FILE"; then
+    cat "$ERROR_FILE"
+    return
+  fi
+
+  printf '#### Error\n\n'
+  printf 'Error:\n```text\n'
+  cat "$ERROR_FILE"
+  printf '\n```\n\n'
+  printf 'What was expected:\n```text\n'
+  printf 'The typecheck command must exit successfully (exit 0).\n'
+  printf '```\n\n'
+  printf 'How to fix it:\n```text\n'
+  printf 'See the typecheck diagnostics in the job logs and resolve the reported errors.\n'
+  printf '```\n'
+}
+
 printf '%s\n' "$SUMMARY_NAME" > "$NAME_FILE"
 {
   printf '### Quality Gate: %s\n' "$SUMMARY_NAME"
@@ -136,6 +154,12 @@ printf '%s\n' "$SUMMARY_NAME" > "$NAME_FILE"
       printf 'Error: None\n'
     fi
     render_detected_languages
+  elif [[ "$CHECK" == app:typecheck ]]; then
+    if [[ -s "$ERROR_FILE" ]]; then
+      render_typecheck_error
+    else
+      printf 'Error:\nNone\n'
+    fi
   else
     printf 'Error:\n'
     if [[ -s "$ERROR_FILE" ]]; then
