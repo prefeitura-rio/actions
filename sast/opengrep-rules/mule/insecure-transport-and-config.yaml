@@ -2,7 +2,7 @@ rules:
   - id: mule-cleartext-http-port-80
     message: >-
       Endpoint/backend Mule configurado em texto claro (port 80 / HTTP).
-      Tráfego leste-oeste com PII do cidadão não deve trafegar sem TLS. Use
+      Tráfego leste-oeste com dados pessoais não deve trafegar sem TLS. Use
       HTTPS/443 com tls:context em cada http:request-config.
     severity: WARNING
     languages: [generic]

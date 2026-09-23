@@ -38,7 +38,7 @@ rules:
   - id: mule-pii-payload-logging
     message: >-
       Logger registra o payload/corpo completo (#[payload] / vars com XML/JSON
-      bruto). Persiste PII do cidadão em log compartilhado (LGPD). Logue apenas
+      bruto). Persiste dados pessoais em log compartilhado (LGPD). Logue apenas
       correlationId/status; nunca o corpo.
     severity: WARNING
     languages: [generic]
