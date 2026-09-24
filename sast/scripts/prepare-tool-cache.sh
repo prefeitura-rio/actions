@@ -6,7 +6,9 @@ COSIGN_VERSION=3.1.1
 OPENGREP_VERSION=1.23.0
 SYFT_VERSION=1.46.0
 GRYPE_VERSION=0.115.0
-TOOL_DIR="$HOME/.sast-tools"
+# Overridable so GitLab CI can place the cache inside $CI_PROJECT_DIR (GitLab can
+# only cache paths under the project dir); defaults to the GitHub Actions layout.
+TOOL_DIR="${TOOL_DIR:-$HOME/.sast-tools}"
 PY_VERSION=$(python3 -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])')
 
 mkdir -p "$TOOL_DIR/bin" "$TOOL_DIR/dl"

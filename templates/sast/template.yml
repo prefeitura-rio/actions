@@ -1,0 +1,100 @@
+# SAST Scanners - GitLab CI/CD component (converted from the GitHub composite
+# action in sast/action.yml). Runs opengrep, syft+grype (SBOM + vulns), and
+# checkov, normalizes the ignore files across all three, provisions Java/Maven for
+# Java repos, runs SonarQube, uploads to DefectDojo (default branch only), renders
+# a summary, and enforces a quality gate - all in a single job (mirroring the
+# single-job composite action so the steps share one workspace).
+#
+# The tailscale, java-setup and sonarqube concerns are decoupled into their own
+# reusable components (templates/{tailscale,java-setup,sonarqube}); this component
+# reuses them - Tailscale via `.tailscale-up`, and the Java/Sonar scripts via the
+# orchestrator (they are interleaved mid-run, so they run inside gitlab-run.sh).
+#
+# ---------------------------------------------------------------------------
+# Usage - in a consuming project's .gitlab-ci.yml:
+#
+#   include:
+#     - project: 'prefeitura-rio/actions'
+#       ref: main
+#       file: '/templates/sast/template.yml'
+#
+# Then define these CI/CD variables (Settings > CI/CD > Variables, ideally at the
+# group level, masked). All are optional except where a feature needs them:
+#   SONAR_HOST_URL, SONAR_TOKEN       - enable the SonarQube scan + quality gate
+#   DD_URL, DD_API_TOKEN              - enable DefectDojo upload (default branch only)
+#   TS_OAUTH_SECRET, TS_TAGS          - bring up Tailscale to reach internal hosts
+#                                       (omit TS_OAUTH_SECRET if the runner already
+#                                        has network access to Sonar/DefectDojo)
+# Optional knobs mirror the old action inputs: ENABLE_CHECKOV, CHECKOV_VERSION,
+#   CHECKOV_OPTS, IGNORE_TYPE, ENABLE_CLIPPY, WAIT_PIPELINE, SONARQUBE_OPTS,
+#   BREAK_ON, OVERRIDE_BRANCH.
+#
+# Override the runner image with SAST_IMAGE (must be Debian/Ubuntu-based for the
+# apt-based before_script, or preinstall: ca-certificates curl wget jq git python3
+# python3-venv unzip tar xz-utils iproute2 findutils procps).
+# ---------------------------------------------------------------------------
+
+include:
+  - local: '/templates/tailscale/template.yml'
+
+variables:
+  SAST_IMAGE: "debian:bookworm-slim"
+  # Where to fetch the shared scripts from (this actions repo). Defaults to the
+  # same GitLab instance using the CI job token; override for a different host.
+  SAST_ACTIONS_PROJECT: "prefeitura-rio/actions"
+  SAST_ACTIONS_REF: "main"
+  # Cloned OUTSIDE $CI_PROJECT_DIR so the scanners never scan the tooling itself.
+  SAST_ACTIONS_DIR: "/tmp/sast-actions"
+  # Feature knobs (mirror sast/action.yml inputs)
+  ENABLE_CHECKOV: "true"
+  CHECKOV_VERSION: "3.3.8"
+  CHECKOV_OPTS: ""
+  IGNORE_TYPE: "sonarqube"
+  ENABLE_CLIPPY: "false"
+  WAIT_PIPELINE: "true"
+  SONARQUBE_OPTS: ""
+  BREAK_ON: "HIGH"
+  OVERRIDE_BRANCH: ""
+
+sast:
+  stage: test
+  image: "$SAST_IMAGE"
+  # The scanners install their tools under $HOME/.sast-tools and Sonar caches under
+  # ~/.sonar - both OUTSIDE $CI_PROJECT_DIR, so they are neither scanned nor cached
+  # by GitLab job cache. For speed, mount a persistent runner volume at those paths
+  # or bake the tools into a custom SAST_IMAGE.
+  before_script:
+    - |
+      set -e
+      if command -v apt-get >/dev/null 2>&1; then
+        apt-get update -qq
+        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
+          ca-certificates curl wget jq git python3 python3-venv unzip tar xz-utils \
+          iproute2 findutils procps >/dev/null
+      fi
+    - |
+      set -e
+      if [ ! -f "$SAST_ACTIONS_DIR/sast/scripts/gitlab-run.sh" ]; then
+        repo="${SAST_ACTIONS_REPO_URL:-${CI_SERVER_PROTOCOL}://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_FQDN}/${SAST_ACTIONS_PROJECT}.git}"
+        git clone --depth 1 --branch "$SAST_ACTIONS_REF" "$repo" "$SAST_ACTIONS_DIR"
+      fi
+    # Tailscale via the decoupled component (no-op if TS_OAUTH_SECRET is unset).
+    - !reference [.tailscale-up, before_script]
+  script:
+    - bash "$SAST_ACTIONS_DIR/sast/scripts/gitlab-run.sh"
+  after_script:
+    - tailscale down 2>/dev/null || true
+  artifacts:
+    when: always
+    expire_in: 1 week
+    paths:
+      - sast-summary.md
+      - grype-results.sarif
+      - opengrep-sarif.sarif
+      - checkov-sarif.sarif
+      - opengrep-report.json
+      - grype-report.json
+      - checkov-report.json
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'

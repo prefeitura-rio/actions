@@ -1,0 +1,36 @@
+# Java setup (Temurin JDK + Maven) - reusable GitLab CI/CD component.
+#
+# Provisions a Temurin JDK and Maven on demand and exports JAVA_HOME + PATH to the
+# rest of the job. Provides the hidden job `.setup-java`; compose its script into
+# a job before your Maven/Gradle build:
+#
+#   include:
+#     - project: 'prefeitura-rio/actions'
+#       ref: main
+#       file: '/templates/java-setup/template.yml'
+#
+#   build:
+#     script:
+#       - !reference [.setup-java, script]
+#       - mvn -B clean verify
+#
+# Optional CI/CD variables: JDK_VERSION (Temurin major, default 24),
+#   MAVEN_VERSION (default 3.9.12), TOOL_DIR (install location, default
+#   $HOME/.sast-tools). See templates/java-setup/setup-java.sh for details.
+
+.setup-java:
+  script:
+    - |
+      set -e
+      : "${SAST_ACTIONS_DIR:=/tmp/sast-actions}"
+      if [ ! -f "$SAST_ACTIONS_DIR/templates/java-setup/setup-java.sh" ]; then
+        repo="${SAST_ACTIONS_REPO_URL:-${CI_SERVER_PROTOCOL}://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_FQDN}/${SAST_ACTIONS_PROJECT:-prefeitura-rio/actions}.git}"
+        git clone --depth 1 --branch "${SAST_ACTIONS_REF:-main}" "$repo" "$SAST_ACTIONS_DIR"
+      fi
+      # setup-java.sh publishes JAVA_HOME/PATH the GitHub-Actions way (env files);
+      # capture them and export into this job's shell so later script lines see them.
+      _env="$(mktemp)"; _path="$(mktemp)"
+      GITHUB_ENV="$_env" GITHUB_PATH="$_path" bash "$SAST_ACTIONS_DIR/templates/java-setup/setup-java.sh"
+      set -a; . "$_env"; set +a
+      while IFS= read -r _d; do [ -n "$_d" ] && export PATH="$_d:$PATH"; done <"$_path"
+      rm -f "$_env" "$_path"

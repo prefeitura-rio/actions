@@ -5,7 +5,12 @@ set -eo pipefail
 
 # Import sonarqube, opengrep and checkov to defectdojo
 if [ "$DD_API_TOKEN" != "" ] && [ "$CURRENT_BRANCH" = "$DEFAULT_BRANCH" ]; then
-    PRODUCT_INFO=$(curl -s -X GET "$DD_URL/api/v2/products/?name=${PRODUCT_NAME}" \
+    # Tracking must not bypass the summary or security gate below. Isolate its
+    # failures without putting the subshell in an if/|| condition.
+    set +e
+    (
+    set -e
+    PRODUCT_INFO=$(curl --fail -sS --connect-timeout 10 --max-time 60 -X GET "$DD_URL/api/v2/products/?name=${PRODUCT_NAME}" \
         -H "Authorization: Token $DD_API_TOKEN")
     PRODUCT_INFO=$(echo -n "$PRODUCT_INFO" | tr -d '\000-\037')
     COUNT=$(echo "$PRODUCT_INFO" | jq '.count')
@@ -17,7 +22,7 @@ if [ "$DD_API_TOKEN" != "" ] && [ "$CURRENT_BRANCH" = "$DEFAULT_BRANCH" ]; then
         PARAM_TYPE="product_type_name=Uncategorized"
     fi
     # opengrep
-    RESPONSE=$(curl -s -X POST "$DD_URL/api/v2/reimport-scan/" \
+    RESPONSE=$(curl --fail -sS --connect-timeout 10 --max-time 60 -X POST "$DD_URL/api/v2/reimport-scan/" \
         -H "Authorization: Token $DD_API_TOKEN" \
         -H "Content-Type: multipart/form-data" \
         -F "active=true" \
@@ -34,10 +39,11 @@ if [ "$DD_API_TOKEN" != "" ] && [ "$CURRENT_BRANCH" = "$DEFAULT_BRANCH" ]; then
     else
         echo "Error reimporting opengrep to dojo:"
         echo "$RESPONSE"
+        exit 1
     fi
     # checkov
     if [ "$ENABLE_CHECKOV" = "true" ] && [ -f checkov-report.json ]; then
-        RESPONSE=$(curl -s -X POST "$DD_URL/api/v2/reimport-scan/" \
+        RESPONSE=$(curl --fail -sS --connect-timeout 10 --max-time 60 -X POST "$DD_URL/api/v2/reimport-scan/" \
             -H "Authorization: Token $DD_API_TOKEN" \
             -H "Content-Type: multipart/form-data" \
             -F "active=true" \
@@ -54,6 +60,7 @@ if [ "$DD_API_TOKEN" != "" ] && [ "$CURRENT_BRANCH" = "$DEFAULT_BRANCH" ]; then
         else
             echo "Error reimporting checkov to dojo:"
             echo "$RESPONSE"
+            exit 1
         fi
     fi
     # sonarqube
@@ -65,7 +72,7 @@ if [ "$DD_API_TOKEN" != "" ] && [ "$CURRENT_BRANCH" = "$DEFAULT_BRANCH" ]; then
         rm -f sonar_page_*.json sonar-issues.json
         p=1
         while :; do
-            curl -s -u "$SONAR_TOKEN:" \
+            curl --fail -sS --connect-timeout 10 --max-time 60 -u "$SONAR_TOKEN:" \
                 "$SONAR_HOST_URL/api/issues/search?components=$PROJECT_KEY&${BRANCH_KEY}=${BRANCH_VALUE}&issueStatuses=OPEN&types=VULNERABILITY&additionalFields=_all&ps=500&p=$p" \
                 >"sonar_page_$p.json"
             TOTAL=$(jq '.paging.total // .total // 0' "sonar_page_$p.json")
@@ -84,7 +91,7 @@ if [ "$DD_API_TOKEN" != "" ] && [ "$CURRENT_BRANCH" = "$DEFAULT_BRANCH" ]; then
     }' sonar_page_*.json >sonar-issues.json
         rm -f sonar_page_*.json
         echo "SonarQube native issues to upload (external_* excluded): $(jq '.issues | length' sonar-issues.json)"
-        RESPONSE=$(curl -s -X POST "$DD_URL/api/v2/reimport-scan/" \
+        RESPONSE=$(curl --fail -sS --connect-timeout 10 --max-time 60 -X POST "$DD_URL/api/v2/reimport-scan/" \
             -H "Authorization: Token $DD_API_TOKEN" \
             -H "Content-Type: multipart/form-data" \
             -F "active=true" \
@@ -101,9 +108,16 @@ if [ "$DD_API_TOKEN" != "" ] && [ "$CURRENT_BRANCH" = "$DEFAULT_BRANCH" ]; then
         else
             echo "Error reimporting sonarqube to dojo:"
             echo "$RESPONSE"
+            exit 1
         fi
     else
         echo "::warning title=SAST::Skipping SonarQube DefectDojo upload: SONAR_TOKEN/SONAR_HOST_URL not set"
+    fi
+    )
+    DD_UPLOAD_RC=$?
+    set -e
+    if [ "$DD_UPLOAD_RC" -ne 0 ]; then
+        echo "::warning title=DefectDojo::Tracking failed (exit $DD_UPLOAD_RC); continuing summary and security gate."
     fi
 fi
 MAX_RESULTS=200

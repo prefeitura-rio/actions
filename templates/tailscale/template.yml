@@ -1,0 +1,37 @@
+# Tailscale bring-up - reusable GitLab CI/CD component.
+#
+# Joins the CI job to your tailnet so it can reach internal hosts (SonarQube,
+# DefectDojo, private registries, ...). Provides the hidden job `.tailscale-up`;
+# compose its before_script into any job:
+#
+#   include:
+#     - project: 'prefeitura-rio/actions'
+#       ref: main
+#       file: '/templates/tailscale/template.yml'
+#
+#   my-job:
+#     before_script:
+#       - !reference [.tailscale-up, before_script]
+#     script:
+#       - curl -sf https://internal-host.your-tailnet.ts.net/...
+#
+# Required CI/CD variables (mask them): TS_OAUTH_SECRET, TS_TAGS.
+# If TS_OAUTH_SECRET is unset the script is a no-op (assumes the runner already
+# has network access). See templates/tailscale/tailscale-up.sh for details.
+#
+# Fetch/location knobs (shared with the other components; sensible defaults):
+#   SAST_ACTIONS_PROJECT (default prefeitura-rio/actions), SAST_ACTIONS_REF
+#   (default main), SAST_ACTIONS_DIR (default /tmp/sast-actions),
+#   SAST_ACTIONS_REPO_URL (override the whole clone URL).
+
+.tailscale-up:
+  before_script:
+    - |
+      set -e
+      : "${SAST_ACTIONS_DIR:=/tmp/sast-actions}"
+      if [ ! -f "$SAST_ACTIONS_DIR/templates/tailscale/tailscale-up.sh" ]; then
+        repo="${SAST_ACTIONS_REPO_URL:-${CI_SERVER_PROTOCOL}://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_FQDN}/${SAST_ACTIONS_PROJECT:-prefeitura-rio/actions}.git}"
+        git clone --depth 1 --branch "${SAST_ACTIONS_REF:-main}" "$repo" "$SAST_ACTIONS_DIR"
+      fi
+    # Source so userspace proxy exports remain available to subsequent commands.
+    - . "$SAST_ACTIONS_DIR/templates/tailscale/tailscale-up.sh"

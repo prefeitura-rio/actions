@@ -1,0 +1,39 @@
+# SonarQube scan - reusable GitLab CI/CD component.
+#
+# Runs the sonar-scanner CLI (downloaded with a bundled JRE, so no separate Java
+# is required for non-Java repos) with branch / merge-request analysis wired to
+# GitLab predefined variables. Provides the hidden job `.run-sonarqube`; compose
+# its script into a job with sources to analyze (SAST reports are optional):
+#
+#   include:
+#     - project: 'prefeitura-rio/actions'
+#       ref: main
+#       file: '/templates/sonarqube/template.yml'
+#
+#   sonar:
+#     script:
+#       - !reference [.run-sonarqube, script]
+#
+# Required CI/CD variables: SONAR_HOST_URL, SONAR_TOKEN.
+# The job image must provide bash, curl, unzip, git and CA certificates, and run
+# on Linux x86_64 with glibc (the downloaded scanner includes its own JRE).
+# PRODUCT_NAME defaults to CI_PROJECT_PATH, then CI_PROJECT_NAME / repo:<id>.
+# Optional: WAIT_PIPELINE, ENABLE_CLIPPY, SONARQUBE_OPTS, OVERRIDE_BRANCH,
+#   SONAR_SCANNER_VERSION, SAST_JAVA_FOUND (adds -Dsonar.java.binaries when true).
+# SONAR_BRANCH_ANALYSIS defaults to true, preserving branch/MR analysis for
+# capable servers. Community requires false and a job restricted to the default
+# branch (rules: if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'); disabling branch
+# parameters does NOT give Community branch/MR support. Other branches/MRs must
+# not be submitted as main-branch analyses.
+# See templates/sonarqube/run-sonarqube.sh for the full argument mapping.
+
+.run-sonarqube:
+  script:
+    - |
+      set -e
+      : "${SAST_ACTIONS_DIR:=/tmp/sast-actions}"
+      if [ ! -f "$SAST_ACTIONS_DIR/templates/sonarqube/run-sonarqube.sh" ]; then
+        repo="${SAST_ACTIONS_REPO_URL:-${CI_SERVER_PROTOCOL}://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_FQDN}/${SAST_ACTIONS_PROJECT:-prefeitura-rio/actions}.git}"
+        git clone --depth 1 --branch "${SAST_ACTIONS_REF:-main}" "$repo" "$SAST_ACTIONS_DIR"
+      fi
+    - bash "$SAST_ACTIONS_DIR/templates/sonarqube/run-sonarqube.sh"
