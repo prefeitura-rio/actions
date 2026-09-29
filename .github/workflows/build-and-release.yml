@@ -72,7 +72,7 @@ jobs:
             NEXT_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
           fi
 
-          if [ "$BRANCH" == "main" ]; then
+          if [[ "$BRANCH" == "main" || "$BRANCH" == "master" ]]; then
             TAG="v$NEXT_VERSION"
           else
             TAG="v$NEXT_VERSION-rc.${{ github.run_number }}"
