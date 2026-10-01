@@ -13,6 +13,11 @@ on:
         required: false
         type: string
         default: "."
+      git_tag_prefix:
+        description: "Optional prefix to attatch to git tags (ex.: frontend-, backend-)"
+        required: false
+        type: string
+        default: ""
       dockerfile:
         description: "Path to Dockerfile (optional, defaults to <context>/Dockerfile)"
         required: false
@@ -126,5 +131,14 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag ${{ steps.version.outputs.tag }}
-          git push origin ${{ steps.version.outputs.tag }}
+          GIT_TAG="${{ inputs.git_tag_prefix }}${{ steps.version.outputs.tag }}"
+
+          if git rev-parse "$GIT_TAG" >/dev/null 2>&1; then
+            echo "Tag Git $GIT_TAG já existe. Pulando."
+          else
+            git tag "$GIT_TAG"
+            git push origin "$GIT_TAG"
+          fi
+
+          git tag "$GIT_TAG"
+          git push origin "$GIT_TAG"
