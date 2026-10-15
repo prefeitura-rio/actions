@@ -1,0 +1,105 @@
+# GitLab CI/CD component: build with kaniko, then sign SLSA provenance in an
+# isolated job. Signing uses GCP WIF via OIDC id_tokens; the build job holds
+# no GCP identity. Mirrors the GitHub reusable workflow.
+#
+# Usage in a project .gitlab-ci.yml:
+#   include:
+#     - component: $CI_SERVER_FQDN/prefeitura-rio/actions/build-sign-release@main
+#       inputs:
+#         image: $CI_REGISTRY_IMAGE
+#         wif_audience: "//iam.googleapis.com/projects/NUM/locations/global/workloadIdentityPools/slsa-provenance/providers/gitlab"
+#         signer_sa: "slsa-provenance-signer@rj-iplanrio-dia.iam.gserviceaccount.com"
+#         kms_key: "gcpkms://projects/rj-iplanrio-dia/locations/us-central1/keyRings/slsa-provenance/cryptoKeys/cosign/cryptoKeyVersions/1"
+
+spec:
+  inputs:
+    image:
+      description: "Image ref without tag (e.g. $CI_REGISTRY_IMAGE)"
+    tag:
+      default: "$CI_COMMIT_TAG"
+    context:
+      default: "."
+    dockerfile:
+      default: "Dockerfile"
+    wif_audience:
+      description: "GCP WIF audience; matches the gitlab provider allowed_audiences"
+    signer_sa:
+      description: "Provenance signer service account email"
+    kms_key:
+      description: "cosign gcpkms:// key version URI"
+    builder_id:
+      default: "https://gitlab.com/prefeitura-rio/actions//provenance/gitlab/build-sign-release.yml@main"
+    cosign_version:
+      default: "3.1.1"
+---
+
+"provenance:build":
+  stage: build
+  image:
+    name: gcr.io/kaniko-project/executor:v1.23.2-debug
+    entrypoint: [""]
+  rules:
+    - if: '$CI_COMMIT_REF_PROTECTED == "true"'
+  script:
+    - mkdir -p /kaniko/.docker
+    - |
+      echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(printf '%s:%s' "$CI_REGISTRY_USER" "$CI_REGISTRY_PASSWORD" | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
+    - |
+      /kaniko/executor \
+        --context "$[[ inputs.context ]]" \
+        --dockerfile "$[[ inputs.context ]]/$[[ inputs.dockerfile ]]" \
+        --destination "$[[ inputs.image ]]:$[[ inputs.tag ]]" \
+        --digest-file digest.txt
+  artifacts:
+    paths:
+      - digest.txt
+    expire_in: 1 hour
+
+"provenance:sign":
+  stage: deploy
+  needs:
+    - "provenance:build"
+  image: alpine:3.20
+  rules:
+    - if: '$CI_COMMIT_REF_PROTECTED == "true"'
+  id_tokens:
+    GCP_ID_TOKEN:
+      aud: "$[[ inputs.wif_audience ]]"
+  variables:
+    COSIGN_VERSION: "$[[ inputs.cosign_version ]]"
+  before_script:
+    - apk add --no-cache bash jq git curl tar
+    - git clone --depth 1 "https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/prefeitura-rio/actions.git" /tmp/actions
+    - mkdir -p ~/.docker
+    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(printf '%s:%s' "$CI_REGISTRY_USER" "$CI_REGISTRY_PASSWORD" | base64 | tr -d '\n')\"}}}" > ~/.docker/config.json
+    - COSIGN_VERSION="$COSIGN_VERSION" bash /tmp/actions/provenance/scripts/install-scanners.sh syft
+  script:
+    - export DIGEST="$(cat digest.txt)"
+    - export IMAGE_DIGEST="$[[ inputs.image ]]@${DIGEST}"
+    - eval "$(OIDC_TOKEN="$GCP_ID_TOKEN" GCP_WIF_AUDIENCE="$[[ inputs.wif_audience ]]" GCP_SIGNER_SA="$[[ inputs.signer_sa ]]" /tmp/actions/provenance/scripts/gcp-federate.sh)"
+    - BUILDER_ID="$[[ inputs.builder_id ]]" /tmp/actions/provenance/scripts/generate-predicate.sh > predicate.json
+    - KMS_KEY="$[[ inputs.kms_key ]]" PREDICATE_FILE=predicate.json /tmp/actions/provenance/scripts/sign-provenance.sh
+    - SBOM_FILE=image-sbom.cdx.json /tmp/actions/provenance/scripts/generate-sbom.sh
+    - KMS_KEY="$[[ inputs.kms_key ]]" PREDICATE_TYPE=cyclonedx PREDICATE_FILE=image-sbom.cdx.json /tmp/actions/provenance/scripts/sign-provenance.sh
+
+"provenance:scan":
+  stage: deploy
+  needs:
+    - "provenance:build"
+  image: alpine:3.20
+  rules:
+    - if: '$CI_COMMIT_REF_PROTECTED == "true"'
+  variables:
+    PRODUCT_NAME: "$CI_PROJECT_PATH"
+    ENGAGEMENT_NAME: "$CI_COMMIT_REF_NAME"
+    CURRENT_BRANCH: "$CI_COMMIT_REF_NAME"
+    DEFAULT_BRANCH: "$CI_DEFAULT_BRANCH"
+  before_script:
+    - apk add --no-cache bash jq git curl tar
+    - git clone --depth 1 "https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/prefeitura-rio/actions.git" /tmp/actions
+    - mkdir -p ~/.docker
+    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(printf '%s:%s' "$CI_REGISTRY_USER" "$CI_REGISTRY_PASSWORD" | base64 | tr -d '\n')\"}}}" > ~/.docker/config.json
+    - bash /tmp/actions/provenance/scripts/install-scanners.sh syft grype
+  script:
+    - export IMAGE_DIGEST="$[[ inputs.image ]]@$(cat digest.txt)"
+    - /tmp/actions/provenance/scripts/scan-image.sh

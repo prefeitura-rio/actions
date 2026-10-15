@@ -33,6 +33,28 @@ on:
         required: false
         type: string
         default: "ubuntu-latest"
+      sign:
+        description: "Sign image and attach SLSA provenance (needs org PROVENANCE_* vars)"
+        required: false
+        type: boolean
+        default: true
+      scan_image:
+        description: "Scan the built image (grype) and upload to DefectDojo"
+        required: false
+        type: boolean
+        default: true
+      ts_tags:
+        description: "Tailscale tags used to reach DefectDojo for image scan upload"
+        required: false
+        type: string
+        default: ""
+    secrets:
+      DD_API_TOKEN:
+        required: false
+      TS_OAUTH_CLIENT_ID:
+        required: false
+      TS_OAUTH_SECRET:
+        required: false
 
 jobs:
   build-and-release:
@@ -40,6 +62,10 @@ jobs:
     permissions:
       contents: write
       packages: write
+    outputs:
+      image: ${{ steps.img.outputs.image_name }}
+      digest: ${{ steps.build.outputs.digest }}
+      skip: ${{ steps.guard.outputs.skip }}
 
     steps:
       - name: Checkout repository
@@ -123,6 +149,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build and push Docker image
+        id: build
         if: steps.guard.outputs.skip != 'true'
         uses: docker/build-push-action@v6
         with:
@@ -146,3 +173,109 @@ jobs:
             git tag "$GIT_TAG"
             git push origin "$GIT_TAG"
           fi
+
+  provenance:
+    needs: build-and-release
+    if: >-
+      inputs.push && inputs.sign &&
+      needs.build-and-release.outputs.skip != 'true' &&
+      needs.build-and-release.outputs.digest != '' &&
+      vars.PROVENANCE_WIF_PROVIDER != ''
+    runs-on: ${{ inputs.runs_on }}
+    permissions:
+      id-token: write
+      packages: write
+    env:
+      IMAGE_DIGEST: ${{ needs.build-and-release.outputs.image }}@${{ needs.build-and-release.outputs.digest }}
+      KMS_KEY: ${{ vars.PROVENANCE_KMS_KEY }}
+      BUILDER_ID: https://github.com/prefeitura-rio/actions/.github/workflows/build-and-release.yml@refs/heads/master
+    steps:
+      - name: Checkout provenance scripts
+        uses: actions/checkout@v4
+        with:
+          repository: prefeitura-rio/actions
+          ref: master
+          path: _provenance
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.PROVENANCE_WIF_PROVIDER }}
+          service_account: ${{ vars.PROVENANCE_SIGNER_SA }}
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate SLSA provenance predicate
+        run: _provenance/provenance/scripts/generate-predicate.sh > predicate.json
+
+      - name: Sign and attach provenance
+        env:
+          PREDICATE_FILE: predicate.json
+        run: _provenance/provenance/scripts/sign-provenance.sh
+
+      - name: Install syft
+        run: _provenance/provenance/scripts/install-scanners.sh syft
+
+      - name: Generate image SBOM
+        run: _provenance/provenance/scripts/generate-sbom.sh
+
+      - name: Sign and attach SBOM attestation
+        env:
+          PREDICATE_TYPE: cyclonedx
+          PREDICATE_FILE: image-sbom.cdx.json
+        run: _provenance/provenance/scripts/sign-provenance.sh
+
+  image-scan:
+    needs: build-and-release
+    if: >-
+      inputs.push && inputs.scan_image &&
+      needs.build-and-release.outputs.skip != 'true' &&
+      needs.build-and-release.outputs.digest != ''
+    runs-on: ${{ inputs.runs_on }}
+    permissions:
+      packages: read
+    env:
+      IMAGE_DIGEST: ${{ needs.build-and-release.outputs.image }}@${{ needs.build-and-release.outputs.digest }}
+      DD_URL: ${{ vars.DD_URL }}
+      DD_API_TOKEN: ${{ secrets.DD_API_TOKEN }}
+      PRODUCT_NAME: ${{ github.repository }}
+      ENGAGEMENT_NAME: ${{ github.ref_name }}
+      CURRENT_BRANCH: ${{ github.ref_name }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      TS_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+    steps:
+      - name: Checkout provenance scripts
+        uses: actions/checkout@v4
+        with:
+          repository: prefeitura-rio/actions
+          ref: master
+          path: _provenance
+
+      - name: Connect to Tailscale
+        if: env.TS_CLIENT_ID != ''
+        uses: tailscale/github-action@780049a30b6ff5c378a9e7b389d15ece7a204888 # v4.1.3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: ${{ inputs.ts_tags }}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install syft and grype
+        run: _provenance/provenance/scripts/install-scanners.sh syft grype
+
+      - name: Scan image and upload to DefectDojo
+        run: _provenance/provenance/scripts/scan-image.sh
