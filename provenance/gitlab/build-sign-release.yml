@@ -28,7 +28,7 @@ spec:
     kms_key:
       description: "cosign gcpkms:// key version URI"
     builder_id:
-      default: "https://gitlab.com/prefeitura-rio/actions//provenance/gitlab/build-sign-release.yml@main"
+      default: "https://git.rio.gov.br/prefeitura-rio/actions//provenance/gitlab/build-sign-release.yml@main"
     cosign_version:
       default: "3.1.1"
 ---
