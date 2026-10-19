@@ -11,8 +11,21 @@ set -eu
 predicate_type="${PREDICATE_TYPE:-https://slsa.dev/provenance/v1}"
 tlog_upload="${TLOG_UPLOAD:-false}"
 
+# Accept either the full gcpkms:// version URI or a bare KMS key id and
+# normalize: cosign reads anything without the gcpkms:// scheme as a local
+# file, and gcpkms signing needs an explicit crypto key version.
+key="$KMS_KEY"
+case "$key" in
+  gcpkms://*) ;;
+  *) key="gcpkms://$key" ;;
+esac
+case "$key" in
+  */cryptoKeyVersions/* | */versions/*) ;;
+  *) key="$key/cryptoKeyVersions/${KMS_KEY_VERSION:-1}" ;;
+esac
+
 cosign attest --yes \
-  --key "$KMS_KEY" \
+  --key "$key" \
   --type "$predicate_type" \
   --predicate "$PREDICATE_FILE" \
   --tlog-upload="$tlog_upload" \
