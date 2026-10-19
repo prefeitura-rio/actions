@@ -77,5 +77,5 @@ install_grype() {
 }
 
 ensure_cosign
-in_list syft "${tools[@]}" && install_syft
-in_list grype "${tools[@]}" && install_grype
+if in_list syft "${tools[@]}"; then install_syft; fi
+if in_list grype "${tools[@]}"; then install_grype; fi
