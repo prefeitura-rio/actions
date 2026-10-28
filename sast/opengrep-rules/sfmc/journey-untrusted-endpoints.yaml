@@ -3,8 +3,8 @@ rules:
     message: >-
       Journey/asset SFMC de produção aponta para endpoint efêmero/não confiável
       (trycloudflare, ngrok, webhook.site, jsonplaceholder, localhost). Esses
-      hostnames são reatribuíveis a terceiros e recebem dados do cidadão.
-      Hospede a custom activity em domínio próprio da prefeitura com TLS.
+      hostnames são reatribuíveis a terceiros e recebem dados pessoais.
+      Hospede a custom activity em domínio próprio da organização com TLS.
     severity: ERROR
     languages: [generic]
     paths:
@@ -19,8 +19,6 @@ rules:
       cwe: ["CWE-829: Inclusion of Functionality from Untrusted Control Sphere"]
       owasp: ["A08:2021 - Software and Data Integrity Failures"]
       confidence: HIGH
-      references:
-        - "SECURITY_REVIEW addendum (SFMC) -> C1/C2"
 
   - id: sfmc-custom-activity-jwt-disabled
     message: >-
@@ -38,5 +36,3 @@ rules:
       category: security
       cwe: ["CWE-306: Missing Authentication for Critical Function"]
       confidence: MEDIUM
-      references:
-        - "SECURITY_REVIEW addendum (SFMC) -> C1/C2"

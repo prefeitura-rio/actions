@@ -13,6 +13,11 @@ on:
         required: false
         type: string
         default: "."
+      git_tag_prefix:
+        description: "Optional prefix to attatch to git tags (ex.: frontend-, backend-)"
+        required: false
+        type: string
+        default: ""
       dockerfile:
         description: "Path to Dockerfile (optional, defaults to <context>/Dockerfile)"
         required: false
@@ -28,6 +33,28 @@ on:
         required: false
         type: string
         default: "ubuntu-latest"
+      sign:
+        description: "Sign image and attach SLSA provenance (needs org PROVENANCE_* vars)"
+        required: false
+        type: boolean
+        default: true
+      scan_image:
+        description: "Scan the built image (grype) and upload to DefectDojo"
+        required: false
+        type: boolean
+        default: true
+      ts_tags:
+        description: "Tailscale tags used to reach DefectDojo for image scan upload"
+        required: false
+        type: string
+        default: ""
+    secrets:
+      DD_API_TOKEN:
+        required: false
+      TS_OAUTH_CLIENT_ID:
+        required: false
+      TS_OAUTH_SECRET:
+        required: false
 
 jobs:
   build-and-release:
@@ -35,10 +62,14 @@ jobs:
     permissions:
       contents: write
       packages: write
+    outputs:
+      image: ${{ steps.img.outputs.image_name }}
+      digest: ${{ steps.build.outputs.digest }}
+      skip: ${{ steps.guard.outputs.skip }}
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -55,7 +86,13 @@ jobs:
       - name: Calculate next version
         id: version
         run: |
-          LATEST_TAG=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
+          PREFIX="${{ inputs.git_tag_prefix }}"
+          if [ -n "$PREFIX" ]; then
+            LATEST_TAG=$(git tag --sort=-v:refname | grep -E "^${PREFIX}v[0-9]+\.[0-9]+\.[0-9]+$" | head -n 1)
+          else
+            LATEST_TAG=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
+          fi
+
           BRANCH="${GITHUB_REF##*/}"
 
           if [ -z "$LATEST_TAG" ]; then
@@ -64,7 +101,8 @@ jobs:
             NEXT_VERSION="1.0.0"
           else
             HAS_TAG="true"
-            CLEAN_VER="${LATEST_TAG#v}"
+            CLEAN_VER="${LATEST_TAG#$PREFIX}"
+            CLEAN_VER="${CLEAN_VER#v}"
             MAJOR=$(echo "$CLEAN_VER" | cut -d. -f1)
             MINOR=$(echo "$CLEAN_VER" | cut -d. -f2)
             PATCH=$(echo "$CLEAN_VER" | cut -d. -f3)
@@ -72,7 +110,7 @@ jobs:
             NEXT_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
           fi
 
-          if [ "$BRANCH" == "main" ]; then
+          if [[ "$BRANCH" == "main" || "$BRANCH" == "master" ]]; then
             TAG="v$NEXT_VERSION"
           else
             TAG="v$NEXT_VERSION-rc.${{ github.run_number }}"
@@ -87,7 +125,7 @@ jobs:
       - name: Skip if no app changes since last release
         id: guard
         run: |
-          if [ "${{ steps.version.outputs.has_tag }}" == "true" ] && [ "${GITHUB_REF##*/}" == "main" ]; then
+          if [ "${{ steps.version.outputs.has_tag }}" == "true" ] && [ "${GITHUB_REF##*/}" == "main" || "${GITHUB_REF##*/}" == "master" ]; then
             LAST_TAG="${{ steps.version.outputs.latest_tag }}"
 
             if ! git diff --name-only "$LAST_TAG" HEAD -- "${{ inputs.context }}" | grep -q .; then
@@ -100,7 +138,7 @@ jobs:
 
       - name: Login to GHCR
         if: steps.guard.outputs.skip != 'true' && inputs.push
-        uses: docker/login-action@v3
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f #v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -108,11 +146,12 @@ jobs:
 
       - name: Set up Docker Buildx
         if: steps.guard.outputs.skip != 'true'
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 #v4.4.1
 
       - name: Build and push Docker image
+        id: build
         if: steps.guard.outputs.skip != 'true'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc #v7.6.0
         with:
           context: ${{ inputs.context }}
           file: ${{ inputs.dockerfile != '' && inputs.dockerfile ||format('{0}/Dockerfile', inputs.context) }}
@@ -126,5 +165,117 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag ${{ steps.version.outputs.tag }}
-          git push origin ${{ steps.version.outputs.tag }}
+          GIT_TAG="${{ inputs.git_tag_prefix }}${{ steps.version.outputs.tag }}"
+
+          if git rev-parse "$GIT_TAG" >/dev/null 2>&1; then
+            echo "Tag Git $GIT_TAG já existe. Pulando."
+          else
+            git tag "$GIT_TAG"
+            git push origin "$GIT_TAG"
+          fi
+
+  provenance:
+    needs: build-and-release
+    if: >-
+      inputs.push && inputs.sign &&
+      needs.build-and-release.outputs.skip != 'true' &&
+      needs.build-and-release.outputs.digest != '' &&
+      vars.PROVENANCE_WIF_PROVIDER != ''
+    runs-on: ${{ inputs.runs_on }}
+    permissions:
+      id-token: write
+      packages: write
+    env:
+      IMAGE_DIGEST: ${{ needs.build-and-release.outputs.image }}@${{ needs.build-and-release.outputs.digest }}
+      KMS_KEY: ${{ vars.PROVENANCE_KMS_KEY }}
+      BUILDER_ID: https://github.com/prefeitura-rio/actions/.github/workflows/build-and-release.yml@refs/heads/master
+    steps:
+      - name: Checkout provenance scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: prefeitura-rio/actions
+          ref: master
+          path: _provenance
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.PROVENANCE_WIF_PROVIDER }}
+          service_account: ${{ vars.PROVENANCE_SIGNER_SA }}
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f #v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate SLSA provenance predicate
+        run: _provenance/provenance/scripts/generate-predicate.sh > predicate.json
+
+      - name: Sign and attach provenance
+        env:
+          PREDICATE_FILE: predicate.json
+        run: _provenance/provenance/scripts/sign-provenance.sh
+
+      - name: Install syft
+        run: _provenance/provenance/scripts/install-scanners.sh syft
+
+      - name: Generate image SBOM
+        run: _provenance/provenance/scripts/generate-sbom.sh
+
+      - name: Sign and attach SBOM attestation
+        env:
+          PREDICATE_TYPE: cyclonedx
+          PREDICATE_FILE: image-sbom.cdx.json
+        run: _provenance/provenance/scripts/sign-provenance.sh
+
+  image-scan:
+    needs: build-and-release
+    if: >-
+      inputs.push && inputs.scan_image &&
+      needs.build-and-release.outputs.skip != 'true' &&
+      needs.build-and-release.outputs.digest != ''
+    runs-on: ${{ inputs.runs_on }}
+    permissions:
+      packages: read
+    env:
+      IMAGE_DIGEST: ${{ needs.build-and-release.outputs.image }}@${{ needs.build-and-release.outputs.digest }}
+      DD_URL: ${{ vars.DD_URL }}
+      DD_API_TOKEN: ${{ secrets.DD_API_TOKEN }}
+      PRODUCT_NAME: ${{ github.repository }}
+      ENGAGEMENT_NAME: ${{ github.ref_name }}
+      CURRENT_BRANCH: ${{ github.ref_name }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      TS_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+    steps:
+      - name: Checkout provenance scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: prefeitura-rio/actions
+          ref: master
+          path: _provenance
+
+      - name: Connect to Tailscale
+        if: env.TS_CLIENT_ID != ''
+        uses: tailscale/github-action@780049a30b6ff5c378a9e7b389d15ece7a204888 # v4.1.3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: ${{ inputs.ts_tags }}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f #v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install syft and grype
+        run: _provenance/provenance/scripts/install-scanners.sh syft grype
+
+      - name: Scan image and upload to DefectDojo
+        run: _provenance/provenance/scripts/scan-image.sh

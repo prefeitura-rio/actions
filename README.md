@@ -9,6 +9,7 @@ Consumed by all `repo-templates` projects and any project following org conventi
 |---|---|
 | [`quality-gate/`](quality-gate/) | Format, lint, structural lint, typecheck, test — language-agnostic |
 | [`sast/`](sast/) | Security scanning: opengrep, grype/SBOM, checkov, SonarQube |
+| [`provenance/`](provenance/) | SLSA L3 build provenance: KMS-signed in-toto attestations (GitHub + GitLab) |
 | [`setup-devenv/`](setup-devenv/) | Install and activate the Nix/devenv dev environment |
 
 ## Quick start — quality-gate

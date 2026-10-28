@@ -21,38 +21,36 @@ Because Apex/Mule-XML have no Opengrep parser, those rules use
 `languages: [generic]` + `pattern-regex` scoped with `paths.include`. Keep the
 `paths.include` globs tight so generic regex does not bleed into unrelated files.
 
-## Rules and the findings they codify
+## Rules
 
-Derived from the manual review in the scanned repo's `SECURITY_REVIEW.md`.
-
-| Rule id | Sev | Finding |
+| Rule id | Sev | Detects |
 |---|---|---|
-| `apex-hardcoded-webhook-secret` | ERROR | H-01 hardcoded Discord/Slack webhook token |
-| `apex-callout-endpoint-from-user-input` | ERROR | M-01 SSRF: callout endpoint from caller input |
-| `apex-dynamic-callout-endpoint-review` | INFO | M-01 dynamic (non-literal) callout endpoint |
+| `apex-hardcoded-webhook-secret` | ERROR | hardcoded Discord/Slack/Teams webhook token |
+| `apex-callout-endpoint-from-user-input` | ERROR | SSRF: callout endpoint taken from caller input |
+| `apex-dynamic-callout-endpoint-review` | INFO | dynamic (non-literal) callout endpoint |
 | `apex-soql-injection-concatenation` | ERROR | SOQL/SOSL built by string concatenation |
-| `apex-test-seealldata-true` | WARNING | L-01 `@isTest(SeeAllData=true)` |
-| `apex-debug-log-pii` | WARNING | L-04 PII/full-request in `System.debug` |
+| `apex-test-seealldata-true` | WARNING | `@isTest(SeeAllData=true)` |
+| `apex-debug-log-pii` | WARNING | PII / full request serialized into `System.debug` |
 | `apex-insecure-http-callout` | WARNING | cleartext `http://` callout |
-| `mule-cleartext-http-port-80` | WARNING | H-02 port 80 / `protocol: HTTP` backend |
-| `mule-prod-config-points-to-dev-host` | ERROR | M-08 prod config points to a `-dev` host |
-| `mule-plaintext-secret-in-config` | WARNING | M-07 plaintext secret (not `![...]`/`${...}`) |
-| `mule-error-detail-exposed-to-caller` | WARNING | H-03 `error.description/…` returned to caller |
-| `mule-raw-payload-in-error-response` | WARNING | H-03 `#[payload]` echoed on error response |
-| `mule-pii-payload-logging` | WARNING | M-05 logger prints `#[payload]` |
-| `ci-unpinned-latest-install` | WARNING | H-05 `@latest` install in a pipeline |
-| `ci-secret-on-command-line` | WARNING | M-09 secret passed as `-D…=$VAR` / `…=$VAR` |
-| `apex-messaging-consent-enforcement-disabled` | WARNING | F-07 `isEnforceMessagingChannelConsent=false` |
-| `apex-content-visible-to-external-users` | INFO | F-11 `IsVisibleByExternalUsers=true` |
-| `sf-permset-dangerous-system-permission` | WARNING | C1/C2 ModifyAllData/ViewAllData/AuthorApex in a permset |
-| `sf-object-owd-public-readwrite` | INFO | H3/H5 object OWD `ReadWrite` (PII objects) |
-| `sf-custom-metadata-secret-in-plaintext` | WARNING | H7/F-08 token/secret in a `__mdt` Text field |
-| `sf-flow-system-mode-without-sharing` | WARNING | H6 flow `SystemModeWithoutSharing` (IDOR) |
+| `apex-messaging-consent-enforcement-disabled` | WARNING | `isEnforceMessagingChannelConsent=false` |
+| `apex-content-visible-to-external-users` | INFO | `IsVisibleByExternalUsers=true` |
+| `mule-cleartext-http-port-80` | WARNING | backend on port 80 / `protocol: HTTP` |
+| `mule-prod-config-points-to-dev-host` | ERROR | prod config pointing at a `-dev` host |
+| `mule-plaintext-secret-in-config` | WARNING | plaintext secret (not `![...]` / `${...}`) |
+| `mule-error-detail-exposed-to-caller` | WARNING | `error.description/…` returned to the caller |
+| `mule-raw-payload-in-error-response` | WARNING | `#[payload]` echoed on an error response |
+| `mule-pii-payload-logging` | WARNING | logger prints the full `#[payload]` |
+| `ci-unpinned-latest-install` | WARNING | `@latest` dependency install in a pipeline |
+| `ci-secret-on-command-line` | WARNING | secret passed as `-D…=$VAR` / `…=$VAR` |
+| `sf-permset-dangerous-system-permission` | WARNING | ModifyAllData/ViewAllData/AuthorApex/ModifyMetadata in a permission set |
+| `sf-object-owd-public-readwrite` | INFO | object OWD `ReadWrite` (review objects holding PII) |
+| `sf-custom-metadata-secret-in-plaintext` | WARNING | token/secret stored in a `__mdt` Text field |
+| `sf-flow-system-mode-without-sharing` | WARNING | flow `SystemModeWithoutSharing` (IDOR risk) |
 | `sf-remote-site-protocol-security-disabled` | ERROR | remote site `disableProtocolSecurity=true` |
-| `sf-named-credential-no-authentication` | WARNING | M3 Anonymous/NoAuthentication named credential |
-| `sf-named-credential-merge-fields-enabled` | WARNING | M4 `allowMergeFieldsInBody/Header=true` |
-| `sfmc-untrusted-ephemeral-endpoint` | ERROR | SFMC C1/C2 journey → trycloudflare/ngrok/webhook.site/localhost |
-| `sfmc-custom-activity-jwt-disabled` | WARNING | SFMC C1/C2 custom activity `useJwt:false` |
+| `sf-named-credential-no-authentication` | WARNING | Anonymous / NoAuthentication named credential |
+| `sf-named-credential-merge-fields-enabled` | WARNING | `allowMergeFieldsInBody/Header=true` |
+| `sfmc-untrusted-ephemeral-endpoint` | ERROR | journey/asset → trycloudflare/ngrok/webhook.site/localhost |
+| `sfmc-custom-activity-jwt-disabled` | WARNING | custom activity with `useJwt:false` |
 
 ## Conventions
 
