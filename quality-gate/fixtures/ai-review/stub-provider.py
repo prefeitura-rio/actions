@@ -14,7 +14,8 @@ import json
 import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-TOKEN = "stub-key"  # noqa: S105 - fixed token of a local test stub, not a secret
+# Fixed bearer value of a local test stub; it is not a credential.
+EXPECTED_AUTHORIZATION = "Bearer stub-key"
 FINDING = {
     "path": "quality-gate/fixtures/ai-review/project/app.py",
     "line": 1,
@@ -34,11 +35,14 @@ class Handler(BaseHTTPRequestHandler):
         _ = self.rfile.read(length)
         if self.path != "/v1/chat/completions":
             self._send(404, {"error": {"message": "not found"}})
-        elif self.headers.get("Authorization") != f"Bearer {TOKEN}":
+        elif self.headers.get("Authorization") != EXPECTED_AUTHORIZATION:
             self._send(401, {"error": {"message": "invalid api key"}})
         else:
             content = json.dumps({"findings": [FINDING]})
-            self._send(200, {"choices": [{"message": {"role": "assistant", "content": content}}]})
+            self._send(
+                200,
+                {"choices": [{"message": {"role": "assistant", "content": content}}]},
+            )
 
     def _send(self, status: int, document: dict[str, object]) -> None:
         body = json.dumps(document).encode("utf-8")
