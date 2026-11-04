@@ -24,6 +24,14 @@ bash release/tests/test-version.sh
 bash release/tests/test-publish-tags.sh
 ```
 
+Python package of the quality gate (`quality-gate/cli`, needs `uv`):
+
+```bash
+cd quality-gate/cli
+uv run --frozen ruff format --check . && uv run --frozen ruff check .
+uv run --frozen basedpyright && uv run --frozen pytest
+```
+
 ast-grep rule tests. ast-grep comes with `devenv shell`; without it,
 `install-ast-grep.sh` downloads the pinned binary and prints its path, which
 must go on `PATH` (the CI does the same):
