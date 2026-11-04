@@ -69,7 +69,8 @@ done
 # curl stub: records its arguments like the recorder. A download (`-o FILE`)
 # copies $CURL_FIXTURES/<last URL segment> when it exists, or writes bytes
 # that match no pinned checksum. Any other call is a DefectDojo API call and
-# prints $CURL_GET_RESPONSE or, for -X POST, $CURL_POST_RESPONSE.
+# prints $CURL_GET_RESPONSE or, for -X POST, $CURL_POST_RESPONSE; with
+# CURL_FAIL_POST=1 only the POST calls fail, as a lost connection would.
 cat >"$stub_dir/curl" <<'STUB'
 #!/usr/bin/env sh
 set -eu
@@ -103,6 +104,10 @@ if [ -n "$out" ]; then
     printf 'not the pinned artifact\n' >"$out"
   fi
 elif [ "$method" = POST ]; then
+  if [ "${CURL_FAIL_POST:-}" = 1 ]; then
+    echo "curl stub: forced POST failure" >&2
+    exit 7
+  fi
   cat "${CURL_POST_RESPONSE:?CURL_POST_RESPONSE required}"
 else
   cat "${CURL_GET_RESPONSE:?CURL_GET_RESPONSE required}"
@@ -318,6 +323,15 @@ assert_stderr_contains \
   'checksum mismatch for syft.tar.gz from https://github.com/anchore/syft/releases/download/v9.9.9/syft_9.9.9_linux_amd64.tar.gz' \
   'install with overridden syft version'
 assert_empty_dir "$scanner_bin" 'install with overridden syft version'
+
+reset_bin
+run_isolated "$tmp_dir" "$curl_only_dir:$sys_dir:$scanner_bin" SCANNER_BIN="$scanner_bin" \
+  COSIGN_VERSION=9.9.9 -- "$install_scanners" syft
+assert_status 1 'install with overridden cosign version'
+assert_stderr_contains \
+  'checksum mismatch for cosign from https://github.com/sigstore/cosign/releases/download/v9.9.9/cosign-linux-amd64' \
+  'install with overridden cosign version'
+assert_empty_dir "$scanner_bin" 'install with overridden cosign version'
 
 # A failed download fails closed too (the empty file fails the checksum).
 reset_bin
@@ -597,6 +611,33 @@ assert_stderr_contains "Error reimporting 'Image Vulnerabilities (grype)' to Def
   'scan with rejected reimport'
 assert_stderr_contains 'stub: rejected' 'scan with rejected reimport'
 assert_stdout_lacks 'Reimported:' 'scan with rejected reimport'
+
+# DefectDojo unavailable: a failed connection on the product lookup or on a
+# reimport, or a lookup answer that is not JSON, fails the scan.
+reset_scan_dir
+run_isolated "$scan_dir" "$stub_path" "${scan_env[@]}" "${dd_env[@]}" STUB_FAIL=curl -- "$scan_image"
+assert_failed 'scan with DefectDojo unreachable'
+assert_stderr_contains 'curl stub: forced failure' 'scan with DefectDojo unreachable'
+assert_calls curl "$expected_products_lookup" 'scan with DefectDojo unreachable'
+assert_stdout_lacks 'Reimported:' 'scan with DefectDojo unreachable'
+
+reset_scan_dir
+run_isolated "$scan_dir" "$stub_path" "${scan_env[@]}" "${dd_env[@]}" CURL_FAIL_POST=1 -- "$scan_image"
+assert_failed 'scan with reimport connection failure'
+assert_stderr_contains 'curl stub: forced POST failure' 'scan with reimport connection failure'
+assert_calls curl "$expected_products_lookup
+$(expected_reimport 'CycloneDX Scan' image-bom-info.json 'Image SBOM (syft)' product_type=7)" \
+  'scan with reimport connection failure'
+assert_stdout_lacks 'Reimported:' 'scan with reimport connection failure'
+
+not_json="$tmp_dir/not-json.html"
+printf '<html>502 Bad Gateway</html>\n' >"$not_json"
+reset_scan_dir
+run_isolated "$scan_dir" "$stub_path" "${scan_env[@]}" "${dd_env[@]}" \
+  CURL_GET_RESPONSE="$not_json" -- "$scan_image"
+assert_failed 'scan with non-JSON product lookup'
+assert_calls curl "$expected_products_lookup" 'scan with non-JSON product lookup'
+assert_stdout_lacks 'Reimported:' 'scan with non-JSON product lookup'
 
 # Failures of the scanners stop the script before anything is uploaded.
 reset_scan_dir
