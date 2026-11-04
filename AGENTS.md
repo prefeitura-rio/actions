@@ -7,8 +7,9 @@ README of each directory before changing it.
 
 ## Compatibility
 
-Consumers pin these actions by `@master`, by commit SHA or by the tags
-`quality-gate-v<X.Y.Z>` and `quality-gate-latest`. A merge into `master` takes
+Consumers pin these actions by `@master`, by commit SHA, by the repository
+tags `latest` and `v<X.Y.Z>` or by the tags `quality-gate-v<X.Y.Z>` and
+`quality-gate-latest`. A merge into `master` takes
 effect immediately for every consumer of `@master`, so keep the contract
 backward compatible: inputs, outputs, job and check names, and default
 behavior. Put new behavior behind a new optional input instead of changing an
@@ -22,6 +23,7 @@ Portable tests need only `bash` and `git` (no GitHub variables):
 bash quality-gate/tests/scripts/test-portable.sh
 bash release/tests/test-version.sh
 bash release/tests/test-publish-tags.sh
+bash release/tests/test-move-floating-tag.sh
 ```
 
 ast-grep rule tests. ast-grep comes with `devenv shell`; without it,
@@ -65,3 +67,6 @@ hand (`shfmt -d <file>`) when shfmt is available.
   in that workflow; it does not run on pull requests.
 - When both pass for a push to `master`, `Quality Gate Release` publishes
   `quality-gate-v<X.Y.Z>` and moves `quality-gate-latest`.
+- `Actions Release` (`.github/workflows/actions-release.yml`) moves the tag
+  `latest` to the tip of `master` on every push to `master`, and publishes an
+  immutable `v<X.Y.Z>` (and moves `latest` to it) when run manually.

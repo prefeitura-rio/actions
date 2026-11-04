@@ -12,6 +12,27 @@ Consumed by all `repo-templates` projects and any project following org conventi
 | [`provenance/`](provenance/) | SLSA L3 build provenance: KMS-signed in-toto attestations (GitHub + GitLab) |
 | [`setup-devenv/`](setup-devenv/) | Install and activate the Nix/devenv dev environment |
 
+## Versions
+
+Every action and reusable workflow in this repository can be pinned by the
+same repository-wide tags, published by the `Actions Release` workflow
+(`.github/workflows/actions-release.yml`):
+
+| Ref | Moves? | Published |
+|---|---|---|
+| `latest` | yes | automatically, on every push to `master`, pointing to its tip |
+| `v<X.Y.Z>` | never | on demand: run **Actions Release** from the Actions tab and pick the bump (`patch`, `minor`, `major`); `latest` then points to the new version |
+
+```yaml
+- uses: prefeitura-rio/actions/sast@latest    # follows master
+- uses: prefeitura-rio/actions/sast@v1.0.0    # stable, use for rollback
+```
+
+The component tags `quality-gate-v<X.Y.Z>` and `quality-gate-latest` are
+published independently by the quality gate release workflows (see
+[`release/README.md`](release/README.md)). `@master` and commit SHAs keep
+working.
+
 ## Quick start — quality-gate
 
 ```yaml
