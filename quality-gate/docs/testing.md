@@ -76,7 +76,7 @@ match the project's markers (rejected) and by requesting the correct language
 | `detect-summary` | End-to-end detect-only action output and `GITHUB_STEP_SUMMARY` layout for single, multiple, and unsupported-language projects |
 | `ast-grep-rules` | ast-grep rule correctness for Go, Python, TypeScript |
 | `portable-scripts` | Provider-neutral shell and Node entrypoint contracts without GitHub variables |
-| `release-scripts` | Release version calculation and atomic tag publication contracts |
+| `release-scripts` | Release version calculation, atomic tag publication and floating tag contracts |
 | `cli-package` | Ruff format and lint, basedpyright, and pytest for the `quality-gate` Python package in `cli/` |
 | `ai-review-action` | `ai-review` action against a local OpenAI-compatible stub: failing finding with location and suggestion, `fail-on: never`, missing styleguide, missing API key, rejected API key, and review limited to the files changed since `base-ref` |
 | `go` | All 5 checks (format, lint, strlint, typecheck, test) pass/fail for Go |
