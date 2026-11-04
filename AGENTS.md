@@ -24,10 +24,12 @@ bash release/tests/test-version.sh
 bash release/tests/test-publish-tags.sh
 ```
 
-ast-grep rule tests (ast-grep comes with `devenv shell`, or from
-`bash quality-gate/scripts/install-ast-grep.sh`):
+ast-grep rule tests. ast-grep comes with `devenv shell`; without it,
+`install-ast-grep.sh` downloads the pinned binary and prints its path, which
+must go on `PATH` (the CI does the same):
 
 ```bash
+PATH="$(dirname "$(bash quality-gate/scripts/install-ast-grep.sh)"):$PATH"
 ast-grep test --skip-snapshot-tests --config quality-gate/go/sgconfig.yaml
 ast-grep test --skip-snapshot-tests --config quality-gate/python/sgconfig.yaml
 ast-grep test --skip-snapshot-tests --config quality-gate/typescript/sgconfig.yaml
@@ -41,19 +43,25 @@ The fixture-based end-to-end tests of the actions run only in the
 
 The dev environment is defined in `devenv.nix`. Inside `devenv shell` the git
 hooks run on every commit: actionlint, shellcheck, ruff, ruff-format and
-ripsecrets; shfmt runs through treefmt. Run them over the whole tree with:
+ripsecrets. Run them over the whole tree with:
 
 ```bash
 devenv test
-treefmt
 ```
+
+`devenv.nix` also configures shfmt under `treefmt.config.programs`, but
+treefmt itself is not enabled there, so shfmt does not run in the hooks and
+there is no `treefmt` command in the shell. Keep shell scripts shfmt-clean by
+hand (`shfmt -d <file>`) when shfmt is available.
 
 ## CI
 
-- Pull requests to `master`: only `Quality Gate Tests`, and only when the diff
+- `Quality Gate Tests` (`.github/workflows/quality-gate-tests.yml`) runs on
+  pull requests to `master` and on pushes to `master`, only when the diff
   touches `quality-gate/`, `release/`, `.github/scripts/` or the quality gate
   and release workflows.
-- Push to `master` and `feat/**`: `Security` (`.github/workflows/ci.yml`, the
-  local `sast` action).
-- After both pass on `master`, `Quality Gate Release` publishes
+- `Security` (`.github/workflows/ci.yml`, the local `sast` action) runs on
+  pushes to `master` and `feat/**`, only when the diff touches the paths listed
+  in that workflow; it does not run on pull requests.
+- When both pass for a push to `master`, `Quality Gate Release` publishes
   `quality-gate-v<X.Y.Z>` and moves `quality-gate-latest`.
