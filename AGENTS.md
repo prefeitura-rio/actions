@@ -24,6 +24,7 @@ bash quality-gate/tests/scripts/test-portable.sh
 bash release/tests/test-version.sh
 bash release/tests/test-publish-tags.sh
 bash release/tests/test-move-floating-tag.sh
+bash .github/scripts/tests/test-check-reusable-workflow-refs.sh
 ```
 
 ast-grep rule tests. ast-grep comes with `devenv shell`; without it,
@@ -70,3 +71,10 @@ hand (`shfmt -d <file>`) when shfmt is available.
 - `Actions Release` (`.github/workflows/actions-release.yml`) moves the tag
   `latest` to the tip of `master` on every push to `master`, and publishes an
   immutable `v<X.Y.Z>` (and moves `latest` to it) when run manually.
+- `Workflow Refs` (`.github/workflows/workflow-refs.yml`) runs on pull
+  requests to `master` and on pushes to `master` when the diff touches
+  `.github/workflows/` or `.github/scripts/`. It fails when a reusable workflow
+  resolves its own actions or scripts at `master` or a floating tag instead of
+  the commit the caller pinned (`$/<path>`, `job.workflow_sha`); only the
+  `quality-gate-latest` steps reserved for `@master` callers are allowed. It is
+  not a release gate.
