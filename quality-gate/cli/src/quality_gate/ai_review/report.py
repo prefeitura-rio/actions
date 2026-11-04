@@ -98,7 +98,8 @@ def render_text(result: ReviewResult, fail_on: FailOn) -> str:
 
 
 def _cell(value: str) -> str:
-    return value.replace("|", "\\|").replace("\n", "<br>")
+    escaped = value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return escaped.replace("|", "\\|").replace("\n", "<br>")
 
 
 def render_markdown(result: ReviewResult, fail_on: FailOn) -> str:

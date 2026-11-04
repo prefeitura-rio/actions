@@ -151,6 +151,43 @@ def test_findings_fail_with_report_summary_and_annotations(
     assert "old.py" not in json.dumps(messages)
 
 
+def test_github_mode_disables_workflow_commands_around_model_output(
+    repository: Path,
+    provider: str,
+) -> None:
+    _feature_branch(repository)
+    _ProviderHandler.queued.append(
+        _answer(
+            [
+                {
+                    "path": "service/new.py",
+                    "line": 1,
+                    "severity": "error",
+                    "rule": "no-print",
+                    "message": "bad\n::add-mask::leak",
+                    "suggestion": "::error file=x.py,line=1::fake\n::stop-commands::other",
+                },
+            ],
+        ),
+    )
+
+    result = _invoke(repository, provider, "--github-annotations")
+
+    assert result.exit_code == 1
+    lines = result.stdout.splitlines()
+    annotation, stop = lines[0], lines[1]
+    assert annotation.startswith("::error file=service/new.py,line=1,")
+    assert "%0A::add-mask::leak" in annotation
+    assert stop.startswith("::stop-commands::")
+    token = stop.removeprefix("::stop-commands::")
+    assert len(token) == 32
+    assert lines[-1] == f"::{token}::"
+    body = lines[2:-1]
+    assert "::add-mask::leak" in body
+    assert all(token not in line for line in body)
+    assert result.stderr == ""
+
+
 def test_clean_review_passes(repository: Path, provider: str) -> None:
     _feature_branch(repository)
     _ProviderHandler.queued.append(_answer([]))

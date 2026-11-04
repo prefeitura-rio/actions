@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import secrets
 from pathlib import Path
 from typing import Annotated
 
@@ -47,6 +48,22 @@ def _write(path: Path | None, content: str) -> None:
     if path is not None:
         path.parent.mkdir(parents=True, exist_ok=True)
         _ = path.write_text(content, encoding="utf-8")
+
+
+def _emit(text: str, *, error: bool, github: bool) -> None:
+    """Print ``text``, which may carry model output.
+
+    In GitHub mode everything goes to stdout, in order, between
+    ``::stop-commands::`` markers with a random token, so no line of model
+    output is processed as a workflow command.
+    """
+    if not github:
+        typer.echo(text, err=error, nl=False)
+        return
+    token = secrets.token_hex(16)
+    typer.echo(f"::stop-commands::{token}")
+    typer.echo(text, nl=False)
+    typer.echo(f"::{token}::")
 
 
 def _relative(path: Path, root: Path) -> str:
@@ -172,7 +189,8 @@ def ai_review(
         bool,
         typer.Option(
             "--github-annotations/--no-github-annotations",
-            help="Print GitHub workflow commands that annotate each finding.",
+            help="GitHub Actions mode: annotate each finding and print the report to "
+            "stdout with workflow commands disabled around it.",
         ),
     ] = False,
 ) -> None:
@@ -197,7 +215,7 @@ def ai_review(
         )
     except AIReviewError as error:
         _write(error_file, f"{error}\n")
-        typer.echo(f"Error: {error}", err=True)
+        _emit(f"Error: {error}\n", error=True, github=github_annotations_enabled)
         code = EXIT_CONFIGURATION if isinstance(error, ConfigurationError) else EXIT_PROVIDER
         raise typer.Exit(code) from error
 
@@ -209,9 +227,9 @@ def ai_review(
     failing = result.failing(fail_on)
     if failing:
         _write(error_file, report)
-        typer.echo(report, err=True, nl=False)
+        _emit(report, error=True, github=github_annotations_enabled)
         raise typer.Exit(EXIT_FINDINGS)
-    typer.echo(report, nl=False)
+    _emit(report, error=False, github=github_annotations_enabled)
 
 
 def main() -> None:

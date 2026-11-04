@@ -7,7 +7,7 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol, cast, final
+from typing import TYPE_CHECKING, Protocol, cast, final, override
 from urllib.parse import urlsplit
 
 from quality_gate.ai_review.errors import ConfigurationError, ProviderError
@@ -15,7 +15,9 @@ from quality_gate.ai_review.json_values import as_list, as_object, loads
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
+    from email.message import Message
     from http.client import HTTPResponse
+    from typing import IO
 
 RETRYABLE_STATUS: frozenset[int] = frozenset({408, 409, 429, 500, 502, 503, 504})
 LOCAL_HOSTS: frozenset[str] = frozenset({"localhost", "127.0.0.1", "::1"})
@@ -45,8 +47,29 @@ class Transport(Protocol):
 
 
 @final
+class _RefuseRedirects(urllib.request.HTTPRedirectHandler):
+    """Turn every redirect into an HTTP error, so the API key never follows one."""
+
+    @override
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: IO[bytes],
+        code: int,
+        msg: str,
+        headers: Message,
+        newurl: str,
+    ) -> None:
+        return None
+
+
+@final
 class UrllibTransport:
-    """``Transport`` backed by the standard library."""
+    """``Transport`` backed by the standard library. Redirects are not followed."""
+
+    def __init__(self) -> None:
+        """Build an opener that refuses redirects."""
+        self._opener = urllib.request.build_opener(_RefuseRedirects())
 
     def post_json(
         self,
@@ -59,14 +82,13 @@ class UrllibTransport:
         request = urllib.request.Request(  # noqa: S310 - scheme validated by validate_base_url
             url,
             data=json.dumps(payload).encode("utf-8"),
-            headers={**headers, "Content-Type": "application/json"},
             method="POST",
         )
+        request.add_unredirected_header("Content-Type", "application/json")
+        for name, value in headers.items():
+            request.add_unredirected_header(name, value)
         try:
-            opened = cast(
-                "HTTPResponse",
-                urllib.request.urlopen(request, timeout=timeout),  # noqa: S310
-            )
+            opened = cast("HTTPResponse", self._opener.open(request, timeout=timeout))
             with opened as response:
                 body = response.read().decode("utf-8", errors="replace")
                 return HttpResponse(status=response.status, body=body)
@@ -163,6 +185,10 @@ class ChatClient:
                     f"HTTP {response.status} from the model provider: "
                     f"{response.body.strip()[:ERROR_BODY_LIMIT]}"
                 )
+                if 300 <= response.status < 400:
+                    last_error += (
+                        " (redirects are not followed; set the base URL to the final API URL)"
+                    )
                 if response.status not in RETRYABLE_STATUS:
                     raise ProviderError(last_error)
             if attempt < self._max_attempts:

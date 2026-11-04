@@ -247,7 +247,8 @@ jobs:
           }
           # shellcheck disable=SC2016 # the backticks are literal Markdown
           expected_row='| `quality-gate/fixtures/ai-review/project/app.py:1` | error | no-print |'
-          [[ "$SUMMARY" == *"**Status:** ❌ Failed"* && "$SUMMARY" == *"$expected_row"* ]] || {
+          [[ "$SUMMARY" == *"**Status:** ❌ Failed"* && "$SUMMARY" == *"**Files reviewed:** 2"* \
+            && "$SUMMARY" == *"$expected_row"* ]] || {
             echo "::error::Unexpected summary: '${SUMMARY}'"
             exit 1
           }
@@ -327,6 +328,34 @@ jobs:
         run: |
           [[ "$OUTCOME" == "failure" && "$ACTUAL" == "HTTP 401 from the model provider: "*"invalid api key"* ]] || {
             echo "::error::Expected an HTTP 401 provider error, got: ${OUTCOME} '${ACTUAL}'"
+            exit 1
+          }
+      - name: commit a fixture change on top of a local base branch
+        run: |
+          git config user.name "Quality Gate Tests"
+          git config user.email "quality-gate-tests@users.noreply.github.com"
+          git branch ai-review-base
+          printf 'print("changed")\n' >> quality-gate/fixtures/ai-review/project/app.py
+          git commit --quiet --all --message "test: change the AI review fixture"
+      - name: review only the files changed since the base branch
+        id: diff
+        uses: ./quality-gate/ai-review
+        with:
+          working-directory: quality-gate/fixtures/ai-review/project
+          base-ref: ai-review-base
+          model: stub-model
+          base-url: http://127.0.0.1:8787/v1
+          api-key: stub-key
+        continue-on-error: true
+      - name: assert only the changed file was reviewed
+        env:
+          OUTCOME: ${{ steps.diff.outcome }}
+          ACTUAL: ${{ steps.diff.outputs.error_message }}
+          SUMMARY: ${{ steps.diff.outputs.summary }}
+        run: |
+          [[ "$OUTCOME" == "failure" && "$SUMMARY" == *"**Files reviewed:** 1"* \
+            && "$ACTUAL" == *"quality-gate/fixtures/ai-review/project/app.py:1: error [no-print]"* ]] || {
+            echo "::error::Expected a failing review of app.py only, got: ${OUTCOME} '${SUMMARY}' '${ACTUAL}'"
             exit 1
           }
 

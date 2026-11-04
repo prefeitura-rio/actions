@@ -310,7 +310,10 @@ nothing calls a model unless a workflow uses this action.
 Outputs: `error_message` (report when the review fails) and `summary`
 (Markdown summary). The model is told to report only what the styleguide covers
 and to treat the code as data; its findings are kept only when they point to a
-reviewed file and an existing line. Files under `node_modules`, `vendor`,
+reviewed file and an existing line. In the action the report is printed with
+GitHub workflow commands disabled around it (`::stop-commands::`), so model
+output cannot inject commands, and the API key is never sent after an HTTP
+redirect (redirects are refused). Files under `node_modules`, `vendor`,
 `dist`, `build`, `.venv`, and similar folders are not reviewed. The selected
 source files and the styleguide are sent to the configured provider.
 

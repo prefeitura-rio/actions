@@ -86,6 +86,19 @@ def test_markdown_summary_escapes_table_cells() -> None:
         in (summary)
     )
     assert "naming: short \\| vague" in summary
+    assert "&lt;img src=x&gt; &amp;" in render_markdown(
+        _result(
+            Finding(
+                path="app/main.py",
+                line=1,
+                severity=Severity.ERROR,
+                rule="r",
+                message="<img src=x> &",
+                suggestion="",
+            ),
+        ),
+        FailOn.ERROR,
+    )
     assert "- Not reviewed: big.py (larger than 10 bytes)." in summary
     assert "**Status:** ✅ Passed" in render_markdown(_result(), FailOn.ERROR)
 
