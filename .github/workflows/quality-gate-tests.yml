@@ -181,6 +181,15 @@ jobs:
       - name: Run tag publication tests
         run: bash release/tests/test-publish-tags.sh
 
+  reusable-workflow-refs:
+    name: Reusable workflow internal refs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Check that pinned reusable workflows pin their internal parts
+        run: bash .github/scripts/tests/test-check-reusable-workflow-refs.sh
+
   go:
     name: Go / ${{ matrix.check }}
     runs-on: ubuntu-latest

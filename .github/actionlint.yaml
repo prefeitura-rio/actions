@@ -1,0 +1,7 @@
+# actionlint (1.7.12) does not know yet the job.workflow_* context properties
+# nor the "$/" self-repository syntax of uses:, both available on github.com.
+paths:
+  .github/workflows/**/*.{yml,yaml}:
+    ignore:
+      - 'property "workflow_(ref|sha|repository)" is not defined in object type'
+      - 'specifying action "\$/[^"]+" in invalid format because ref is missing'

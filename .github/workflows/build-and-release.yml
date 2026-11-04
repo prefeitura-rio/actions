@@ -188,13 +188,12 @@ jobs:
     env:
       IMAGE_DIGEST: ${{ needs.build-and-release.outputs.image }}@${{ needs.build-and-release.outputs.digest }}
       KMS_KEY: ${{ vars.PROVENANCE_KMS_KEY }}
-      BUILDER_ID: https://github.com/prefeitura-rio/actions/.github/workflows/build-and-release.yml@refs/heads/master
     steps:
       - name: Checkout provenance scripts
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: prefeitura-rio/actions
-          ref: master
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
           path: _provenance
 
       - name: Authenticate to GCP
@@ -214,6 +213,9 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate SLSA provenance predicate
+        env:
+          # Empty when job.workflow_ref is unavailable, so generate-predicate.sh fails closed.
+          BUILDER_ID: ${{ job.workflow_ref && format('https://github.com/{0}', job.workflow_ref) || '' }}
         run: _provenance/provenance/scripts/generate-predicate.sh > predicate.json
 
       - name: Sign and attach provenance
@@ -255,8 +257,8 @@ jobs:
       - name: Checkout provenance scripts
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: prefeitura-rio/actions
-          ref: master
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
           path: _provenance
 
       - name: Connect to Tailscale
