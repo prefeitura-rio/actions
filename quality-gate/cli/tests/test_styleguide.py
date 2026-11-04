@@ -82,3 +82,29 @@ def test_binary_styleguide_is_rejected(tmp_path: Path) -> None:
 
     with pytest.raises(ConfigurationError, match="not valid UTF-8"):
         _ = load_styleguide(path, 100)
+
+
+def test_styleguide_link_outside_the_repository_is_ignored(tmp_path: Path) -> None:
+    root = tmp_path / "repository"
+    root.mkdir()
+    outside = tmp_path / "outside.md"
+    _ = outside.write_text("- Outside rule.\n", encoding="utf-8")
+    (root / "STYLEGUIDE.md").symlink_to(outside)
+    docs = root / "docs"
+    docs.mkdir()
+    _ = (docs / "styleguide.md").write_text("- Rule.\n", encoding="utf-8")
+
+    assert find_styleguide(root, root, None) == docs / "styleguide.md"
+
+
+def test_explicit_styleguide_outside_the_repository_is_rejected(tmp_path: Path) -> None:
+    root = tmp_path / "repository"
+    root.mkdir()
+    outside = tmp_path / "outside.md"
+    _ = outside.write_text("- Outside rule.\n", encoding="utf-8")
+    (root / "RULES.md").symlink_to(outside)
+
+    with pytest.raises(ConfigurationError) as raised:
+        _ = find_styleguide(root, root, Path("RULES.md"))
+
+    assert str(raised.value) == "Styleguide file 'RULES.md' resolves outside the repository."

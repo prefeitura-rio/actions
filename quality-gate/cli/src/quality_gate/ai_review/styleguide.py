@@ -42,6 +42,10 @@ def _match_in_directory(directory: Path) -> Path | None:
     return None
 
 
+def _inside(path: Path, repository_root: Path) -> bool:
+    return path.resolve().is_relative_to(repository_root.resolve())
+
+
 def find_styleguide(
     working_directory: Path,
     repository_root: Path,
@@ -52,11 +56,16 @@ def find_styleguide(
     An explicit path is resolved against the working directory and must exist.
     Otherwise the working directory and then the repository root are searched
     for the names in ``STYLEGUIDE_NAMES`` inside ``STYLEGUIDE_DIRECTORIES``.
+    A styleguide whose symbolic links resolve outside ``repository_root`` is
+    never used.
     """
     if explicit is not None:
         candidate = explicit if explicit.is_absolute() else working_directory / explicit
         if not candidate.is_file():
             msg = f"Styleguide file '{explicit}' does not exist."
+            raise ConfigurationError(msg)
+        if not _inside(candidate, repository_root):
+            msg = f"Styleguide file '{explicit}' resolves outside the repository."
             raise ConfigurationError(msg)
         return candidate
 
@@ -66,7 +75,7 @@ def find_styleguide(
     for root in roots:
         for directory in STYLEGUIDE_DIRECTORIES:
             match = _match_in_directory(root / directory)
-            if match is not None:
+            if match is not None and _inside(match, repository_root):
                 return match
 
     msg = (

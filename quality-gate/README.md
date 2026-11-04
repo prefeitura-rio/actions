@@ -314,7 +314,8 @@ reviewed file and an existing line. In the action the report is printed with
 GitHub workflow commands disabled around it (`::stop-commands::`), so model
 output cannot inject commands, and the API key is never sent after an HTTP
 redirect (redirects are refused). Files under `node_modules`, `vendor`,
-`dist`, `build`, `.venv`, and similar folders are not reviewed. The selected
+`dist`, `build`, `.venv`, and similar folders are not reviewed, nor are files
+or styleguides whose symbolic links resolve outside the repository. The selected
 source files and the styleguide are sent to the configured provider.
 
 The action runs the `ai-review` command of the `quality-gate` Python package in

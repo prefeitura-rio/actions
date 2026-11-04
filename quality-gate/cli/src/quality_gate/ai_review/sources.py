@@ -148,13 +148,21 @@ def select_sources(
     max_files: int,
     max_file_bytes: int,
 ) -> SourceSelection:
-    """Read up to ``max_files`` UTF-8 files of at most ``max_file_bytes`` bytes."""
+    """Read up to ``max_files`` UTF-8 files of at most ``max_file_bytes`` bytes.
+
+    A path whose symbolic links resolve outside ``root`` is skipped, so a
+    tracked link cannot send a file from elsewhere on the runner to the model.
+    """
     files: list[SourceFile] = []
     skipped: list[tuple[str, str]] = []
+    resolved_root = root.resolve()
     for path in paths:
         absolute = root / path
         if len(files) >= max_files:
             skipped.append((path, f"over the limit of {max_files} files"))
+            continue
+        if not absolute.resolve().is_relative_to(resolved_root):
+            skipped.append((path, "resolves outside the repository"))
             continue
         if not absolute.is_file():
             skipped.append((path, "not a regular file"))

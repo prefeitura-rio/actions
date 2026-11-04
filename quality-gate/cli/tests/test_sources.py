@@ -143,3 +143,23 @@ def test_select_sources_applies_limits(tmp_path: Path) -> None:
         ("binary.py", "not UTF-8 text"),
         ("gone.py", "not a regular file"),
     )
+
+
+def test_select_sources_skips_links_outside_the_repository(tmp_path: Path) -> None:
+    root = tmp_path / "repository"
+    root.mkdir()
+    outside = tmp_path / "secret.py"
+    _ = outside.write_text("TOKEN = 'outside'\n", encoding="utf-8")
+    _ = (root / "inside.py").write_text("A = 1\n", encoding="utf-8")
+    (root / "escape.py").symlink_to(outside)
+    (root / "alias.py").symlink_to(root / "inside.py")
+
+    selection = select_sources(
+        root,
+        ["alias.py", "escape.py", "inside.py"],
+        max_files=10,
+        max_file_bytes=1000,
+    )
+
+    assert [source.path for source in selection.files] == ["alias.py", "inside.py"]
+    assert selection.skipped == (("escape.py", "resolves outside the repository"),)
