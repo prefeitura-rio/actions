@@ -15,11 +15,12 @@ fail() {
 write_workflow() {
   local name=$1
   local steps=$2
+  local trigger=${3:-workflow_call}
   local dir="$TEMP_DIR/$name"
   mkdir -p "$dir"
   cat >"$dir/reusable.yml" <<EOF
 on:
-  workflow_call:
+  $trigger:
 jobs:
   job:
     runs-on: ubuntu-latest
@@ -99,8 +100,7 @@ expect_reject "hardcoded builder ref" '      - run: true
           BUILDER_ID: https://github.com/prefeitura-rio/actions/.github/workflows/build-and-release.yml@refs/heads/master' \
   "hardcoded refs/heads/master"
 
-non_reusable=$(write_workflow "non-reusable" '      - uses: prefeitura-rio/actions/sast@master')
-sed -i 's/workflow_call:/push:/' "$non_reusable/reusable.yml"
+non_reusable=$(write_workflow "non-reusable" '      - uses: prefeitura-rio/actions/sast@master' push)
 output=$(bash "$CHECK" "$non_reusable" 2>&1) || fail "non-reusable workflow should be ignored: $output"
 
 if bash "$CHECK" "$TEMP_DIR/missing" 2>/dev/null; then
