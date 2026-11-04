@@ -76,7 +76,7 @@ match the project's markers (rejected) and by requesting the correct language
 | `detect-summary` | End-to-end detect-only action output and `GITHUB_STEP_SUMMARY` layout for single, multiple, and unsupported-language projects |
 | `ast-grep-rules` | ast-grep rule correctness for Go, Python, TypeScript |
 | `portable-scripts` | Provider-neutral shell and Node entrypoint contracts without GitHub variables |
-| `release-scripts` | Release version calculation and atomic tag publication contracts |
+| `release-scripts` | Release version calculation, atomic tag publication and floating tag contracts |
 | `go` | All 5 checks (format, lint, strlint, typecheck, test) pass/fail for Go |
 | `python` | All 5 checks (format, lint, strlint, typecheck, test) pass/fail for Python |
 | `python-coverage` | Organization coverage default and Python project overrides |

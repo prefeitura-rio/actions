@@ -11,6 +11,7 @@ on:
       - ".github/workflows/release.yml"
       - ".github/workflows/quality-gate-release.yml"
       - ".github/workflows/quality-gate-manual-release.yml"
+      - ".github/workflows/actions-release.yml"
       - ".github/scripts/**"
   push:
     branches: [master]
@@ -22,6 +23,7 @@ on:
       - ".github/workflows/release.yml"
       - ".github/workflows/quality-gate-release.yml"
       - ".github/workflows/quality-gate-manual-release.yml"
+      - ".github/workflows/actions-release.yml"
       - ".github/scripts/**"
   workflow_dispatch:
 
@@ -180,6 +182,8 @@ jobs:
         run: bash release/tests/test-version.sh
       - name: Run tag publication tests
         run: bash release/tests/test-publish-tags.sh
+      - name: Run floating tag tests
+        run: bash release/tests/test-move-floating-tag.sh
 
   go:
     name: Go / ${{ matrix.check }}
