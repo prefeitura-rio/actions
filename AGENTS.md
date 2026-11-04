@@ -34,6 +34,14 @@ SLSA provenance scripts (`provenance/scripts`, needs `bash`, `jq` and
 bash provenance/tests/test-provenance.sh
 ```
 
+Image scanner scripts (`install-scanners.sh`, `generate-sbom.sh`,
+`scan-image.sh`, needs `bash`, `jq`, `tar`, `gzip` and `sha256sum`; `curl`,
+`cosign`, `syft` and `grype` are stubs, so no network or registry is used):
+
+```bash
+bash provenance/tests/test-scanners.sh
+```
+
 Python package of the quality gate (`quality-gate/cli`, needs `uv`):
 
 ```bash
