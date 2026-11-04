@@ -11,6 +11,34 @@ on:
         description: Project directory relative to the caller repository root.
         type: string
         required: true
+      ai-review:
+        description: |
+          Also review the code against the repository styleguide with a model
+          (job "AI Review"). Requires ai-model and the AI_API_KEY secret.
+        type: boolean
+        required: false
+        default: false
+      ai-model:
+        description: Model name used by the AI review.
+        type: string
+        required: false
+        default: ''
+      ai-base-url:
+        description: Base URL of the OpenAI-compatible API used by the AI review.
+        type: string
+        required: false
+        default: https://api.openai.com/v1
+      styleguide:
+        description: |
+          Styleguide file relative to working-directory. Empty searches for
+          STYLEGUIDE.md in the project root, the repository root, docs/, and .github/.
+        type: string
+        required: false
+        default: ''
+    secrets:
+      AI_API_KEY:
+        description: API key of the model provider used by the AI review.
+        required: false
 
 permissions:
   contents: read
@@ -150,3 +178,30 @@ jobs:
           check: app:test
           working-directory: ${{ inputs.working-directory }}
           language: ${{ matrix.language }}
+
+  ai-review:
+    name: ${{ inputs.project-name }} / AI Review
+    if: inputs.ai-review
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+      - if: endsWith(job.workflow_ref, '@refs/heads/master')
+        uses: prefeitura-rio/actions/quality-gate/ai-review@quality-gate-latest
+        with:
+          working-directory: ${{ inputs.working-directory }}
+          styleguide: ${{ inputs.styleguide }}
+          base-ref: ${{ github.base_ref }}
+          model: ${{ inputs.ai-model }}
+          base-url: ${{ inputs.ai-base-url }}
+          api-key: ${{ secrets.AI_API_KEY }}
+      - if: ${{ !endsWith(job.workflow_ref, '@refs/heads/master') }}
+        uses: $/quality-gate/ai-review
+        with:
+          working-directory: ${{ inputs.working-directory }}
+          styleguide: ${{ inputs.styleguide }}
+          base-ref: ${{ github.base_ref }}
+          model: ${{ inputs.ai-model }}
+          base-url: ${{ inputs.ai-base-url }}
+          api-key: ${{ secrets.AI_API_KEY }}

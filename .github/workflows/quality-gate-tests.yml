@@ -185,6 +185,184 @@ jobs:
       - name: Run floating tag tests
         run: bash release/tests/test-move-floating-tag.sh
 
+  cli-package:
+    name: Quality gate CLI package
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: quality-gate/cli
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Setup uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: 0.12.5
+      - name: Check formatting
+        run: uv run --frozen ruff format --check .
+      - name: Lint
+        run: uv run --frozen ruff check .
+      - name: Type check
+        run: uv run --frozen basedpyright
+      - name: Test
+        run: uv run --frozen pytest
+
+  ai-review-action:
+    name: AI review action
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Start stub provider
+        run: |
+          python3 quality-gate/fixtures/ai-review/stub-provider.py 8787 &
+          for _ in $(seq 1 50); do
+            curl -s -o /dev/null http://127.0.0.1:8787/ && exit 0
+            sleep 0.2
+          done
+          echo "::error::The stub provider did not start"
+          exit 1
+      - name: review a project that breaks the styleguide
+        id: findings
+        uses: ./quality-gate/ai-review
+        with:
+          working-directory: quality-gate/fixtures/ai-review/project
+          base-ref: ''
+          model: stub-model
+          base-url: http://127.0.0.1:8787/v1
+          api-key: stub-key
+        continue-on-error: true
+      - name: assert findings fail with location and suggestion
+        env:
+          OUTCOME: ${{ steps.findings.outcome }}
+          ACTUAL: ${{ steps.findings.outputs.error_message }}
+          SUMMARY: ${{ steps.findings.outputs.summary }}
+        run: |
+          [[ "$OUTCOME" == "failure" ]] || {
+            echo "::error::Expected the review to fail on a styleguide violation, got: ${OUTCOME}"
+            exit 1
+          }
+          [[ "$ACTUAL" == "Error: AI review found code outside the styleguide (1 error(s), 0 warning(s))."* \
+            && "$ACTUAL" == *"quality-gate/fixtures/ai-review/project/app.py:1: error [no-print] print is not allowed by the styleguide."* \
+            && "$ACTUAL" == *'logging.getLogger(__name__).info("hello")'* \
+            && "$ACTUAL" == *"How to fix it:"* ]] || {
+            echo "::error::Unexpected error_message: '${ACTUAL}'"
+            exit 1
+          }
+          # shellcheck disable=SC2016 # the backticks are literal Markdown
+          expected_row='| `quality-gate/fixtures/ai-review/project/app.py:1` | error | no-print |'
+          [[ "$SUMMARY" == *"**Status:** ❌ Failed"* && "$SUMMARY" == *"**Files reviewed:** 2"* \
+            && "$SUMMARY" == *"$expected_row"* ]] || {
+            echo "::error::Unexpected summary: '${SUMMARY}'"
+            exit 1
+          }
+      - name: review with fail-on never
+        id: never
+        uses: ./quality-gate/ai-review
+        with:
+          working-directory: quality-gate/fixtures/ai-review/project
+          base-ref: ''
+          model: stub-model
+          base-url: http://127.0.0.1:8787/v1
+          api-key: stub-key
+          fail-on: never
+      - name: assert findings are still reported
+        env:
+          ACTUAL: ${{ steps.never.outputs.error_message }}
+          SUMMARY: ${{ steps.never.outputs.summary }}
+        run: |
+          [[ -z "$ACTUAL" && "$SUMMARY" == *"**Status:** ✅ Passed"* && "$SUMMARY" == *"no-print"* ]] || {
+            echo "::error::Expected a passing summary with the finding, got: '${SUMMARY}' / '${ACTUAL}'"
+            exit 1
+          }
+      - name: review a project without styleguide
+        id: no-styleguide
+        uses: ./quality-gate/ai-review
+        with:
+          working-directory: quality-gate/fixtures/ai-review/no-styleguide
+          base-ref: ''
+          model: stub-model
+          base-url: http://127.0.0.1:8787/v1
+          api-key: stub-key
+        continue-on-error: true
+      - name: assert missing styleguide error
+        env:
+          OUTCOME: ${{ steps.no-styleguide.outcome }}
+          ACTUAL: ${{ steps.no-styleguide.outputs.error_message }}
+        run: |
+          EXPECTED="No styleguide found. Add STYLEGUIDE.md to the project or repository root (or to docs/ or .github/), or set the styleguide input."
+          [[ "$OUTCOME" == "failure" && "$ACTUAL" == "$EXPECTED" ]] || {
+            echo "::error::Expected failure with '${EXPECTED}', got: ${OUTCOME} '${ACTUAL}'"
+            exit 1
+          }
+      - name: review without api key
+        id: no-key
+        uses: ./quality-gate/ai-review
+        with:
+          working-directory: quality-gate/fixtures/ai-review/project
+          base-ref: ''
+          model: stub-model
+          base-url: http://127.0.0.1:8787/v1
+          api-key: ''
+        continue-on-error: true
+      - name: assert missing api key error
+        env:
+          OUTCOME: ${{ steps.no-key.outcome }}
+          ACTUAL: ${{ steps.no-key.outputs.error_message }}
+        run: |
+          EXPECTED="The model API key is empty. Set QUALITY_GATE_AI_API_KEY (input api-key)."
+          [[ "$OUTCOME" == "failure" && "$ACTUAL" == "$EXPECTED" ]] || {
+            echo "::error::Expected failure with '${EXPECTED}', got: ${OUTCOME} '${ACTUAL}'"
+            exit 1
+          }
+      - name: review with a rejected api key
+        id: rejected-key
+        uses: ./quality-gate/ai-review
+        with:
+          working-directory: quality-gate/fixtures/ai-review/project
+          base-ref: ''
+          model: stub-model
+          base-url: http://127.0.0.1:8787/v1
+          api-key: rejected-key
+        continue-on-error: true
+      - name: assert provider error
+        env:
+          OUTCOME: ${{ steps.rejected-key.outcome }}
+          ACTUAL: ${{ steps.rejected-key.outputs.error_message }}
+        run: |
+          [[ "$OUTCOME" == "failure" && "$ACTUAL" == "HTTP 401 from the model provider: "*"invalid api key"* ]] || {
+            echo "::error::Expected an HTTP 401 provider error, got: ${OUTCOME} '${ACTUAL}'"
+            exit 1
+          }
+      - name: commit a fixture change on top of a local base branch
+        run: |
+          git config user.name "Quality Gate Tests"
+          git config user.email "quality-gate-tests@users.noreply.github.com"
+          git branch ai-review-base
+          printf 'print("changed")\n' >> quality-gate/fixtures/ai-review/project/app.py
+          git commit --quiet --all --message "test: change the AI review fixture"
+      - name: review only the files changed since the base branch
+        id: diff
+        uses: ./quality-gate/ai-review
+        with:
+          working-directory: quality-gate/fixtures/ai-review/project
+          base-ref: ai-review-base
+          model: stub-model
+          base-url: http://127.0.0.1:8787/v1
+          api-key: stub-key
+        continue-on-error: true
+      - name: assert only the changed file was reviewed
+        env:
+          OUTCOME: ${{ steps.diff.outcome }}
+          ACTUAL: ${{ steps.diff.outputs.error_message }}
+          SUMMARY: ${{ steps.diff.outputs.summary }}
+        run: |
+          [[ "$OUTCOME" == "failure" && "$SUMMARY" == *"**Files reviewed:** 1"* \
+            && "$ACTUAL" == *"quality-gate/fixtures/ai-review/project/app.py:1: error [no-print]"* ]] || {
+            echo "::error::Expected a failing review of app.py only, got: ${OUTCOME} '${SUMMARY}' '${ACTUAL}'"
+            exit 1
+          }
+
   go:
     name: Go / ${{ matrix.check }}
     runs-on: ubuntu-latest
