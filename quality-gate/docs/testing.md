@@ -77,7 +77,7 @@ match the project's markers (rejected) and by requesting the correct language
 | `ast-grep-rules` | ast-grep rule correctness for Go, Python, TypeScript |
 | `portable-scripts` | Provider-neutral shell and Node entrypoint contracts without GitHub variables |
 | `release-scripts` | Release version calculation, atomic tag publication and floating tag contracts |
-| `provenance-scripts` | SLSA provenance scripts with a stubbed `cosign`: predicate format on GitHub and GitLab, `gcpkms://` key normalization, builder and source mismatch rejection, and the federated ADC file, without cloud credentials |
+| `provenance-scripts` | SLSA provenance scripts with a stubbed `cosign`: predicate format on GitHub and GitLab, `gcpkms://` key normalization, builder and source mismatch rejection, and the federated ADC file, without cloud credentials; image scanner scripts with stubbed `curl`, `cosign`, `syft` and `grype`: pinned download checksums and signature verification, SBOM and grype arguments, failure propagation and DefectDojo reimport only on the default branch, without network |
 | `cli-package` | Ruff format and lint, basedpyright, and pytest for the `quality-gate` Python package in `cli/` |
 | `ai-review-action` | `ai-review` action against a local OpenAI-compatible stub: failing finding with location and suggestion, `fail-on: never`, missing styleguide, missing API key, rejected API key, and review limited to the files changed since `base-ref` |
 | `go` | All 5 checks (format, lint, strlint, typecheck, test) pass/fail for Go |

@@ -195,6 +195,8 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Run provenance signing script tests
         run: bash provenance/tests/test-provenance.sh
+      - name: Run provenance scanner script tests
+        run: bash provenance/tests/test-scanners.sh
 
   cli-package:
     name: Quality gate CLI package
