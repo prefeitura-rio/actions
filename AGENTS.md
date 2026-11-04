@@ -27,6 +27,13 @@ bash release/tests/test-move-floating-tag.sh
 bash .github/scripts/tests/test-check-reusable-workflow-refs.sh
 ```
 
+SLSA provenance scripts (`provenance/scripts`, needs `bash`, `jq` and
+`base64`; `cosign` is replaced by a stub, so no cloud credential is used):
+
+```bash
+bash provenance/tests/test-provenance.sh
+```
+
 Python package of the quality gate (`quality-gate/cli`, needs `uv`):
 
 ```bash
@@ -69,8 +76,8 @@ hand (`shfmt -d <file>`) when shfmt is available.
 
 - `Quality Gate Tests` (`.github/workflows/quality-gate-tests.yml`) runs on
   pull requests to `master` and on pushes to `master`, only when the diff
-  touches `quality-gate/`, `release/`, `.github/scripts/` or the quality gate
-  and release workflows.
+  touches `quality-gate/`, `release/`, `provenance/`, `.github/scripts/` or the
+  quality gate and release workflows.
 - `Security` (`.github/workflows/ci.yml`, the local `sast` action) runs on
   pushes to `master` and `feat/**`, only when the diff touches the paths listed
   in that workflow; it does not run on pull requests.
