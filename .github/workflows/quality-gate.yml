@@ -187,7 +187,17 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
-      - uses: prefeitura-rio/actions/quality-gate/ai-review@quality-gate-latest
+      - if: endsWith(job.workflow_ref, '@refs/heads/master')
+        uses: prefeitura-rio/actions/quality-gate/ai-review@quality-gate-latest
+        with:
+          working-directory: ${{ inputs.working-directory }}
+          styleguide: ${{ inputs.styleguide }}
+          base-ref: ${{ github.base_ref }}
+          model: ${{ inputs.ai-model }}
+          base-url: ${{ inputs.ai-base-url }}
+          api-key: ${{ secrets.AI_API_KEY }}
+      - if: ${{ !endsWith(job.workflow_ref, '@refs/heads/master') }}
+        uses: $/quality-gate/ai-review
         with:
           working-directory: ${{ inputs.working-directory }}
           styleguide: ${{ inputs.styleguide }}
