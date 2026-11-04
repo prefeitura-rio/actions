@@ -28,6 +28,15 @@ same repository-wide tags, published by the `Actions Release` workflow
 - uses: prefeitura-rio/actions/sast@v1.0.0    # stable, use for rollback
 ```
 
+A tag pins the file you reference, not what that file references in turn.
+Composite actions (`quality-gate/`, `sast/`, `setup-devenv/`) are fully pinned
+by the tag. Some reusable workflows still reach other parts of this repository
+through mutable refs, so pinning them by `v<X.Y.Z>` does not freeze those
+parts: `.github/workflows/sast.yml` runs `sast@master`,
+`.github/workflows/build-and-release.yml` checks out the provenance scripts at
+`master`, and `.github/workflows/quality-gate.yml` runs
+`quality-gate@quality-gate-latest`.
+
 The component tags `quality-gate-v<X.Y.Z>` and `quality-gate-latest` are
 published independently by the quality gate release workflows (see
 [`release/README.md`](release/README.md)). `@master` and commit SHAs keep
