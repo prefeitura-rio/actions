@@ -22,6 +22,7 @@ Portable tests need only `bash` and `git` (no GitHub variables):
 bash quality-gate/tests/scripts/test-portable.sh
 bash release/tests/test-version.sh
 bash release/tests/test-publish-tags.sh
+bash .github/scripts/tests/test-check-reusable-workflow-refs.sh
 ```
 
 ast-grep rule tests. ast-grep comes with `devenv shell`; without it,
@@ -65,3 +66,10 @@ hand (`shfmt -d <file>`) when shfmt is available.
   in that workflow; it does not run on pull requests.
 - When both pass for a push to `master`, `Quality Gate Release` publishes
   `quality-gate-v<X.Y.Z>` and moves `quality-gate-latest`.
+- `Workflow Refs` (`.github/workflows/workflow-refs.yml`) runs on pull
+  requests to `master` and on pushes to `master` when the diff touches
+  `.github/workflows/` or `.github/scripts/`. It fails when a reusable workflow
+  resolves its own actions or scripts at `master` or a floating tag instead of
+  the commit the caller pinned (`$/<path>`, `job.workflow_sha`); only the
+  `quality-gate-latest` steps reserved for `@master` callers are allowed. It is
+  not a release gate.
