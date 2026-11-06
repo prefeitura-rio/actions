@@ -344,6 +344,174 @@ for required in IMAGE_DIGEST VERIFY_KEY EXPECTED_BUILDER_ID; do
   assert_cosign_not_called "verify without $required"
 done
 
+# --- verify-sbom.sh ----------------------------------------------------------
+
+sbom_attestation="$tmp_dir/sbom-attestation.json"
+sbom_out="$tmp_dir/verified-sbom.cdx.json"
+other_digest='bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+
+cat >"$tmp_dir/sbom.cdx.json" <<'JSON'
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "metadata": { "component": { "type": "container", "name": "ghcr.io/prefeitura-rio/example" } },
+  "components": [
+    { "type": "library", "name": "openssl", "version": "3.0.0" },
+    { "type": "library", "name": "zlib", "version": "1.3.1" }
+  ]
+}
+JSON
+
+# write_sbom_attestation <predicate file> [predicate type] [subject digest]:
+# wraps the predicate as cosign attest --type cyclonedx does.
+write_sbom_attestation() {
+  local payload
+  payload=$(jq -c \
+    --arg type "${2:-https://cyclonedx.org/bom}" \
+    --arg digest "${3:-${image_digest#*@sha256:}}" '{
+      _type: "https://in-toto.io/Statement/v0.1",
+      subject: [ { name: "ghcr.io/prefeitura-rio/example", digest: { sha256: $digest } } ],
+      predicateType: $type,
+      predicate: .
+    }' "$1" | base64 | tr -d '\n')
+  jq -cn --arg payload "$payload" \
+    '{ payloadType: "application/vnd.in-toto+json", payload: $payload, signatures: [ { sig: "c3R1Yg==" } ] }' \
+    >"$sbom_attestation"
+}
+
+# write_sbom_variant <jq filter> [predicate type] [subject digest]: attests
+# the reference SBOM after the filter.
+write_sbom_variant() {
+  jq "$1" "$tmp_dir/sbom.cdx.json" >"$tmp_dir/sbom-variant.json"
+  write_sbom_attestation "$tmp_dir/sbom-variant.json" "${2:-https://cyclonedx.org/bom}" \
+    "${3:-${image_digest#*@sha256:}}"
+}
+
+expected_verify_sbom_args() {
+  printf '%s\n' verify-attestation --key "$verify_key" --type cyclonedx \
+    "--insecure-ignore-tlog=$1" "$image_digest"
+}
+
+verify_sbom_env=(
+  IMAGE_DIGEST="$image_digest"
+  VERIFY_KEY="$verify_key"
+  COSIGN_ATTESTATION="$sbom_attestation"
+)
+
+# assert_sbom_rejected <context> <stderr fragment> [extra VAR=value...]
+assert_sbom_rejected() {
+  local context="$1" message="$2"
+  shift 2
+  rm -f "$sbom_out"
+  run_isolated "${verify_sbom_env[@]}" SBOM_FILE="$sbom_out" "$@" -- "$verify_sbom"
+  assert_status 1 "$context"
+  assert_stderr_contains "$message" "$context"
+  assert_stdout_lacks 'sbom OK' "$context"
+  [[ ! -e "$sbom_out" ]] || fail "$context: the SBOM was saved"
+}
+
+verify_sbom="$scripts/verify-sbom.sh"
+
+write_sbom_attestation "$tmp_dir/sbom.cdx.json"
+run_isolated "${verify_sbom_env[@]}" SBOM_FILE="$sbom_out" -- "$verify_sbom"
+assert_status 0 'verify matching SBOM'
+assert_stdout_contains "sbom OK: $image_digest" 'verify matching SBOM'
+assert_stdout_contains 'format:     CycloneDX 1.6' 'verify matching SBOM'
+assert_stdout_contains 'components: 2' 'verify matching SBOM'
+assert_stdout_contains "saved:      $sbom_out" 'verify matching SBOM'
+assert_cosign_args "$(expected_verify_sbom_args true)" 'verify matching SBOM'
+jq -e --slurpfile signed "$tmp_dir/sbom.cdx.json" '. == $signed[0]' "$sbom_out" >/dev/null ||
+  fail "verify matching SBOM: saved SBOM differs from the signed one: $(<"$sbom_out")"
+
+run_isolated "${verify_sbom_env[@]}" IGNORE_TLOG=false -- "$verify_sbom"
+assert_status 0 'verify SBOM with tlog and without SBOM_FILE'
+assert_cosign_args "$(expected_verify_sbom_args false)" 'verify SBOM with tlog and without SBOM_FILE'
+assert_stdout_lacks 'saved:' 'verify SBOM with tlog and without SBOM_FILE'
+
+write_sbom_attestation "$tmp_dir/sbom.cdx.json" https://cyclonedx.org/bom "$other_digest"
+assert_sbom_rejected 'verify SBOM of another image' \
+  "sbom: subject mismatch: no subject with digest sha256:${image_digest#*@sha256:}"
+
+write_sbom_attestation "$tmp_dir/github-predicate.json" https://slsa.dev/provenance/v1
+assert_sbom_rejected 'verify SBOM with provenance predicate type' \
+  "sbom: predicate type mismatch: got 'https://slsa.dev/provenance/v1'"
+
+write_sbom_variant '.bomFormat = "SPDX"'
+assert_sbom_rejected 'verify SBOM that is not CycloneDX' \
+  "sbom: predicate is not a CycloneDX document: bomFormat 'SPDX'"
+
+write_sbom_attestation "$tmp_dir/github-predicate.json"
+assert_sbom_rejected 'verify SBOM with a provenance predicate' \
+  "sbom: predicate is not a CycloneDX document: bomFormat ''"
+
+write_sbom_variant 'del(.specVersion)'
+assert_sbom_rejected 'verify SBOM without specVersion' 'sbom: CycloneDX document has no specVersion'
+
+write_sbom_variant '.components = {}'
+assert_sbom_rejected 'verify SBOM with non-array components' 'sbom: CycloneDX components is not an array'
+
+write_sbom_variant 'del(.components)'
+assert_sbom_rejected 'verify SBOM without components' \
+  'sbom: CycloneDX document lists 0 components, expected at least 1'
+
+write_sbom_attestation "$tmp_dir/sbom.cdx.json"
+assert_sbom_rejected 'verify SBOM below MIN_COMPONENTS' \
+  'sbom: CycloneDX document lists 2 components, expected at least 3' MIN_COMPONENTS=3
+
+write_sbom_variant '.components = []'
+run_isolated "${verify_sbom_env[@]}" MIN_COMPONENTS=0 -- "$verify_sbom"
+assert_status 0 'verify empty SBOM with MIN_COMPONENTS=0'
+assert_stdout_contains 'components: 0' 'verify empty SBOM with MIN_COMPONENTS=0'
+
+: >"$sbom_attestation"
+assert_sbom_rejected 'verify SBOM without attestation' \
+  "sbom: no CycloneDX attestation returned for $image_digest"
+
+jq -cn --arg payload "$(printf 'not json' | base64)" '{ payload: $payload }' >"$sbom_attestation"
+assert_sbom_rejected 'verify SBOM with a non-JSON payload' \
+  'sbom: attestation payload is not a JSON in-toto statement'
+
+# A failed signature verification stops the script before any policy check.
+write_sbom_attestation "$tmp_dir/sbom.cdx.json"
+rm -f "$sbom_out"
+run_isolated "${verify_sbom_env[@]}" SBOM_FILE="$sbom_out" COSIGN_EXIT=1 -- "$verify_sbom"
+assert_failed 'verify SBOM with cosign failure'
+assert_stderr_contains 'cosign stub: forced failure' 'verify SBOM with cosign failure'
+assert_stdout_lacks 'sbom OK' 'verify SBOM with cosign failure'
+[[ ! -e "$sbom_out" ]] || fail 'verify SBOM with cosign failure: the SBOM was saved'
+
+# Input errors exit 2 before cosign runs: a tag (not a digest) and a
+# malformed digest or MIN_COMPONENTS.
+for bad_image in \
+  ghcr.io/prefeitura-rio/example:latest \
+  ghcr.io/prefeitura-rio/example@sha256:abc \
+  "ghcr.io/prefeitura-rio/example@sha256:${other_digest^^}"; do
+  run_isolated IMAGE_DIGEST="$bad_image" VERIFY_KEY="$verify_key" \
+    COSIGN_ATTESTATION="$sbom_attestation" -- "$verify_sbom"
+  assert_status 2 "verify SBOM of '$bad_image'"
+  assert_stderr_contains 'sbom: IMAGE_DIGEST must be <image>@sha256:<64 hex>' "verify SBOM of '$bad_image'"
+  assert_cosign_not_called "verify SBOM of '$bad_image'"
+done
+
+for bad_min in -1 abc 1.5; do
+  run_isolated "${verify_sbom_env[@]}" MIN_COMPONENTS="$bad_min" -- "$verify_sbom"
+  assert_status 2 "verify SBOM with MIN_COMPONENTS='$bad_min'"
+  assert_stderr_contains 'sbom: MIN_COMPONENTS must be a non-negative integer' \
+    "verify SBOM with MIN_COMPONENTS='$bad_min'"
+  assert_cosign_not_called "verify SBOM with MIN_COMPONENTS='$bad_min'"
+done
+
+for required in IMAGE_DIGEST VERIFY_KEY; do
+  partial_env=()
+  for assignment in "${verify_sbom_env[@]}"; do
+    [[ "$assignment" == "$required="* ]] || partial_env+=("$assignment")
+  done
+  run_isolated "${partial_env[@]}" -- "$verify_sbom"
+  assert_failed "verify SBOM without $required"
+  assert_stderr_contains "$required required" "verify SBOM without $required"
+  assert_cosign_not_called "verify SBOM without $required"
+done
+
 # --- gcp-federate.sh ---------------------------------------------------------
 
 federate_dir="$tmp_dir/federate"

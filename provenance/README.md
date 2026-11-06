@@ -27,6 +27,7 @@ SLSA v1.0 Build track tops out at L3; there is no higher level.
 | `scripts/install-scanners.sh` | Pinned, cosign-verified cosign/syft/grype install |
 | `scripts/scan-image.sh` | grype image scan + DefectDojo upload (image-tagged) |
 | `scripts/verify-provenance.sh` | Verify signature, subject, builder, source |
+| `scripts/verify-sbom.sh` | Verify the signed SBOM, its subject and contents, and save it |
 | `gitlab/build-sign-release.yml` | GitLab CI/CD component (kaniko build + sign + scan) |
 
 Infrastructure lives in `infra/kms/modules/gcp/provenance.tf` (key, signer SA,
@@ -56,6 +57,35 @@ Set these as **organization** Actions variables. Until they exist, the
 Consumers already calling `build-and-release.yml` get signing automatically
 (`sign` input defaults to `true`). Pass `sign: false` to opt out.
 
+### Adopting it in a repository (GitHub)
+
+A repository that already builds with `build-and-release.yml` changes nothing
+but, at most, the permissions its calling job grants. The signing job needs
+`id-token: write` (to federate with GCP; no static key is stored anywhere)
+and `packages: write` (to attach the attestations to the image):
+
+```yaml
+jobs:
+  release:
+    permissions:
+      contents: write   # git tag
+      packages: write   # image push and attestations
+      id-token: write   # OIDC token for Workload Identity Federation
+    uses: prefeitura-rio/actions/.github/workflows/build-and-release.yml@master
+    with:
+      push: true
+    secrets: inherit
+```
+
+Signing runs only when `push: true`, `sign: true` (default) and the org
+variables above are set; otherwise the job is skipped and the build is
+unaffected. The WIF provider only trusts
+`prefeitura-rio/actions/.github/workflows/build-and-release.yml@refs/heads/master`
+(`github_build_workflow_ref` in `infra/kms`), so call the workflow at
+`@master`. A caller that pins it by commit SHA or tag gets a different
+`job_workflow_ref`, the federation is refused and the `provenance` job fails:
+pass `sign: false` there until the trusted ref covers that pin.
+
 ### GitLab
 
 Include the component and pass the WIF audience / signer / key as inputs. See
@@ -63,6 +93,15 @@ the header of `gitlab/build-sign-release.yml`. Set `gitlab_issuer_uri` and
 `gitlab_namespace_path` in the terraform module to match your instance.
 
 ## Verify flow
+
+Consumers (a deploy pipeline, an admission policy, a person auditing an
+image) verify both attestations against the same trust root: the public key
+of the KMS signing key (`cosign.pub`, from `provenance_public_key_pem` above)
+or the `gcpkms://` URI of the key version for a caller allowed to read its
+public key in KMS. Always verify by digest (`image@sha256:...`), never by
+tag. Both scripts need `cosign`, `jq` and `base64`.
+
+### Provenance
 
 `scripts/verify-provenance.sh` enforces: valid signature, subject equals the
 image digest (both via cosign), expected builder identity, and source repo.
@@ -82,8 +121,30 @@ no Rekor entry, so tlog verification is skipped (`IGNORE_TLOG=true`).
 ## SBOM attestation
 
 The signing job also builds a CycloneDX SBOM of the **image** with syft and
-attaches it as a second signed attestation (`--type cyclonedx`). Verify it the
-same way as provenance:
+attaches it as a second signed attestation (`--type cyclonedx`).
+
+### Verifying and collecting the SBOM
+
+`scripts/verify-sbom.sh` enforces: valid signature (via cosign), statement
+subject equal to the image digest, CycloneDX predicate type, and a CycloneDX
+document with a `specVersion` and at least `MIN_COMPONENTS` components
+(default `1`). With `SBOM_FILE` set it writes the verified SBOM there, so
+the consumer collects exactly the document that was signed (for a
+vulnerability scan, a license audit or an archive) instead of regenerating
+it:
+
+```sh
+export IMAGE_DIGEST="ghcr.io/prefeitura-rio/app@sha256:..."
+export VERIFY_KEY="cosign.pub"   # offline trust root, or gcpkms:// URI
+export SBOM_FILE="app.cdx.json"  # optional: where to save the verified SBOM
+./scripts/verify-sbom.sh
+grype "sbom:app.cdx.json"        # e.g. scan the collected SBOM
+```
+
+It exits `1` when verification or policy fails (nothing is saved) and `2`
+on invalid input (`IMAGE_DIGEST` not pinned by `sha256` digest, malformed
+`MIN_COMPONENTS`). `IGNORE_TLOG` behaves as in `verify-provenance.sh`. The
+underlying cosign check, without the policy, is:
 
 ```sh
 cosign verify-attestation --key cosign.pub --type cyclonedx \
