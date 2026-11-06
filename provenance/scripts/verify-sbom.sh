@@ -28,8 +28,8 @@ if [ "$digest" = "$IMAGE_DIGEST" ] ||
 fi
 
 case "$min_components" in
-'' | *[!0-9]*)
-  echo "sbom: MIN_COMPONENTS must be a non-negative integer, got '$min_components'" >&2
+'' | *[!0-9]* | ??????????*)
+  echo "sbom: MIN_COMPONENTS must be a non-negative integer of at most 9 digits, got '$min_components'" >&2
   exit 2
   ;;
 esac

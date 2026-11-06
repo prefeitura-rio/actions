@@ -79,7 +79,10 @@ jobs:
 
 Signing runs only when `push: true`, `sign: true` (default) and the org
 variables above are set; otherwise the job is skipped and the build is
-unaffected. The WIF provider only trusts
+unaffected. The `provenance` job always runs on a GitHub-hosted
+`ubuntu-latest` runner, whatever `runs_on` says: it is the only job that can
+federate to the signer, so it never runs on a runner the caller controls
+(SLSA L3 isolation). The WIF provider only trusts
 `prefeitura-rio/actions/.github/workflows/build-and-release.yml@refs/heads/master`
 (`github_build_workflow_ref` in `infra/kms`), so call the workflow at
 `@master`. A caller that pins it by commit SHA or tag gets a different

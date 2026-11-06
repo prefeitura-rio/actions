@@ -493,7 +493,7 @@ for bad_image in \
   assert_cosign_not_called "verify SBOM of '$bad_image'"
 done
 
-for bad_min in -1 abc 1.5; do
+for bad_min in -1 abc 1.5 1234567890 99999999999999999999; do
   run_isolated "${verify_sbom_env[@]}" MIN_COMPONENTS="$bad_min" -- "$verify_sbom"
   assert_status 2 "verify SBOM with MIN_COMPONENTS='$bad_min'"
   assert_stderr_contains 'sbom: MIN_COMPONENTS must be a non-negative integer' \

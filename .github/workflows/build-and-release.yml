@@ -29,7 +29,7 @@ on:
         type: string
         default: ""
       runs_on:
-        description: "Runner label"
+        description: "Runner label (the provenance signing job always runs on GitHub-hosted ubuntu-latest)"
         required: false
         type: string
         default: "ubuntu-latest"
@@ -181,7 +181,10 @@ jobs:
       needs.build-and-release.outputs.skip != 'true' &&
       needs.build-and-release.outputs.digest != '' &&
       vars.PROVENANCE_WIF_PROVIDER != ''
-    runs-on: ${{ inputs.runs_on }}
+    # Always a GitHub-hosted runner, never inputs.runs_on: this job holds the
+    # OIDC token that federates to the KMS signer, and a caller-chosen
+    # (self-hosted) runner could read it and sign arbitrary attestations.
+    runs-on: ubuntu-latest
     permissions:
       id-token: write
       packages: write
