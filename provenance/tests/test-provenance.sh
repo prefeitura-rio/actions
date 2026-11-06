@@ -512,6 +512,48 @@ for required in IMAGE_DIGEST VERIFY_KEY; do
   assert_cosign_not_called "verify SBOM without $required"
 done
 
+# --- check-build-isolation.sh ------------------------------------------------
+
+check_isolation="$scripts/check-build-isolation.sh"
+
+for hosted in ubuntu-latest ubuntu-24.04 ubuntu-22.04 ubuntu-24.04-arm ubuntu-22.04-arm; do
+  run_isolated RUNS_ON="$hosted" BUILD_RUNNER_ENVIRONMENT=github-hosted -- "$check_isolation"
+  assert_status 0 "isolation on $hosted"
+  [[ "$(<"$out")" == true ]] || fail "isolation on $hosted: expected 'true'"
+  [[ ! -s "$err" ]] || fail "isolation on $hosted: unexpected stderr"
+done
+
+# assert_not_isolated <runs_on> <runner environment>
+assert_not_isolated() {
+  local context="isolation with runs_on '$1' on '$2'"
+  run_isolated RUNS_ON="$1" BUILD_RUNNER_ENVIRONMENT="$2" -- "$check_isolation"
+  assert_status 0 "$context"
+  [[ "$(<"$out")" == false ]] || fail "$context: expected 'false'"
+  assert_stderr_contains "provenance: not signing: the build ran on runs_on '$1' (runner environment '$2')" \
+    "$context"
+}
+
+assert_not_isolated self-hosted self-hosted
+assert_not_isolated self-hosted github-hosted
+assert_not_isolated ubuntu-latest self-hosted
+assert_not_isolated my-org-runner github-hosted
+assert_not_isolated 'ubuntu-latest,self-hosted' github-hosted
+assert_not_isolated windows-latest github-hosted
+assert_not_isolated '' github-hosted
+assert_not_isolated ubuntu-latest ''
+
+for required in RUNS_ON BUILD_RUNNER_ENVIRONMENT; do
+  if [[ "$required" == RUNS_ON ]]; then
+    partial_env=(BUILD_RUNNER_ENVIRONMENT=github-hosted)
+  else
+    partial_env=(RUNS_ON=ubuntu-latest)
+  fi
+  run_isolated "${partial_env[@]}" -- "$check_isolation"
+  assert_failed "isolation without $required"
+  assert_stderr_contains "$required required" "isolation without $required"
+  assert_stdout_lacks true "isolation without $required"
+done
+
 # --- gcp-federate.sh ---------------------------------------------------------
 
 federate_dir="$tmp_dir/federate"

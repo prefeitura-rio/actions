@@ -13,6 +13,14 @@ provenance, no Sigstore public-good dependency.
   assumed by the trusted build workflow (`job_workflow_ref` on GitHub,
   `namespace_path` + protected ref on GitLab). A tenant repo triggers the
   build but cannot forge provenance.
+- **Isolated build** (GitHub): the build itself must run on an ephemeral
+  GitHub-hosted runner. `build-and-release.yml` signs only when `runs_on` is a
+  standard GitHub-hosted Ubuntu label (`ubuntu-latest`, `ubuntu-24.04`,
+  `ubuntu-22.04` and their `-arm` variants) and the build job reported
+  `runner.environment == github-hosted` (`scripts/check-build-isolation.sh`).
+  A build on a self-hosted runner, which the caller controls and which can
+  keep state between jobs, is pushed but not signed, with a warning. On
+  GitLab the same holds only for builds on runners the platform team manages.
 
 SLSA v1.0 Build track tops out at L3; there is no higher level.
 
@@ -26,6 +34,7 @@ SLSA v1.0 Build track tops out at L3; there is no higher level.
 | `scripts/generate-sbom.sh` | syft CycloneDX SBOM of the built image |
 | `scripts/install-scanners.sh` | Pinned, cosign-verified cosign/syft/grype install |
 | `scripts/scan-image.sh` | grype image scan + DefectDojo upload (image-tagged) |
+| `scripts/check-build-isolation.sh` | Gate signing on a GitHub-hosted build runner |
 | `scripts/verify-provenance.sh` | Verify signature, subject, builder, source |
 | `scripts/verify-sbom.sh` | Verify the signed SBOM, its subject and contents, and save it |
 | `gitlab/build-sign-release.yml` | GitLab CI/CD component (kaniko build + sign + scan) |
@@ -79,10 +88,13 @@ jobs:
 
 Signing runs only when `push: true`, `sign: true` (default) and the org
 variables above are set; otherwise the job is skipped and the build is
-unaffected. The `provenance` job always runs on a GitHub-hosted
-`ubuntu-latest` runner, whatever `runs_on` says: it is the only job that can
-federate to the signer, so it never runs on a runner the caller controls
-(SLSA L3 isolation). The WIF provider only trusts
+unaffected. It also needs the build on a GitHub-hosted Ubuntu runner (the
+default `runs_on: ubuntu-latest`): with a self-hosted `runs_on` the image is
+still built and pushed, but the `provenance` job only warns and signs
+nothing (see "Isolated build" above). The `provenance` job itself always
+runs on a GitHub-hosted `ubuntu-latest` runner, whatever `runs_on` says: it
+is the only job that can federate to the signer, so it never runs on a
+runner the caller controls. The WIF provider only trusts
 `prefeitura-rio/actions/.github/workflows/build-and-release.yml@refs/heads/master`
 (`github_build_workflow_ref` in `infra/kms`), so call the workflow at
 `@master`. A caller that pins it by commit SHA or tag gets a different
