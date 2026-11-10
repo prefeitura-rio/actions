@@ -7,6 +7,8 @@ on:
       - "quality-gate/**"
       - "release/**"
       - "provenance/**"
+      - "sast/scripts/**"
+      - "sast/tests/**"
       - ".github/workflows/quality-gate.yml"
       - ".github/workflows/quality-gate-tests.yml"
       - ".github/workflows/release.yml"
@@ -20,6 +22,8 @@ on:
       - "quality-gate/**"
       - "release/**"
       - "provenance/**"
+      - "sast/scripts/**"
+      - "sast/tests/**"
       - ".github/workflows/quality-gate.yml"
       - ".github/workflows/quality-gate-tests.yml"
       - ".github/workflows/release.yml"
@@ -197,6 +201,17 @@ jobs:
         run: bash provenance/tests/test-provenance.sh
       - name: Run provenance scanner script tests
         run: bash provenance/tests/test-scanners.sh
+
+  sast-scripts:
+    name: SAST scripts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Run ignore normalization tests
+        run: bash sast/tests/test-normalize-ignores.sh
+      - name: Run SonarQube and DefectDojo script tests
+        run: bash sast/tests/test-sonar-scripts.sh
 
   cli-package:
     name: Quality gate CLI package

@@ -42,6 +42,16 @@ Image scanner scripts (`install-scanners.sh`, `generate-sbom.sh`,
 bash provenance/tests/test-scanners.sh
 ```
 
+SAST scripts (`sast/scripts`): `normalize-ignores.sh` (needs `bash`, `awk`,
+`sed` and coreutils) and the SonarQube and DefectDojo scripts
+`find-sonar-task-id.sh`, `get-sonar-result.sh` and `summary.sh` (needs `bash`
+and `jq`; `curl` and `wget` are stubs, so no network is used):
+
+```bash
+bash sast/tests/test-normalize-ignores.sh
+bash sast/tests/test-sonar-scripts.sh
+```
+
 Python package of the quality gate (`quality-gate/cli`, needs `uv`):
 
 ```bash
@@ -84,8 +94,8 @@ hand (`shfmt -d <file>`) when shfmt is available.
 
 - `Quality Gate Tests` (`.github/workflows/quality-gate-tests.yml`) runs on
   pull requests to `master` and on pushes to `master`, only when the diff
-  touches `quality-gate/`, `release/`, `provenance/`, `.github/scripts/` or the
-  quality gate and release workflows.
+  touches `quality-gate/`, `release/`, `provenance/`, `sast/scripts/`,
+  `sast/tests/`, `.github/scripts/` or the quality gate and release workflows.
 - `Security` (`.github/workflows/ci.yml`, the local `sast` action) runs on
   pushes to `master` and `feat/**`, only when the diff touches the paths listed
   in that workflow; it does not run on pull requests.

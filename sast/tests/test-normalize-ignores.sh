@@ -81,7 +81,7 @@ $(<"$case_dir/$1")"
 assert_files() {
   local context="$1" actual expected
   shift
-  actual=$(cd "$case_dir" && LC_ALL=C ls -A | LC_ALL=C sort)
+  actual=$(find "$case_dir" -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C sort)
   expected=$(printf '%s\n' "$@" | LC_ALL=C sort)
   [[ "$actual" == "$expected" ]] || fail "$context: unexpected files:
 $actual

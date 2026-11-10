@@ -310,10 +310,12 @@ assert_not_called wget 'get result without token and task ID'
 reset_work
 run_isolated "${sonar_env[@]}" SONAR_TASK_ID=AYtask-1 SONAR_TOKEN=test-token -- "$get_result"
 assert_status 0 'get result'
-assert_calls wget "$(call -X GET '--header=Authorization: Bearer test-token' -O sonar.status.json \
-  'https://sonar.test/api/ce/task?id=AYtask-1')
-$(call -v -X GET '--header=Authorization: Bearer test-token' -O sonar.result.json \
-  'https://sonar.test/api/qualitygates/project_status?analysisId=AN-1')" 'get result'
+bearer='--header=Authorization: Bearer test-token'
+task_call=$(call -X GET "$bearer" -O sonar.status.json 'https://sonar.test/api/ce/task?id=AYtask-1')
+gate_call=$(call -v -X GET "$bearer" -O sonar.result.json \
+  'https://sonar.test/api/qualitygates/project_status?analysisId=AN-1')
+assert_calls wget "$task_call
+$gate_call" 'get result'
 assert_stdout_contains 'SONAR_ANALYSIS_ID=AN-1' 'get result'
 assert_stdout_contains 'GET_RESULT_CODE=0' 'get result'
 assert_file "$work_dir/sonar.result.json" '{"projectStatus":{"status":"OK"}}' 'get result'
@@ -334,8 +336,7 @@ run_isolated "${sonar_env[@]}" SONAR_TASK_ID=AYtask-1 SONAR_TOKEN=test-token \
 assert_failed 'get result with failed task request'
 assert_stdout_contains 'SONAR_ANALYSIS_ID=' 'get result with failed task request'
 assert_stdout_lacks 'SONAR_ANALYSIS_ID=AN-1' 'get result with failed task request'
-assert_calls wget "$(call -X GET '--header=Authorization: Bearer test-token' -O sonar.status.json \
-  'https://sonar.test/api/ce/task?id=AYtask-1')" 'get result with failed task request'
+assert_calls wget "$task_call" 'get result with failed task request'
 assert_absent "$work_dir/sonar.result.json" 'get result with failed task request'
 
 # --- summary.sh: report fixtures -----------------------------------------------
@@ -598,9 +599,10 @@ assert_stdout_contains 'SonarQube native issues to upload (external_* excluded):
 assert_stdout_contains 'Sonarqube scan reimported' 'SonarQube issues uploaded to DefectDojo'
 assert_curl_arg_count 'scan_type=SonarQube Scan detailed' 1 'SonarQube issues uploaded to DefectDojo'
 assert_curl_arg_count 'file=@sonar-issues.json' 1 'SonarQube issues uploaded to DefectDojo'
-[[ "$(jq -c '{total, paging, components: [.components[].key], issues: [.issues[].key]}' \
-  "$work_dir/sonar-issues.json")" == \
-  '{"total":2,"paging":{"pageIndex":1,"pageSize":500,"total":2},"components":["repo:1:app/db.py"],"issues":["K1"]}' ]] ||
+uploaded=$(jq -c '{total, paging, components: [.components[].key], issues: [.issues[].key]}' \
+  "$work_dir/sonar-issues.json")
+expected_upload='{"total":2,"paging":{"pageIndex":1,"pageSize":500,"total":2},"components":["repo:1:app/db.py"],"issues":["K1"]}'
+[[ "$uploaded" == "$expected_upload" ]] ||
   fail "SonarQube issues uploaded to DefectDojo: unexpected sonar-issues.json:
 $(<"$work_dir/sonar-issues.json")"
 [[ -z "$(cd "$work_dir" && find . -name 'sonar_page_*.json')" ]] ||
