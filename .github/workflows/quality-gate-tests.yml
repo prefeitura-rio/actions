@@ -210,8 +210,8 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Run ignore normalization tests
         run: bash sast/tests/test-normalize-ignores.sh
-      - name: Run SonarQube and DefectDojo script tests
-        run: bash sast/tests/test-sonar-scripts.sh
+      - name: Run summary and DefectDojo script tests
+        run: bash sast/tests/test-summary.sh
 
   cli-package:
     name: Quality gate CLI package

@@ -3,24 +3,31 @@ description: Run Static Analysis and summarize results
 
 inputs:
   wait_pipeline:
+    description: Deprecated, ignored (SonarQube was removed)
     required: false
     default: "true"
   break_on:
+    description: Fail when grype or opengrep report a finding at or above this severity (CRITICAL/HIGH/MEDIUM/LOW); any other value disables the gate
     required: false
     default: "-"
   enable_clippy:
+    description: Deprecated, ignored (SonarQube was removed)
     required: false
     default: "false"
   sonarqube_opts:
+    description: Deprecated, ignored (SonarQube was removed)
     required: false
     default: ""
   override_branch:
+    description: Overrides the DefectDojo engagement name (defaults to the branch name)
     required: false
     default: ""
   sonar_url:
+    description: Deprecated, ignored (SonarQube was removed)
     required: false
     default: ""
   sonar_token:
+    description: Deprecated, ignored (SonarQube was removed)
     required: false
     default: ""
   dd_url:
@@ -62,18 +69,6 @@ runs:
         oauth-client-id: ${{ inputs.ts_oauth_client_id }}
         oauth-secret: ${{ inputs.ts_oauth_secret }}
         tags: ${{ inputs.ts_tags }}
-    - name: Detect Rust
-      id: rust
-      shell: bash
-      run: bash "$GITHUB_ACTION_PATH/scripts/detect-rust.sh"
-    - name: Detect Java
-      id: java
-      shell: bash
-      run: bash "$GITHUB_ACTION_PATH/scripts/detect-java.sh"
-    - name: Install Rust toolchain
-      if: steps.rust.outputs.found == 'true'
-      shell: bash
-      run: bash "$GITHUB_ACTION_PATH/scripts/install-rust.sh"
     - name: Setup environment
       if: always()
       uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
@@ -130,83 +125,11 @@ runs:
         CHECKOV_OPTS: ${{ inputs.checkov_opts }}
       run: |
         bash "$GITHUB_ACTION_PATH/scripts/run-checkov.sh"
-    - name: 'Set up OpenJDK (Temurin) 24'
-      if: steps.java.outputs.found == 'true'
-      uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
-      with:
-        distribution: 'temurin'
-        java-version: '24'
-    - name: Set up Maven
-      if: steps.java.outputs.found == 'true'
-      uses: stCarolas/setup-maven@12eb41b233df95d49b0c11fc1b5bc8312e5d4ce0
-      with:
-        maven-version: 3.9.12
-    - name: Build Classes
-      if: steps.java.outputs.found == 'true'
-      shell: bash
-      run: mvn clean compile
-    - name: Restore SonarQube scanner cache
-      # ~/.sonar/cache holds the JRE + analyzer plugins the scanner auto-provisions
-      # from the SonarQube server. Runners are ephemeral, so without this the
-      # SonarQube step re-downloads both every run: ~100s for the JRE plus ~35s+127s
-      # for the plugin sets, dwarfing the analysis itself (measured on this repo's
-      # own CI: 4:40 total, of which ~4:23 was JRE + plugin provisioning vs. ~2s of
-      # actual sensor analysis and ~5s for the quality-gate wait). Keyed per SonarQube
-      # host since plugin sets differ per server; restore-keys falls back across scanner
-      # bumps so a partial hit still saves the JRE download.
-      if: inputs.sonar_url && inputs.sonar_token
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: ~/.sonar/cache
-        key: sonar-scanner-${{ runner.os }}-${{ inputs.sonar_url }}
-        restore-keys: |
-          sonar-scanner-${{ runner.os }}-
-    - name: SonarQube
-      if: inputs.sonar_url && inputs.sonar_token
-      # NOSONAR: generic.secrets.security.detected-sonarqube-docs-api-key.detected-sonarqube-docs-api-key
-      uses: SonarSource/sonarqube-scan-action@713881670b6b3676cda39549040e2d88c70d582e # v8.2.0
-      with:
-        args: >
-          "-Dsonar.projectName=${{ github.repository }}"
-          -Dsonar.projectKey=repo:${{ github.repository_id }}
-          -Dsonar.qualitygate.wait=${{ inputs.wait_pipeline || 'true' }}
-          -Dsonar.sarifReportPaths=grype-results.sarif,opengrep-sarif.sarif,checkov-sarif.sarif
-          ${{ github.event_name == 'pull_request' && 
-          format('-Dsonar.pullrequest.key={0} -Dsonar.pullrequest.branch={1} -Dsonar.pullrequest.base={2}',
-          github.event.pull_request.number,
-          github.event.pull_request.head.ref,
-          github.event.pull_request.base.ref) ||
-          format('-Dsonar.branch.name={0}', inputs.override_branch || github.ref_name )
-          }}
-          -Dsonar.rust.clippy.enabled=${{ inputs.enable_clippy || 'false' }}
-          ${{ steps.java.outputs.found == 'true' && '-Dsonar.java.binaries=**/target/classes' || '' }}
-          ${{ inputs.sonarqube_opts }}
-      env:
-        SONAR_TOKEN: ${{ inputs.sonar_token }}
-        SONAR_HOST_URL: ${{ inputs.sonar_url }}
-    - name: Find Sonar task ID
-      id: sonar_task_id_step
-      shell: bash
-      run: bash "$GITHUB_ACTION_PATH/scripts/find-sonar-task-id.sh"
-    - name: Get Sonar analysis result file
-      continue-on-error: true
-      shell: bash
-      env:
-        SONAR_TOKEN: ${{ inputs.sonar_token }}
-        SONAR_HOST_URL: ${{ inputs.sonar_url }}
-        SONAR_TASK_ID: ${{ steps.sonar_task_id_step.outputs.sonar_task_id }}
-      run: bash "$GITHUB_ACTION_PATH/scripts/get-sonar-result.sh"
     - name: Showing issues to summary
       if: always()
       shell: bash
       env:
-        SONAR_TOKEN: ${{ inputs.sonar_token }}
-        PROJECT_KEY: repo:${{ github.repository_id }}
         BREAK_ON: ${{ inputs.break_on || 'HIGH' }}
-        BRANCH_KEY: ${{ github.event_name == 'pull_request' && 'pullRequest' || 'branch' }}
-        BRANCH_VALUE: ${{ github.event_name == 'pull_request' && github.event.pull_request.number || (inputs.override_branch || github.ref_name) }}
-        SONAR_HOST_URL: ${{ inputs.sonar_url }}
-        SONAR_HOST_URL_PUBLIC: ${{ inputs.sonar_url }}
         DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         CURRENT_BRANCH: ${{ github.ref_name }}
         DD_URL: ${{ inputs.dd_url || '' }}

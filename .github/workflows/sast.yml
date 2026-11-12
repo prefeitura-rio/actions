@@ -5,40 +5,42 @@ name: SAST
 #   jobs:
 #     sast:
 #       uses: prefeitura-rio/actions/.github/workflows/sast.yml@main
-#       with:
-#         sonar_url: ${{ vars.SONAR_HOST_URL }}
 #       secrets:
-#         sonar_token: ${{ secrets.SONAR_TOKEN }}
+#         dd_token: ${{ secrets.DEFECTDOJO_TOKEN }}
+#         ts_tags: ...
+#         ts_oauth_client_id: ...
+#         ts_oauth_secret: ...
 
 on:
   workflow_call:
     inputs:
       sonar_url:
-        description: URL do SonarQube (SONAR_HOST_URL)
+        description: Obsoleto, ignorado (SonarQube foi removido)
         type: string
-        required: true
+        required: false
+        default: ""
       wait_pipeline:
-        description: Aguardar o quality gate do SonarQube
+        description: Obsoleto, ignorado (SonarQube foi removido)
         type: string
         required: false
         default: "true"
       break_on:
-        description: Severidade que falha o job (CRITICAL/HIGH/MEDIUM/LOW)
+        description: Severidade de grype/opengrep que falha o job (CRITICAL/HIGH/MEDIUM/LOW)
         type: string
         required: false
         default: "HIGH"
       enable_clippy:
-        description: Habilitar análise Rust clippy
+        description: Obsoleto, ignorado (SonarQube foi removido)
         type: string
         required: false
         default: "false"
       sonarqube_opts:
-        description: Args extras para o scanner do SonarQube
+        description: Obsoleto, ignorado (SonarQube foi removido)
         type: string
         required: false
         default: ""
       override_branch:
-        description: Sobrescreve o nome do branch reportado ao SonarQube
+        description: Sobrescreve o nome do engagement no DefectDojo
         type: string
         required: false
         default: ""
@@ -59,7 +61,8 @@ on:
         default: "ubuntu-latest"
     secrets:
       sonar_token:
-        required: true
+        description: Obsoleto, ignorado (SonarQube foi removido)
+        required: false
       dd_token:
         required: true
       ts_tags:
@@ -90,12 +93,7 @@ jobs:
         # $/ resolves to this repository at the commit the caller pinned.
         uses: $/sast
         with:
-          sonar_url: ${{ inputs.sonar_url }}
-          sonar_token: ${{ secrets.sonar_token }}
-          wait_pipeline: ${{ inputs.wait_pipeline }}
           break_on: ${{ inputs.break_on }}
-          enable_clippy: ${{ inputs.enable_clippy }}
-          sonarqube_opts: ${{ inputs.sonarqube_opts }}
           override_branch: ${{ inputs.override_branch }}
           ignore_type: ${{ inputs.ignore_type }}
           dd_url: ${{ inputs.dd_url }}

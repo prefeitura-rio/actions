@@ -3,8 +3,8 @@
 Rules in this directory are auto-loaded by `scripts/run-opengrep.sh`
 (`opengrep scan . --config p/default --config "$GITHUB_ACTION_PATH/opengrep-rules/"`),
 so adding a `*.yaml` here is enough — no `action.yml` change required.
-Findings are converted to SARIF, filtered for in-source `NOSONAR` suppressions,
-and fed to SonarQube / DefectDojo.
+In-source `NOSONAR` suppressions are filtered out; findings go to the step
+summary, the `break_on` gate and DefectDojo.
 
 ## Layout
 

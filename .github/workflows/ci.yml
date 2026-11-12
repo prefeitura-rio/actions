@@ -38,8 +38,6 @@ jobs:
       - name: Run SAST (local action)
         uses: ./sast
         with:
-          sonar_url: ${{ vars.SONARQUBE_URL }}
-          sonar_token: ${{ secrets.SONARQUBE_TOKEN }}
           dd_url: ${{ vars.DEFECTDOJO_URL }}
           dd_token: ${{ secrets.DEFECTDOJO_TOKEN }}
           ts_tags: tag:prefect-cicd

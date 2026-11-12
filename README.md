@@ -8,7 +8,7 @@ Consumed by all `repo-templates` projects and any project following org conventi
 | Action | Purpose |
 |---|---|
 | [`quality-gate/`](quality-gate/) | Format, lint, structural lint, typecheck, test — language-agnostic; opt-in AI styleguide review (`quality-gate/ai-review`) |
-| [`sast/`](sast/) | Security scanning: opengrep, grype/SBOM, checkov, SonarQube |
+| [`sast/`](sast/) | Security scanning: opengrep, grype/SBOM, checkov |
 | [`provenance/`](provenance/) | SLSA L3 build provenance: KMS-signed in-toto attestations (GitHub + GitLab) |
 | [`setup-devenv/`](setup-devenv/) | Install and activate the Nix/devenv dev environment |
 

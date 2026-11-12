@@ -43,13 +43,13 @@ bash provenance/tests/test-scanners.sh
 ```
 
 SAST scripts (`sast/scripts`): `normalize-ignores.sh` (needs `bash`, `awk`,
-`sed` and coreutils) and the SonarQube and DefectDojo scripts
-`find-sonar-task-id.sh`, `get-sonar-result.sh` and `summary.sh` (needs `bash`
-and `jq`; `curl` and `wget` are stubs, so no network is used):
+`sed` and coreutils) and `summary.sh` (step summary, DefectDojo reimport and
+`break_on` gate; needs `bash` and `jq`; `curl` is a stub, so no network is
+used):
 
 ```bash
 bash sast/tests/test-normalize-ignores.sh
-bash sast/tests/test-sonar-scripts.sh
+bash sast/tests/test-summary.sh
 ```
 
 Python package of the quality gate (`quality-gate/cli`, needs `uv`):
