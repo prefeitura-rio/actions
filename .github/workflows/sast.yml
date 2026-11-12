@@ -45,7 +45,7 @@ on:
         required: false
         default: ""
       ignore_type:
-        description: Fonte da verdade para arquivos de ignore (sonarqube/semgrep)
+        description: Obsoleto, ignorado (a fonte dos arquivos de ignore é escolhida pelos arquivos presentes no repositório)
         type: string
         required: false
         default: "sonarqube"

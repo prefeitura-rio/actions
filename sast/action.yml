@@ -37,6 +37,7 @@ inputs:
     required: false
     default: ""
   ignore_type:
+    description: Deprecated, ignored (the source of the ignore files is picked from the files present; see scripts/normalize-ignores.sh)
     required: false
     default: "sonarqube"
   enable_checkov:
@@ -97,8 +98,6 @@ runs:
         bash "$GITHUB_ACTION_PATH/scripts/install-tools.sh"
     - name: Normalize ignore files
       shell: bash
-      env:
-        IGNORE_TYPE: ${{ inputs.ignore_type || 'all' }}
       run: |
         bash "$GITHUB_ACTION_PATH/scripts/normalize-ignores.sh"
     - name: Run opengrep

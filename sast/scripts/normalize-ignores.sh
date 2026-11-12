@@ -193,6 +193,8 @@ generate_checkov() {
 # checkov's regex dialect is lossy for anything beyond our own vocabulary);
 # whichever file(s) are still missing get generated from that source. Files
 # that already exist are left untouched (assumed to already be in sync).
+# The source is decided only by which files exist: the deprecated
+# "ignore_type" input of the sast action is not read here.
 glob_patterns=""
 source_name=""
 if [[ -f "$FILE_SEMGREP" ]]; then

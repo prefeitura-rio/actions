@@ -5,8 +5,8 @@
 # script runs there under `env -i` (LC_ALL=C, so `sort` is deterministic and
 # no runner variable leaks in). The cases cover the priority of the source
 # file, the extraction of each format, the files left untouched, the
-# checkov-skip-paths.txt list and the glob <-> checkov regex translation in
-# both directions.
+# checkov-skip-paths.txt list, the glob <-> checkov regex translation in
+# both directions and the deprecated IGNORE_TYPE having no effect.
 
 set -euo pipefail
 
@@ -39,11 +39,12 @@ new_case() {
   mkdir -p "$case_dir"
 }
 
-# run_normalize: runs the script in the current case directory with only
-# PATH, HOME and LC_ALL, capturing stdout, stderr and the status.
+# run_normalize [NAME=value...]: runs the script in the current case
+# directory with only PATH, HOME, LC_ALL and the given variables, capturing
+# stdout, stderr and the status.
 run_normalize() {
   status=0
-  (cd "$case_dir" && env -i PATH="$PATH" HOME="$tmp_dir" LC_ALL=C \
+  (cd "$case_dir" && env -i PATH="$PATH" HOME="$tmp_dir" LC_ALL=C "$@" \
     bash "$normalize") >"$out" 2>"$err" || status=$?
 }
 
@@ -398,5 +399,24 @@ run_normalize
 assert_status 0 'stale checkov-skip-paths.txt'
 assert_file checkov-skip-paths.txt '' 'stale checkov-skip-paths.txt'
 assert_absent .semgrepignore 'stale checkov-skip-paths.txt'
+
+# --- deprecated ignore_type input ---------------------------------------------------
+
+# IGNORE_TYPE (the deprecated "ignore_type" input) has no effect: whatever its
+# value, the source is still picked by the files present, here .semgrepignore
+# over sonar-project.properties.
+for ignore_type in sonarqube semgrep checkov all; do
+  context="IGNORE_TYPE=$ignore_type"
+  new_case "ignore-type-$ignore_type"
+  cp "$fixtures/semgrepignore" "$case_dir/.semgrepignore"
+  cp "$fixtures/sonar-project.properties" "$case_dir/sonar-project.properties"
+  run_normalize IGNORE_TYPE="$ignore_type"
+  assert_status 0 "$context"
+  assert_stdout_equals 'Generated .checkov.yaml' "$context"
+  assert_unchanged .semgrepignore "$fixtures/semgrepignore" "$context"
+  assert_unchanged sonar-project.properties "$fixtures/sonar-project.properties" "$context"
+  assert_file .checkov.yaml "$(checkov_file .semgrepignore "$semgrep_regexes")" "$context"
+  assert_file checkov-skip-paths.txt "$semgrep_skip_paths" "$context"
+done
 
 printf 'normalize-ignores tests passed\n'
