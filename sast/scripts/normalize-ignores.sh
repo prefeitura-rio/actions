@@ -44,7 +44,8 @@ extract_semgrep_exclusions() {
 
 # Reads the "skip-path:" block sequence from .checkov.yaml. Only the plain
 # block-sequence form is supported (one "  - pattern" per line, optionally
-# single/double-quoted, optional trailing "# comment"); flow-style
+# single/double-quoted, optional trailing "# comment"; a doubled '' inside a
+# single-quoted entry is YAML's escaped quote and becomes '); flow-style
 # "skip-path: [a, b]" is not. Entries are checkov's own regex dialect, not a
 # glob, matching what checkov itself reads from this file.
 extract_checkov_exclusions() {
@@ -63,7 +64,8 @@ extract_checkov_exclusions() {
     }
   ' "$FILE_CHECKOV" |
         sed -E 's/[[:space:]]+#.*$//' |
-        sed -E "s/^'(.*)'\$/\1/; s/^\"(.*)\"\$/\1/" |
+        sed -E -e "/^'.*'\$/{" -e "s/^'(.*)'\$/\1/" -e "s/''/'/g" -e b -e '}' \
+            -e 's/^"(.*)"$/\1/' |
         sed 's/^[[:space:]]*//;s/[[:space:]]*$//' |
         grep -v '^$' |
         sort -u

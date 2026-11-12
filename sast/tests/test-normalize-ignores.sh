@@ -295,6 +295,43 @@ assert_file checkov-skip-paths.txt "$semgrep_skip_paths" 'regex -> glob -> regex
 assert_file .checkov.yaml "$(checkov_file .semgrepignore "$semgrep_skip_paths")" \
   'regex -> glob -> regex'
 
+# --- apostrophes -------------------------------------------------------------------
+
+# A glob with an apostrophe is written to .checkov.yaml as a single-quoted
+# YAML scalar with the quote doubled ('it''s'); checkov-skip-paths.txt, read
+# back from that file, must hold the scalar's value (it's), not the escape.
+new_case apostrophe-semgrep
+printf "it's/**\na'b'c\n" >"$case_dir/.semgrepignore"
+run_normalize
+assert_status 0 'apostrophe in .semgrepignore'
+assert_file .checkov.yaml "# Auto-generated from .semgrepignore
+skip-path:
+  - 'a''b''c'
+  - 'it''s'" 'apostrophe in .semgrepignore'
+assert_file checkov-skip-paths.txt "a'b'c
+it's" 'apostrophe in .semgrepignore'
+
+# The same for a hand-written .checkov.yaml: '' is undone only inside a
+# single-quoted entry; a double-quoted or plain one is taken as written.
+new_case apostrophe-checkov
+cat >"$case_dir/.checkov.yaml" <<'EOF'
+skip-path:
+  - 'it''s'   # comment
+  - "don't"
+  - plain''
+  - ''''
+EOF
+run_normalize
+assert_status 0 'apostrophe in .checkov.yaml'
+assert_file checkov-skip-paths.txt "'
+don't
+it's
+plain''" 'apostrophe in .checkov.yaml'
+assert_file .semgrepignore "$(semgrep_file .checkov.yaml "**/'
+**/don't
+**/it's
+**/plain''")" 'apostrophe in .checkov.yaml'
+
 # --- priority of the source file ---------------------------------------------------
 
 # .semgrepignore wins over sonar-project.properties: only the missing
