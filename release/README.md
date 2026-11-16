@@ -45,6 +45,17 @@ central toolkit at `toolkit_ref` for executing the scripts. The caller's
 component-specific `tag_prefix` and `floating_tag` when a repository contains
 more than one releasable action or application.
 
+The reusable workflow can optionally verify a required workflow for the exact
+target commit before releasing:
+
+```yaml
+      require_workflow_gate: true
+      required_workflow: Quality Gate Tests
+```
+
+When enabled, it queries GitHub Actions directly and does not require the
+calling repository to copy or checkout the gate scripts.
+
 Floating tags are annotated after a successful atomic publication. Their tag
 message identifies the immutable version they point to, for example:
 

@@ -40,6 +40,16 @@ on:
         description: Full commit SHA of the release toolkit to use.
         required: true
         type: string
+      require_workflow_gate:
+        description: Require a successful workflow for the target commit before releasing.
+        required: false
+        type: boolean
+        default: false
+      required_workflow:
+        description: Workflow name that must have succeeded for the target commit.
+        required: false
+        type: string
+        default: ""
       git_author_name:
         description: Git author name for annotated release tags.
         required: false
@@ -72,7 +82,60 @@ permissions:
   contents: write
 
 jobs:
+  release-gate:
+    if: ${{ inputs.require_workflow_gate }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      ready: ${{ steps.gates.outputs.ready }}
+    steps:
+      - name: Check required workflow
+        id: gates
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TARGET_SHA: ${{ inputs.target_sha }}
+          REQUIRED_WORKFLOW: ${{ inputs.required_workflow }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$REQUIRED_WORKFLOW" ]]; then
+            echo "required_workflow is required when require_workflow_gate is true." >&2
+            exit 2
+          fi
+
+          if [[ ! "$TARGET_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "target_sha must be a full 40-character commit SHA." >&2
+            exit 1
+          fi
+
+          runs=$(gh api --method GET "repos/${REPOSITORY}/actions/runs" \
+            -f "head_sha=${TARGET_SHA}" \
+            -f 'event=push' \
+            -f 'per_page=100')
+
+          if jq -e --arg workflow "$REQUIRED_WORKFLOW" --arg sha "$TARGET_SHA" '
+            any(.workflow_runs[];
+              .name == $workflow and
+              .head_sha == $sha and
+              .event == "push" and
+              .status == "completed" and
+              .conclusion == "success"
+            )
+          ' <<< "$runs" >/dev/null; then
+            echo "Required workflow succeeded: $REQUIRED_WORKFLOW"
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Required workflow missing or failed: $REQUIRED_WORKFLOW" >&2
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+
   release:
+    needs: release-gate
+    if: ${{ always() && (!inputs.require_workflow_gate || needs.release-gate.outputs.ready == 'true') }}
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.calculate.outputs.version }}
