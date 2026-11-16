@@ -4,8 +4,8 @@ name: Actions Release
 # repository:
 # - latest: moved to the tip of master on every push to master.
 # - v<X.Y.Z>: immutable, published on demand from the Actions tab.
-# The component tags quality-gate-v<X.Y.Z> and quality-gate-latest are managed
-# separately by quality-gate-release.yml and quality-gate-manual-release.yml.
+# The component tags quality-gate-v<X.Y.Z> and quality-gate-latest are frozen
+# with the archived Quality Gate action.
 
 on:
   push:

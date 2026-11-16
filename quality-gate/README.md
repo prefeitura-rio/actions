@@ -1,5 +1,10 @@
 # Quality Gate
 
+> **Archived.** This GitHub Actions Quality Gate is frozen for compatibility
+> with existing consumers. New development and releases happen in
+> [`prefeitura-rio/flakes`](https://github.com/prefeitura-rio/flakes).
+> Do not add new rules, tools or releases here.
+
 Quality Gate is a provider-neutral quality-check engine with a GitHub Actions
 adapter. It detects Go, Python, and TypeScript projects and runs formatting,
 linting, structural linting, type checks, and tests. Next.js, Vue, and Nuxt

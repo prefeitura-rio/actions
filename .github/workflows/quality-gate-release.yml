@@ -1,10 +1,9 @@
 name: Quality Gate Release
 
+# ARCHIVED: the current Quality Gate is released from prefeitura-rio/flakes.
+# Kept for historical compatibility; this workflow must not publish releases.
 on:
-  workflow_run:
-    workflows: ["Quality Gate Tests", "Security"]
-    types: [completed]
-    branches: [master]
+  workflow_dispatch:
 
 concurrency:
   group: quality-gate-release
@@ -16,7 +15,7 @@ permissions:
 
 jobs:
   release-gate:
-    if: github.event.workflow_run.event == 'push'
+    if: ${{ github.event_name == 'workflow_call' }}
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -46,7 +45,7 @@ jobs:
 
   release:
     needs: release-gate
-    if: needs.release-gate.outputs.ready == 'true'
+    if: ${{ github.event_name == 'workflow_call' }}
     uses: ./.github/workflows/release.yml
     with:
       release_branch: master
