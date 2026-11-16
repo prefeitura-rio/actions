@@ -387,6 +387,47 @@ if [[ "$format_fallback" == *"Recent output:"* || "$format_fallback" == *"format
   fail "format fallback should omit recent output"
 fi
 
+# A slow tee makes the asynchronous process substitution lag behind the shell:
+# the capture must wait for it before the trap reads the log and before exit.
+slow_tee_bin="$TEMP_DIR/slow-tee-bin"
+mkdir -p "$slow_tee_bin"
+printf '#!/usr/bin/env bash\nsleep 0.5\nexec %q "$@"\n' "$(command -v tee)" > "$slow_tee_bin/tee"
+chmod +x "$slow_tee_bin/tee"
+slow_capture_log="$TEMP_DIR/slow-capture.log"
+printf 'QUALITY_GATE_ERROR_FILE=%q\nQUALITY_GATE_OUTPUT_LOG=%q\nQUALITY_GATE_CHECK=app:test\nsource %q\n' \
+  "$ERROR_FILE" "$slow_capture_log" "$ROOT/scripts/capture-failure.sh" > "$capture_failure_env"
+: > "$ERROR_FILE"
+PATH="$slow_tee_bin:$PATH" BASH_ENV="$capture_failure_env" bash -c 'printf "slow outer\\n"' >/dev/null
+assert_equal "slow outer" "$(cat "$slow_capture_log" 2>/dev/null)" "slow tee output flushed before exit"
+assert_equal "" "$(<"$ERROR_FILE")" "slow tee success leaves no error"
+
+rm -f "$slow_capture_log"
+set +e
+PATH="$slow_tee_bin:$PATH" BASH_ENV="$capture_failure_env" bash -c 'printf "slow test diagnostic\\n"; false' >/dev/null
+capture_status=$?
+set -e
+assert_equal "1" "$capture_status" "slow tee captured command status"
+slow_fallback=$(<"$ERROR_FILE")
+assert_contains "$slow_fallback" "Command failed (exit 1): false" "slow tee failure command"
+assert_contains "$slow_fallback" $'Recent output:\nslow test diagnostic' "slow tee recent output"
+
+: > "$ERROR_FILE"
+set +e
+PATH="$slow_tee_bin:$PATH" BASH_ENV="$capture_failure_env" bash -c 'printf "visible\\n"; printf "visible error\\n" >&2; exit 3' > "$TEMP_DIR/slow-stdout" 2>&1
+capture_status=$?
+set -e
+assert_equal "3" "$capture_status" "slow tee explicit exit status"
+assert_equal $'visible\nvisible error' "$(<"$TEMP_DIR/slow-stdout")" "slow tee still forwards output"
+assert_equal "" "$(<"$ERROR_FILE")" "explicit exit does not trigger the error trap"
+
+background_started=$(date +%s)
+background_pid_file="$TEMP_DIR/background.pid"
+PATH="$slow_tee_bin:$PATH" BASH_ENV="$capture_failure_env" \
+  bash -c 'sleep 20 & printf "%s\n" "$!" > "$1"; printf "with background\\n"' _ "$background_pid_file" >/dev/null 2>&1
+background_elapsed=$(($(date +%s) - background_started))
+kill "$(<"$background_pid_file")" 2>/dev/null || true
+[[ "$background_elapsed" -lt 12 ]] || fail "background process holding the output pipe must not block exit (${background_elapsed}s)"
+
 EXPECTED_FAILURE_SUMMARY=$(mktemp)
 bash "$ROOT/scripts/render-summary.sh" \
   --check app:typecheck \

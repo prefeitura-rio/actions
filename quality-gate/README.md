@@ -56,6 +56,13 @@ quality-gate/
 │   └── scripts/
 │       ├── check.sh                   # TypeScript checks
 │       └── project-info.js            # Package manager/framework metadata
+├── ai-review/
+│   └── action.yml                     # GitHub AI styleguide review adapter
+├── cli/                               # Typed Python package (uv + Typer CLI)
+│   ├── pyproject.toml
+│   ├── uv.lock
+│   ├── src/quality_gate/              # quality-gate CLI and ai-review command
+│   └── tests/                         # pytest suite
 ├── tests/scripts/test-portable.sh     # Provider-neutral contract tests
 └── docs/testing.md                    # Test strategy and fixture matrix
 ```
@@ -270,6 +277,66 @@ and Linux CI runners. The installers currently always populate the quality-gate
 tool cache, so pre-installing those tools elsewhere in `PATH` does not bypass a
 download on non-x86_64 architectures such as macOS Apple Silicon or ARM64 Linux.
 
+## AI Review
+
+`quality-gate/ai-review` reviews Go, Python, and TypeScript sources against the
+repository styleguide with a model behind an OpenAI-compatible chat completions
+API (OpenAI, Azure OpenAI, Gemini, Anthropic and most gateways expose one). Code
+outside the styleguide is reported by file and line with a suggested fix, as job
+annotations, a job summary, and the `error_message` output. The check is opt-in:
+nothing calls a model unless a workflow uses this action.
+
+```yaml
+- uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+  with:
+    fetch-depth: 0
+- uses: prefeitura-rio/actions/quality-gate/ai-review@quality-gate-latest
+  with:
+    model: <model name>
+    api-key: ${{ secrets.AI_API_KEY }}
+```
+
+| Input | Default | Description |
+|---|---|---|
+| `working-directory` | `.` | Project directory to review |
+| `styleguide` | empty | Styleguide file relative to `working-directory`; empty searches the project root, the repository root, `docs/`, and `.github/` for `STYLEGUIDE.md`, `style-guide.md`, `style_guide.md`, or `STYLEGUIDE` (any case) |
+| `base-ref` | `github.base_ref` | Review only the files changed since the merge base with this branch (it must be fetched); empty reviews every tracked file up to `max-files` |
+| `model` | required | Model name |
+| `api-key` | required | Provider API key, from a secret |
+| `base-url` | `https://api.openai.com/v1` | Base URL of the OpenAI-compatible API; HTTPS only, except `localhost` |
+| `fail-on` | `error` | Lowest finding severity that fails: `error`, `warning`, or `never` |
+| `max-files` | `50` | Maximum number of files sent to the model |
+
+Outputs: `error_message` (report when the review fails) and `summary`
+(Markdown summary). The model is told to report only what the styleguide covers
+and to treat the code as data; its findings are kept only when they point to a
+reviewed file and an existing line. In the action the report is printed with
+GitHub workflow commands disabled around it (`::stop-commands::`), so model
+output cannot inject commands, and the API key is never sent after an HTTP
+redirect (redirects are refused). Files under `node_modules`, `vendor`,
+`dist`, `build`, `.venv`, and similar folders are not reviewed, nor are files
+or styleguides whose symbolic links resolve outside the repository. The selected
+source files and the styleguide are sent to the configured provider.
+
+The action runs the `ai-review` command of the `quality-gate` Python package in
+`cli/`, which can also be run directly:
+
+```bash
+QUALITY_GATE_AI_API_KEY=... uv run --project quality-gate/cli quality-gate ai-review \
+  --working-directory ./my-project --base-ref main --model <model name>
+```
+
+Exit codes: `0` passed, `1` findings at or above `--fail-on`, `2` invalid input
+(no styleguide, no API key, unknown base reference), `3` provider failure. The
+package is statically typed (basedpyright `all`), linted with the organization
+Ruff configuration, and tested with pytest:
+
+```bash
+cd quality-gate/cli
+uv run --frozen ruff format --check . && uv run --frozen ruff check .
+uv run --frozen basedpyright && uv run --frozen pytest
+```
+
 ## Repository-Local Rules
 
 Repositories can add structural rules without changing the action:
@@ -318,6 +385,24 @@ jobs:
 The reusable workflow runs detection first, creates a language matrix, executes
 format, lint, structural lint, and typecheck in parallel, and runs tests only
 after those checks pass.
+
+The [AI review](#ai-review) runs as an extra `AI Review` job only when it is
+enabled:
+
+```yaml
+jobs:
+  quality:
+    uses: prefeitura-rio/actions/.github/workflows/quality-gate.yml@quality-gate-latest
+    with:
+      project-name: my-project
+      working-directory: .
+      ai-review: true
+      ai-model: <model name>
+      # ai-base-url: https://api.openai.com/v1
+      # styleguide: docs/STYLEGUIDE.md
+    secrets:
+      AI_API_KEY: ${{ secrets.AI_API_KEY }}
+```
 
 ## Future Git-Cloud Adapters
 

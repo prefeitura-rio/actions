@@ -1,0 +1,86 @@
+name: Actions Release
+
+# Repository-wide tags for every action and reusable workflow in this
+# repository:
+# - latest: moved to the tip of master on every push to master.
+# - v<X.Y.Z>: immutable, published on demand from the Actions tab.
+# The component tags quality-gate-v<X.Y.Z> and quality-gate-latest are managed
+# separately by quality-gate-release.yml and quality-gate-manual-release.yml.
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: Full commit SHA to release. Leave empty to release the current tip of master.
+        required: false
+        type: string
+        default: ""
+      bump:
+        description: Semantic version component to bump.
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
+
+permissions:
+  contents: read
+
+jobs:
+  latest:
+    name: Update latest tag
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: actions-release-latest
+      cancel-in-progress: false
+    steps:
+      - name: Checkout pushed commit
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Validate release target
+        id: target
+        shell: bash
+        env:
+          TARGET_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          bash release/scripts/validate-target.sh \
+            --release-branch master \
+            --target-sha "$TARGET_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Move latest tag
+        if: steps.target.outputs.skip != 'true'
+        shell: bash
+        env:
+          TARGET_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          bash release/scripts/move-floating-tag.sh \
+            --release-branch master \
+            --target-sha "$TARGET_SHA" \
+            --floating-tag latest
+
+  release:
+    name: Publish semantic version
+    if: github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release.yml
+    with:
+      release_branch: master
+      target_sha: ${{ inputs.target_sha || github.sha }}
+      toolkit_ref: ${{ inputs.target_sha || github.sha }}
+      initial_version: 1.0.0
+      bump: ${{ inputs.bump }}
+      floating_tag: latest
+      tag_prefix: v

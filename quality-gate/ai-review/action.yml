@@ -1,0 +1,116 @@
+name: Quality Gate (AI Review)
+description: |
+  Review Go, Python, and TypeScript code against the repository styleguide with
+  a model behind an OpenAI-compatible chat completions API. Code outside the
+  styleguide is reported by file and line, with a suggested fix, as job
+  annotations, a job summary, and the error_message output.
+inputs:
+  working-directory:
+    description: The project directory to review.
+    required: false
+    default: .
+  styleguide:
+    description: |
+      Styleguide file, relative to working-directory. When empty, the first
+      STYLEGUIDE.md (or style-guide.md, style_guide.md, STYLEGUIDE; any case)
+      found in the project root, the repository root, docs/, or .github/ is used.
+    required: false
+    default: ''
+  base-ref:
+    description: |
+      Review only the files changed since the merge base with this branch. It
+      must be fetched (actions/checkout with fetch-depth: 0). Defaults to the
+      pull request base branch; empty (push events) reviews every tracked file,
+      up to max-files.
+    required: false
+    default: ${{ github.base_ref }}
+  model:
+    description: Model name accepted by the provider at base-url.
+    required: true
+  api-key:
+    description: API key of the model provider. Pass it from a secret.
+    required: true
+  base-url:
+    description: Base URL of the OpenAI-compatible API.
+    required: false
+    default: https://api.openai.com/v1
+  fail-on:
+    description: Lowest finding severity that fails the check (error, warning, or never).
+    required: false
+    default: error
+  max-files:
+    description: Maximum number of files sent to the model.
+    required: false
+    default: '50'
+outputs:
+  error_message:
+    description: Human-readable report set when the review fails.
+    value: ${{ steps.report.outputs.error_message }}
+  summary:
+    description: Rendered Markdown summary of the review.
+    value: ${{ steps.report.outputs.summary }}
+runs:
+  using: composite
+  steps:
+    - name: ai-review | setup uv
+      uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      with:
+        version: 0.12.5
+    - name: ai-review | review against the styleguide
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        CLI_PROJECT: ${{ github.action_path }}/../cli
+        UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/quality-gate-cli-venv
+        QUALITY_GATE_AI_API_KEY: ${{ inputs.api-key }}
+        QUALITY_GATE_AI_MODEL: ${{ inputs.model }}
+        QUALITY_GATE_AI_BASE_URL: ${{ inputs.base-url }}
+        QUALITY_GATE_ERROR_FILE: ${{ runner.temp }}/quality-gate-ai-review-error.txt
+        SUMMARY_FILE: ${{ runner.temp }}/quality-gate-ai-review-summary.md
+        STYLEGUIDE: ${{ inputs.styleguide }}
+        BASE_REF: ${{ inputs.base-ref }}
+        FAIL_ON: ${{ inputs.fail-on }}
+        MAX_FILES: ${{ inputs.max-files }}
+      run: |
+        set -euo pipefail
+        : > "$QUALITY_GATE_ERROR_FILE"
+        rm -f "$SUMMARY_FILE"
+        args=(
+          ai-review
+          --working-directory "$PWD"
+          --base-ref "$BASE_REF"
+          --fail-on "$FAIL_ON"
+          --max-files "$MAX_FILES"
+          --summary-file "$SUMMARY_FILE"
+          --github-annotations
+        )
+        if [[ -n "$STYLEGUIDE" ]]; then
+          args+=(--styleguide "$STYLEGUIDE")
+        fi
+        uv run --quiet --frozen --no-dev --project "$CLI_PROJECT" quality-gate "${args[@]}"
+    - name: ai-review | report
+      id: report
+      if: always()
+      shell: bash
+      env:
+        ERROR_FILE: ${{ runner.temp }}/quality-gate-ai-review-error.txt
+        SUMMARY_FILE: ${{ runner.temp }}/quality-gate-ai-review-summary.md
+      run: |
+        set -euo pipefail
+        if [[ ! -s "$SUMMARY_FILE" ]]; then
+          {
+            printf '# AI Review\n\n**Status:** ❌ Failed\n'
+            if [[ -s "$ERROR_FILE" ]]; then
+              # shellcheck disable=SC2016 # the backticks are a literal Markdown fence
+              printf '\n```text\n%s\n```\n' "$(<"$ERROR_FILE")"
+            fi
+          } > "$SUMMARY_FILE"
+        fi
+        delimiter="QUALITY_GATE_AI_REVIEW_$(date +%s%N)"
+        {
+          if [[ -s "$ERROR_FILE" ]]; then
+            printf 'error_message<<%s\n%s\n%s\n' "$delimiter" "$(<"$ERROR_FILE")" "$delimiter"
+          fi
+          printf 'summary<<%s\n%s\n%s\n' "$delimiter" "$(<"$SUMMARY_FILE")" "$delimiter"
+        } >> "$GITHUB_OUTPUT"
+        cat "$SUMMARY_FILE" >> "$GITHUB_STEP_SUMMARY"

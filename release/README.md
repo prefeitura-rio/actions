@@ -12,6 +12,7 @@ not read GitHub, GitLab, runner, or CI-provider environment variables.
 | `scripts/calculate-version.sh` | Calculate the next stable semantic version. |
 | `scripts/validate-target.sh` | Confirm that a target commit is still the release branch tip. |
 | `scripts/publish-tags.sh` | Create an immutable version tag and update a floating tag. |
+| `scripts/move-floating-tag.sh` | Move a floating tag to the release branch tip without a version tag. |
 
 Scripts emit `key=value` records on stdout and diagnostics on stderr. A CI
 provider adapter can map those records to its native outputs.
@@ -51,6 +52,25 @@ message identifies the immutable version they point to, for example:
 Latest release: quality-gate-v1.1.0
 ```
 
+`move-floating-tag.sh` pushes the floating tag atomically with a lease on the
+release branch: if the branch tip is no longer the target commit, the push is
+rejected and the floating tag stays where it was. It refuses tag names that
+end in a semantic version, so it never moves an immutable version tag.
+
+## Repository Release (`latest` and `v<X.Y.Z>`)
+
+The **Actions Release** workflow (`.github/workflows/actions-release.yml`)
+publishes repository-wide tags for this repository:
+
+- On every push to `master`, the `Update latest tag` job moves `latest` to the
+  pushed commit, unless `master` has already moved on (a newer push updates it).
+- Run **Actions Release** from the Actions tab to publish a stable `v<X.Y.Z>`
+  tag: choose the bump and, optionally, the full commit SHA (empty releases the
+  current tip of `master`). The first release is `v1.0.0`. The target must
+  still be the tip of `master`; `latest` then points to the new version.
+
+To roll a consumer back, pin it to a previous `v<X.Y.Z>` tag.
+
 ## Manual Quality-Gate Release
 
 Run **Manual Quality Gate Release** from the Actions tab and provide the full
@@ -66,4 +86,5 @@ Run the contract tests with:
 ```bash
 bash release/tests/test-version.sh
 bash release/tests/test-publish-tags.sh
+bash release/tests/test-move-floating-tag.sh
 ```
