@@ -85,9 +85,6 @@ jobs:
   release-gate:
     if: ${{ inputs.require_workflow_gate }}
     runs-on: ubuntu-latest
-    permissions:
-      actions: read
-      contents: read
     outputs:
       ready: ${{ steps.gates.outputs.ready }}
     steps:
