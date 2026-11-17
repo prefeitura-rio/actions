@@ -55,16 +55,24 @@ inputs:
     description: Tailscale tags
     required: true
   ts_oauth_client_id:
-    description: Tailscale OAuth client ID
-    required: true
+    description: Tailscale OAuth client ID; when it or ts_oauth_secret is empty (e.g. Dependabot runs, which get no Actions secrets), the Tailscale connection is skipped and DefectDojo is not reached
+    required: false
+    default: ""
   ts_oauth_secret:
-    description: Tailscale OAuth secret
-    required: true
+    description: Tailscale OAuth secret; when it or ts_oauth_client_id is empty, the Tailscale connection is skipped and DefectDojo is not reached
+    required: false
+    default: ""
 
 runs:
   using: composite
   steps:
+    - name: Skip Tailscale without credentials
+      if: inputs.ts_oauth_client_id == '' || inputs.ts_oauth_secret == ''
+      shell: bash
+      run: |
+        echo "::notice title=Tailscale skipped::ts_oauth_client_id or ts_oauth_secret is empty (Dependabot runs get no Actions secrets), so Tailscale is not connected and DefectDojo will not be reached; the scanners still run and gate the job."
     - name: Tailscale connect
+      if: inputs.ts_oauth_client_id != '' && inputs.ts_oauth_secret != ''
       uses: tailscale/github-action@780049a30b6ff5c378a9e7b389d15ece7a204888 # v4.1.3
       with:
         oauth-client-id: ${{ inputs.ts_oauth_client_id }}

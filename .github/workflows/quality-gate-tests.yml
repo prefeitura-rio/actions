@@ -7,6 +7,7 @@ on:
       - "quality-gate/**"
       - "release/**"
       - "provenance/**"
+      - "sast/action.yml"
       - "sast/scripts/**"
       - "sast/tests/**"
       - ".github/workflows/quality-gate.yml"
@@ -22,6 +23,7 @@ on:
       - "quality-gate/**"
       - "release/**"
       - "provenance/**"
+      - "sast/action.yml"
       - "sast/scripts/**"
       - "sast/tests/**"
       - ".github/workflows/quality-gate.yml"
@@ -212,6 +214,8 @@ jobs:
         run: bash sast/tests/test-normalize-ignores.sh
       - name: Run summary and DefectDojo script tests
         run: bash sast/tests/test-summary.sh
+      - name: Run Tailscale step condition tests
+        run: bash sast/tests/test-action-tailscale.sh
 
   cli-package:
     name: Quality gate CLI package
