@@ -45,11 +45,14 @@ bash provenance/tests/test-scanners.sh
 SAST scripts (`sast/scripts`): `normalize-ignores.sh` (needs `bash`, `awk`,
 `sed` and coreutils) and `summary.sh` (step summary, DefectDojo reimport and
 `break_on` gate; needs `bash` and `jq`; `curl` is a stub, so no network is
-used):
+used). `test-action-tailscale.sh` checks that `sast/action.yml` skips the
+`Tailscale connect` step, with a notice, when either OAuth credential is empty
+(needs `bash`, `awk` and `sed`):
 
 ```bash
 bash sast/tests/test-normalize-ignores.sh
 bash sast/tests/test-summary.sh
+bash sast/tests/test-action-tailscale.sh
 ```
 
 Python package of the quality gate (`quality-gate/cli`, needs `uv`):
@@ -94,8 +97,9 @@ hand (`shfmt -d <file>`) when shfmt is available.
 
 - `Quality Gate Tests` (`.github/workflows/quality-gate-tests.yml`) runs on
   pull requests to `master` and on pushes to `master`, only when the diff
-  touches `quality-gate/`, `release/`, `provenance/`, `sast/scripts/`,
-  `sast/tests/`, `.github/scripts/` or the quality gate and release workflows.
+  touches `quality-gate/`, `release/`, `provenance/`, `sast/action.yml`,
+  `sast/scripts/`, `sast/tests/`, `.github/scripts/` or the quality gate and
+  release workflows.
 - `Security` (`.github/workflows/ci.yml`, the local `sast` action) runs on
   pushes to `master` and `feat/**`, only when the diff touches the paths listed
   in that workflow; it does not run on pull requests.
