@@ -98,4 +98,5 @@ Run the contract tests with:
 bash release/tests/test-version.sh
 bash release/tests/test-publish-tags.sh
 bash release/tests/test-move-floating-tag.sh
+bash release/tests/test-release-workflow.sh   # needs yq
 ```
