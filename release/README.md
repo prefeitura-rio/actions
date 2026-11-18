@@ -68,6 +68,55 @@ release branch: if the branch tip is no longer the target commit, the push is
 rejected and the floating tag stays where it was. It refuses tag names that
 end in a semantic version, so it never moves an immutable version tag.
 
+### Release App credentials and the `environment` input
+
+By default the release job pushes tags with the caller's `GITHUB_TOKEN`. A
+repository whose tags are protected by a ruleset can instead let a GitHub App
+publish them, by forwarding two secrets:
+
+```yaml
+jobs:
+  release:
+    uses: prefeitura-rio/actions/.github/workflows/release.yml@<workflow-sha>
+    with:
+      release_branch: master
+      target_sha: ${{ github.sha }}
+      toolkit_ref: <toolkit-sha>
+      environment: quality-gate-release      # optional, see below
+    secrets:
+      QUALITY_GATE_RELEASE_APP_ID: ${{ secrets.QUALITY_GATE_RELEASE_APP_ID }}
+      QUALITY_GATE_RELEASE_APP_PRIVATE_KEY: ${{ secrets.QUALITY_GATE_RELEASE_APP_PRIVATE_KEY }}
+```
+
+The App token is created first and put in the target remote before anything
+talks to it, so private repositories work too. It is scoped to the `flakes`
+repository, so this path only releases `prefeitura-rio/flakes`; other callers do
+not forward the secrets and use `GITHUB_TOKEN`.
+
+**Keeping the secrets away from other branches.** A secret stored at repository
+level is readable by a workflow on any branch with write access. Store the two
+secrets in an Environment instead and pass its name in `environment`: only the
+release job runs in it, so only it can read them. A calling job cannot declare
+`environment:` itself, which is why the name is an input. The caller still
+forwards the secrets by name, as above (GitHub resolves the Environment's value
+for a job that runs in it; see
+[Reuse workflows](https://docs.github.com/en/actions/how-tos/reuse-automations/reuse-workflows)).
+
+| `environment` | Credentials | Result |
+| --- | --- | --- |
+| empty | none | `GITHUB_TOKEN` is used |
+| empty or set | both | the App token is used |
+| empty or set | only one of the two | the job fails |
+| set | none | the job fails: they were not found in that Environment |
+
+The protection is the Environment's configuration, not this workflow. Its
+branch rule is evaluated against the ref of the workflow that called this one,
+and `release_branch` and `target_sha` are chosen by the caller, so restrict the
+Environment to the release branch, turn off the administrator bypass and, where
+a second pair of eyes is wanted, require reviewers. Inside the job the private
+key is readable only by the step that checks it and the step that creates the
+token; it is not exported to the toolkit scripts.
+
 ## Repository Release (`latest` and `v<X.Y.Z>`)
 
 The **Actions Release** workflow (`.github/workflows/actions-release.yml`)

@@ -27,6 +27,13 @@ bash release/tests/test-move-floating-tag.sh
 bash .github/scripts/tests/test-check-reusable-workflow-refs.sh
 ```
 
+The release workflow contract test also needs mikefarah's `yq` (preinstalled
+on GitHub-hosted runners); it exits with status 2 when `yq` is missing:
+
+```bash
+bash release/tests/test-release-workflow.sh
+```
+
 SLSA provenance scripts (`provenance/scripts`, needs `bash`, `jq` and
 `base64`; `cosign` is replaced by a stub, so no cloud credential is used):
 
