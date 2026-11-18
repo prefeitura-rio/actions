@@ -98,3 +98,6 @@ jobs:
           ignore_type: ${{ inputs.ignore_type }}
           dd_url: ${{ inputs.dd_url }}
           dd_token: ${{ secrets.dd_token }}
+          ts_tags: ${{ secrets.ts_tags }}
+          ts_oauth_client_id: ${{ secrets.ts_oauth_client_id }}
+          ts_oauth_secret: ${{ secrets.ts_oauth_secret }}

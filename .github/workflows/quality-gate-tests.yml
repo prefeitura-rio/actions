@@ -10,6 +10,7 @@ on:
       - "sast/action.yml"
       - "sast/scripts/**"
       - "sast/tests/**"
+      - ".github/workflows/sast.yml"
       - ".github/workflows/quality-gate.yml"
       - ".github/workflows/quality-gate-tests.yml"
       - ".github/workflows/release.yml"
@@ -26,6 +27,7 @@ on:
       - "sast/action.yml"
       - "sast/scripts/**"
       - "sast/tests/**"
+      - ".github/workflows/sast.yml"
       - ".github/workflows/quality-gate.yml"
       - ".github/workflows/quality-gate-tests.yml"
       - ".github/workflows/release.yml"
@@ -216,6 +218,8 @@ jobs:
         run: bash sast/tests/test-summary.sh
       - name: Run Tailscale step condition tests
         run: bash sast/tests/test-action-tailscale.sh
+      - name: Run reusable workflow secret forwarding tests
+        run: bash sast/tests/test-workflow-secrets.sh
 
   cli-package:
     name: Quality gate CLI package
