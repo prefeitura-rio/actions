@@ -194,6 +194,8 @@ jobs:
         run: bash release/tests/test-publish-tags.sh
       - name: Run floating tag tests
         run: bash release/tests/test-move-floating-tag.sh
+      - name: Run release workflow contract tests
+        run: bash release/tests/test-release-workflow.sh
 
   provenance-scripts:
     name: Provenance scripts
