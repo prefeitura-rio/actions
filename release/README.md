@@ -56,6 +56,18 @@ target commit before releasing:
 When enabled, it queries GitHub Actions directly and does not require the
 calling repository to copy or checkout the gate scripts.
 
+Floating tags are annotated after a successful atomic publication. Their tag
+message identifies the immutable version they point to, for example:
+
+```text
+Latest release: quality-gate-v1.1.0
+```
+
+`move-floating-tag.sh` pushes the floating tag atomically with a lease on the
+release branch: if the branch tip is no longer the target commit, the push is
+rejected and the floating tag stays where it was. It refuses tag names that
+end in a semantic version, so it never moves an immutable version tag.
+
 ### Release App credentials and the `environment` input
 
 By default the release job pushes tags with the caller's `GITHUB_TOKEN`. A
@@ -104,18 +116,6 @@ Environment to the release branch, turn off the administrator bypass and, where
 a second pair of eyes is wanted, require reviewers. Inside the job the private
 key is readable only by the step that checks it and the step that creates the
 token; it is not exported to the toolkit scripts.
-
-Floating tags are annotated after a successful atomic publication. Their tag
-message identifies the immutable version they point to, for example:
-
-```text
-Latest release: quality-gate-v1.1.0
-```
-
-`move-floating-tag.sh` pushes the floating tag atomically with a lease on the
-release branch: if the branch tip is no longer the target commit, the push is
-rejected and the floating tag stays where it was. It refuses tag names that
-end in a semantic version, so it never moves an immutable version tag.
 
 ## Repository Release (`latest` and `v<X.Y.Z>`)
 
