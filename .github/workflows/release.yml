@@ -154,6 +154,7 @@ jobs:
           ref: ${{ inputs.target_sha }}
           fetch-depth: 0
           path: target
+          persist-credentials: false
 
       - name: Validate immutable toolkit ref
         shell: bash
