@@ -35,11 +35,29 @@ way. The only exception is `.github/workflows/quality-gate.yml` called by
 `@master`, which keeps running `quality-gate@quality-gate-latest`.
 
 The component tags `quality-gate-v<X.Y.Z>` and `quality-gate-latest` are
-published independently by the quality gate release workflows (see
-[`release/README.md`](release/README.md)). `@master` and commit SHAs keep
-working.
+frozen with the archived Quality Gate: the quality gate release workflows no
+longer publish or move them (see [`quality-gate/README.md`](quality-gate/README.md)).
+`@master` and commit SHAs keep working.
 
 ## Quick start — quality-gate
+
+> **Archived.** The GitHub Actions Quality Gate in this repository is frozen
+> for compatibility with existing consumers. New consumers should use the
+> Quality Gate profile of
+> [`prefeitura-rio/flakes`](https://github.com/prefeitura-rio/flakes) and its
+> published Nix app:
+>
+> ```yaml
+> inputs:
+>   prefrio:
+>     url: github:prefeitura-rio/flakes
+> imports:
+>   - prefrio/devenv/quality-gate.nix
+> ```
+
+Existing consumers of the legacy GitHub adapter keep working with the frozen
+`quality-gate-latest` tag, which no longer receives new rules, tools or
+releases:
 
 ```yaml
 - uses: prefeitura-rio/actions/quality-gate@quality-gate-latest
@@ -54,8 +72,8 @@ When omitted, detection runs from marker files.
 
 See [`quality-gate/README.md`](quality-gate/README.md) for full reference.
 
-Polyglot and multi-project repositories can call the reusable workflow once per
-explicit project path:
+Polyglot and multi-project repositories on the legacy adapter can call the
+reusable workflow once per explicit project path:
 
 ```yaml
 jobs:
