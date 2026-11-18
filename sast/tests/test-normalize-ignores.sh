@@ -333,6 +333,25 @@ assert_file .semgrepignore "$(semgrep_file .checkov.yaml "**/'
 **/it's
 **/plain''")" 'apostrophe in .checkov.yaml'
 
+# --- trailing whitespace -----------------------------------------------------------
+
+# A quoted entry followed by spaces or a tab at the end of the line, with no
+# comment, still has its quotes removed: the trailing whitespace goes before
+# the quotes are matched against the end of the line.
+new_case trailing-whitespace-checkov
+printf "skip-path:\n  - 'vendor' \n  - \"dist\"  \n  - 'it''s'\t\n  - plain \n" \
+  >"$case_dir/.checkov.yaml"
+run_normalize
+assert_status 0 'trailing whitespace in .checkov.yaml'
+assert_file checkov-skip-paths.txt "dist
+it's
+plain
+vendor" 'trailing whitespace in .checkov.yaml'
+assert_file .semgrepignore "$(semgrep_file .checkov.yaml "**/dist
+**/it's
+**/plain
+**/vendor")" 'trailing whitespace in .checkov.yaml'
+
 # --- priority of the source file ---------------------------------------------------
 
 # .semgrepignore wins over sonar-project.properties: only the missing

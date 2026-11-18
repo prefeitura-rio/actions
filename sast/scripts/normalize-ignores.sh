@@ -63,7 +63,7 @@ extract_checkov_exclusions() {
       }
     }
   ' "$FILE_CHECKOV" |
-        sed -E 's/[[:space:]]+#.*$//' |
+        sed -E -e 's/[[:space:]]+#.*$//' -e 's/[[:space:]]+$//' |
         sed -E -e "/^'.*'\$/{" -e "s/^'(.*)'\$/\1/" -e "s/''/'/g" -e b -e '}' \
             -e 's/^"(.*)"$/\1/' |
         sed 's/^[[:space:]]*//;s/[[:space:]]*$//' |
