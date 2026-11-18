@@ -42,7 +42,7 @@ working.
 ## Quick start — quality-gate
 
 ```yaml
-- uses: prefeitura-rio/actions/quality-gate@quality-gate-v1.0.0
+- uses: prefeitura-rio/actions/quality-gate@quality-gate-latest
   with:
     check: app:format
 ```
@@ -60,13 +60,13 @@ explicit project path:
 ```yaml
 jobs:
   api-quality:
-    uses: prefeitura-rio/actions/.github/workflows/quality-gate.yml@quality-gate-v1.0.0
+    uses: prefeitura-rio/actions/.github/workflows/quality-gate.yml@quality-gate-latest
     with:
       project-name: api
       working-directory: services/api
 
   library-quality:
-    uses: prefeitura-rio/actions/.github/workflows/quality-gate.yml@quality-gate-v1.0.0
+    uses: prefeitura-rio/actions/.github/workflows/quality-gate.yml@quality-gate-latest
     with:
       project-name: library
       working-directory: libraries/shared

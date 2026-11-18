@@ -118,15 +118,22 @@ The caller must provide runtime dependencies such as Go, Node.js, uv, npm, or
 pnpm. The scripts manage their pinned quality tools and verify downloaded binary
 checksums before execution.
 
-## GitHub Adapter
+## GitHub Adapter (legacy)
 
-The public entrypoint remains:
+The portable implementation is frozen for compatibility. New consumers should
+use the flakes Quality Gate profile and its published Nix app:
 
 ```yaml
-- uses: prefeitura-rio/actions/quality-gate@quality-gate-v1.0.0
-  with:
-    check: app:format
+inputs:
+  prefrio:
+    url: github:prefeitura-rio/flakes
+imports:
+  - prefrio/devenv/quality-gate.nix
 ```
+
+The old `quality-gate-v1.x` tags are not the source of truth for the new
+Quality Gate. Existing consumers must be migrated before those compatibility
+tags are removed or restored.
 
 The adapter performs these provider-specific operations:
 

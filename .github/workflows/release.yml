@@ -60,6 +60,11 @@ on:
         required: false
         type: string
         default: ci-release@example.invalid
+    secrets:
+      QUALITY_GATE_RELEASE_APP_ID:
+        required: false
+      QUALITY_GATE_RELEASE_APP_PRIVATE_KEY:
+        required: false
     outputs:
       version:
         description: Stable version without the tag prefix.
@@ -134,6 +139,9 @@ jobs:
     needs: release-gate
     if: ${{ always() && (!inputs.require_workflow_gate || needs.release-gate.outputs.ready == 'true') }}
     runs-on: ubuntu-latest
+    env:
+      RELEASE_APP_ID: ${{ secrets.QUALITY_GATE_RELEASE_APP_ID }}
+      RELEASE_APP_PRIVATE_KEY: ${{ secrets.QUALITY_GATE_RELEASE_APP_PRIVATE_KEY }}
     outputs:
       version: ${{ steps.calculate.outputs.version }}
       version_tag: ${{ steps.calculate.outputs.version_tag }}
@@ -214,6 +222,16 @@ jobs:
             --release-branch "$RELEASE_BRANCH" \
             --target-sha "$TARGET_SHA" >> "$GITHUB_OUTPUT"
 
+      - name: Create release App token
+        if: ${{ env.RELEASE_APP_ID != '' && env.RELEASE_APP_PRIVATE_KEY != '' }}
+        id: release-token
+        uses: actions/create-github-app-token@0f859bf9e69e887678d5bbfbee594437cb440ffe # v2.1.0
+        with:
+          app-id: ${{ env.RELEASE_APP_ID }}
+          private-key: ${{ env.RELEASE_APP_PRIVATE_KEY }}
+          owner: prefeitura-rio
+          repositories: flakes
+
       - name: Publish version and floating tags
         id: publish
         if: steps.target.outputs.skip != 'true' && steps.final-target.outputs.skip != 'true'
@@ -222,12 +240,15 @@ jobs:
           FLOATING_TAG: ${{ inputs.floating_tag }}
           GIT_AUTHOR_EMAIL: ${{ inputs.git_author_email }}
           GIT_AUTHOR_NAME: ${{ inputs.git_author_name }}
+          RELEASE_TOKEN: ${{ steps.release-token.outputs.token || github.token }}
           REPOSITORY: target
           RELEASE_BRANCH: ${{ inputs.release_branch }}
           TARGET_SHA: ${{ inputs.target_sha }}
           VERSION_TAG: ${{ steps.calculate.outputs.version_tag }}
         run: |
           set -euo pipefail
+          git -C "$REPOSITORY" remote set-url origin \
+            "https://x-access-token:${RELEASE_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           bash release-toolkit/release/scripts/publish-tags.sh \
             --repository "$REPOSITORY" \
             --release-branch "$RELEASE_BRANCH" \
