@@ -60,6 +60,15 @@ on:
         required: false
         type: string
         default: ci-release@example.invalid
+      environment:
+        description: >-
+          GitHub Environment the release job runs in. Use it to keep the
+          release App secrets out of reach of other branches: the secrets are
+          stored in this Environment and only a job that runs in it can read
+          them. Empty runs without an Environment.
+        required: false
+        type: string
+        default: ""
     secrets:
       QUALITY_GATE_RELEASE_APP_ID:
         required: false
@@ -139,15 +148,34 @@ jobs:
     needs: release-gate
     if: ${{ always() && (!inputs.require_workflow_gate || needs.release-gate.outputs.ready == 'true') }}
     runs-on: ubuntu-latest
-    env:
-      RELEASE_APP_ID: ${{ secrets.QUALITY_GATE_RELEASE_APP_ID }}
-      RELEASE_APP_PRIVATE_KEY: ${{ secrets.QUALITY_GATE_RELEASE_APP_PRIVATE_KEY }}
+    environment: ${{ inputs.environment }}
     outputs:
       version: ${{ steps.calculate.outputs.version }}
       version_tag: ${{ steps.calculate.outputs.version_tag }}
       floating_tag: ${{ steps.publish.outputs.floating_tag }}
       skipped: ${{ steps.final-target.outputs.skip || steps.target.outputs.skip }}
     steps:
+      - name: Check the release App credentials
+        id: credentials
+        shell: bash
+        env:
+          RELEASE_APP_ID: ${{ secrets.QUALITY_GATE_RELEASE_APP_ID }}
+          RELEASE_APP_PRIVATE_KEY: ${{ secrets.QUALITY_GATE_RELEASE_APP_PRIVATE_KEY }}
+          ENVIRONMENT_NAME: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$RELEASE_APP_ID" && -n "$RELEASE_APP_PRIVATE_KEY" ]]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          elif [[ -n "$RELEASE_APP_ID" || -n "$RELEASE_APP_PRIVATE_KEY" ]]; then
+            echo "::error::Only one of QUALITY_GATE_RELEASE_APP_ID and QUALITY_GATE_RELEASE_APP_PRIVATE_KEY is set. Both are required."
+            exit 1
+          elif [[ -n "$ENVIRONMENT_NAME" ]]; then
+            echo "::error::The release App credentials are empty in environment '${ENVIRONMENT_NAME}'. Create QUALITY_GATE_RELEASE_APP_ID and QUALITY_GATE_RELEASE_APP_PRIVATE_KEY as secrets of that environment, and forward them by name in the caller's secrets: block."
+            exit 1
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout target commit
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -177,12 +205,12 @@ jobs:
           persist-credentials: false
 
       - name: Create release App token
-        if: ${{ env.RELEASE_APP_ID != '' && env.RELEASE_APP_PRIVATE_KEY != '' }}
+        if: steps.credentials.outputs.configured == 'true'
         id: release-token
         uses: actions/create-github-app-token@0f859bf9e69e887678d5bbfbee594437cb440ffe # v2.1.0
         with:
-          app-id: ${{ env.RELEASE_APP_ID }}
-          private-key: ${{ env.RELEASE_APP_PRIVATE_KEY }}
+          app-id: ${{ secrets.QUALITY_GATE_RELEASE_APP_ID }}
+          private-key: ${{ secrets.QUALITY_GATE_RELEASE_APP_PRIVATE_KEY }}
           owner: prefeitura-rio
           repositories: flakes
 
