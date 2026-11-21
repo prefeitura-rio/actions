@@ -2,12 +2,16 @@
 # Install cosign (root of trust), syft and grype as pinned, checksum- and
 # cosign-verified binaries. Versions and checksums match actions/sast.
 # Usage: install-scanners.sh [syft] [grype]   (defaults to both)
+# SCANNER_BIN (default /usr/local/bin) is created when missing and need not be
+# on PATH: a cosign bootstrapped there is called by its path. The caller puts
+# SCANNER_BIN on PATH for the steps that run syft and grype.
 set -euo pipefail
 
 COSIGN_VERSION="${COSIGN_VERSION:-3.1.1}"
 SYFT_VERSION="${SYFT_VERSION:-1.46.0}"
 GRYPE_VERSION="${GRYPE_VERSION:-0.115.0}"
 BIN="${SCANNER_BIN:-/usr/local/bin}"
+COSIGN=cosign
 DL="$(mktemp -d)"
 
 tools=("$@")
@@ -34,6 +38,7 @@ ensure_cosign() {
     fetch cosign "https://github.com/sigstore/cosign/releases/download/v${COSIGN_VERSION}/cosign-linux-amd64" \
         ae1ecd212663f3693ad9edf8b1a183900c9a52d3155ba6e354237f9a0f6463fc || true
     install -m 0755 "$DL/cosign" "$BIN/cosign"
+    COSIGN="$BIN/cosign"
 }
 
 install_syft() {
@@ -46,7 +51,7 @@ install_syft() {
             66711110e4d351b66ad1e8bcae1057dbad1a7d1dfbae57d65c94fb23f59acf49 || true
         fetch syft-checksums.txt "${base}syft_${SYFT_VERSION}_checksums.txt" \
             2fefc202b2eccab83888cc91f5a364a75df0dd777afbbae5b5e23ebd93d81ac6 || true
-        cosign verify-blob "$DL/syft-checksums.txt" \
+        "$COSIGN" verify-blob "$DL/syft-checksums.txt" \
             --certificate "$DL/syft-checksums.txt.pem" \
             --signature "$DL/syft-checksums.txt.sig" \
             --certificate-identity-regexp 'https://github\.com/anchore/syft/\.github/workflows/.+' \
@@ -66,7 +71,7 @@ install_grype() {
             5048c3b0bee9292c23fe1c19dbd52797b3881683db40689868e937f973ec60a7 || true
         fetch grype-checksums.txt "${base}grype_${GRYPE_VERSION}_checksums.txt" \
             dce654b6f5185d6e4e31cbdd966056562808c0d82b0acc233e9af03e1d4de2b8 || true
-        cosign verify-blob "$DL/grype-checksums.txt" \
+        "$COSIGN" verify-blob "$DL/grype-checksums.txt" \
             --certificate "$DL/grype-checksums.txt.pem" \
             --signature "$DL/grype-checksums.txt.sig" \
             --certificate-identity-regexp 'https://github\.com/anchore/grype/\.github/workflows/.+' \
@@ -76,6 +81,7 @@ install_grype() {
     chmod +x "$BIN/grype"
 }
 
+mkdir -p "$BIN"
 ensure_cosign
 if in_list syft "${tools[@]}"; then install_syft; fi
 if in_list grype "${tools[@]}"; then install_grype; fi

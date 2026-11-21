@@ -43,7 +43,9 @@ bash provenance/tests/test-provenance.sh
 
 Image scanner scripts (`install-scanners.sh`, `generate-sbom.sh`,
 `scan-image.sh`, needs `bash`, `jq`, `tar`, `gzip` and `sha256sum`; `curl`,
-`cosign`, `syft` and `grype` are stubs, so no network or registry is used):
+`cosign`, `syft` and `grype` are stubs, so no network or registry is used).
+It also checks that the install steps of `build-and-release.yml` use
+`SCANNER_BIN` under `runner.temp` and add it to `GITHUB_PATH`:
 
 ```bash
 bash provenance/tests/test-scanners.sh

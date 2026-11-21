@@ -233,8 +233,15 @@ jobs:
           PREDICATE_FILE: predicate.json
         run: _provenance/provenance/scripts/sign-provenance.sh
 
+      # The job user cannot write to /usr/local/bin on every runner (the
+      # iplanrio-runners scale set runs as `runner`), so the scanners go to
+      # the job's temp directory, which later steps get on PATH.
       - name: Install syft
-        run: _provenance/provenance/scripts/install-scanners.sh syft
+        env:
+          SCANNER_BIN: ${{ runner.temp }}/scanner-bin
+        run: |
+          _provenance/provenance/scripts/install-scanners.sh syft
+          echo "$SCANNER_BIN" >> "$GITHUB_PATH"
 
       - name: Generate image SBOM
         run: _provenance/provenance/scripts/generate-sbom.sh
@@ -296,8 +303,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # See the provenance job: the scanners go to a directory the job user
+      # can write to, which later steps get on PATH.
       - name: Install syft and grype
-        run: _provenance/provenance/scripts/install-scanners.sh syft grype
+        env:
+          SCANNER_BIN: ${{ runner.temp }}/scanner-bin
+        run: |
+          _provenance/provenance/scripts/install-scanners.sh syft grype
+          echo "$SCANNER_BIN" >> "$GITHUB_PATH"
 
       - name: Scan image and upload to DefectDojo
         run: _provenance/provenance/scripts/scan-image.sh
