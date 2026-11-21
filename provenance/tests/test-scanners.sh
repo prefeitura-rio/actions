@@ -471,6 +471,7 @@ assert_empty_dir "$scanner_bin" 'install with tampered checksums file'
 workflow="$script_dir/../../.github/workflows/build-and-release.yml"
 [[ -f "$workflow" ]] || fail "workflow not found: $workflow"
 install_steps=0
+# shellcheck disable=SC2016 # single quotes are intentional: literal workflow YAML
 check_install_step() {
   local step="$1"
   [[ "$step" == *install-scanners.sh* ]] || return 0
