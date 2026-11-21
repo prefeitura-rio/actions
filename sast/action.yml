@@ -99,7 +99,7 @@ runs:
       if: always()
       uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
       with:
-        cache: 'pip'
+        cache: ${{ steps.python.outputs.cache }}
         python-version: ${{ steps.python.outputs.version }}
     - name: Prepare tool cache
       id: tools

@@ -64,8 +64,9 @@ either OAuth credential is empty, and wires the `ts_networking` mode into
 kernel TUN device or userspace networking with a SOCKS5 proxy (needs `bash`
 and `awk`; the TUN device and `/proc/self/status` are fakes).
 `test-runner-env.sh` checks that `pick-python.sh` asks `setup-python` for 3.12
-only when the `python3` on `PATH` cannot create a venv (`python3` is a stub),
-and that the scanner steps run under `C.UTF-8`. `test-workflow-secrets.sh`
+only when the `python3` on `PATH` cannot create a venv (`python3` is a stub)
+and turns its pip cache on only when the workspace has a `requirements.txt` or
+a `pyproject.toml`, and that the scanner steps run under `C.UTF-8`. `test-workflow-secrets.sh`
 checks that the reusable workflow `.github/workflows/sast.yml` passes every
 secret it declares (except the obsolete ones) to the `sast` action (needs
 `bash`, `awk` and `grep`):
