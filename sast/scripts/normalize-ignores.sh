@@ -44,7 +44,8 @@ extract_semgrep_exclusions() {
 
 # Reads the "skip-path:" block sequence from .checkov.yaml. Only the plain
 # block-sequence form is supported (one "  - pattern" per line, optionally
-# single/double-quoted, optional trailing "# comment"); flow-style
+# single/double-quoted, optional trailing "# comment"; a doubled '' inside a
+# single-quoted entry is YAML's escaped quote and becomes '); flow-style
 # "skip-path: [a, b]" is not. Entries are checkov's own regex dialect, not a
 # glob, matching what checkov itself reads from this file.
 extract_checkov_exclusions() {
@@ -62,8 +63,9 @@ extract_checkov_exclusions() {
       }
     }
   ' "$FILE_CHECKOV" |
-        sed -E 's/[[:space:]]+#.*$//' |
-        sed -E "s/^'(.*)'\$/\1/; s/^\"(.*)\"\$/\1/" |
+        sed -E -e 's/[[:space:]]+#.*$//' -e 's/[[:space:]]+$//' |
+        sed -E -e "/^'.*'\$/{" -e "s/^'(.*)'\$/\1/" -e "s/''/'/g" -e b -e '}' \
+            -e 's/^"(.*)"$/\1/' |
         sed 's/^[[:space:]]*//;s/[[:space:]]*$//' |
         grep -v '^$' |
         sort -u
@@ -191,6 +193,8 @@ generate_checkov() {
 # checkov's regex dialect is lossy for anything beyond our own vocabulary);
 # whichever file(s) are still missing get generated from that source. Files
 # that already exist are left untouched (assumed to already be in sync).
+# The source is decided only by which files exist: the deprecated
+# "ignore_type" input of the sast action is not read here.
 glob_patterns=""
 source_name=""
 if [[ -f "$FILE_SEMGREP" ]]; then

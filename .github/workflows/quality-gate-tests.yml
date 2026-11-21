@@ -7,6 +7,10 @@ on:
       - "quality-gate/**"
       - "release/**"
       - "provenance/**"
+      - "sast/action.yml"
+      - "sast/scripts/**"
+      - "sast/tests/**"
+      - ".github/workflows/sast.yml"
       - ".github/workflows/quality-gate.yml"
       - ".github/workflows/quality-gate-tests.yml"
       - ".github/workflows/release.yml"
@@ -20,6 +24,10 @@ on:
       - "quality-gate/**"
       - "release/**"
       - "provenance/**"
+      - "sast/action.yml"
+      - "sast/scripts/**"
+      - "sast/tests/**"
+      - ".github/workflows/sast.yml"
       - ".github/workflows/quality-gate.yml"
       - ".github/workflows/quality-gate-tests.yml"
       - ".github/workflows/release.yml"
@@ -186,6 +194,8 @@ jobs:
         run: bash release/tests/test-publish-tags.sh
       - name: Run floating tag tests
         run: bash release/tests/test-move-floating-tag.sh
+      - name: Run release workflow contract tests
+        run: bash release/tests/test-release-workflow.sh
 
   provenance-scripts:
     name: Provenance scripts
@@ -197,6 +207,21 @@ jobs:
         run: bash provenance/tests/test-provenance.sh
       - name: Run provenance scanner script tests
         run: bash provenance/tests/test-scanners.sh
+
+  sast-scripts:
+    name: SAST scripts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Run ignore normalization tests
+        run: bash sast/tests/test-normalize-ignores.sh
+      - name: Run summary and DefectDojo script tests
+        run: bash sast/tests/test-summary.sh
+      - name: Run Tailscale step condition tests
+        run: bash sast/tests/test-action-tailscale.sh
+      - name: Run reusable workflow secret forwarding tests
+        run: bash sast/tests/test-workflow-secrets.sh
 
   cli-package:
     name: Quality gate CLI package

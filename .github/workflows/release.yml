@@ -40,6 +40,16 @@ on:
         description: Full commit SHA of the release toolkit to use.
         required: true
         type: string
+      require_workflow_gate:
+        description: Require a successful workflow for the target commit before releasing.
+        required: false
+        type: boolean
+        default: false
+      required_workflow:
+        description: Workflow name that must have succeeded for the target commit.
+        required: false
+        type: string
+        default: ""
       git_author_name:
         description: Git author name for annotated release tags.
         required: false
@@ -50,6 +60,20 @@ on:
         required: false
         type: string
         default: ci-release@example.invalid
+      environment:
+        description: >-
+          GitHub Environment the release job runs in. Use it to keep the
+          release App secrets out of reach of other branches: the secrets are
+          stored in this Environment and only a job that runs in it can read
+          them. Empty runs without an Environment.
+        required: false
+        type: string
+        default: ""
+    secrets:
+      QUALITY_GATE_RELEASE_APP_ID:
+        required: false
+      QUALITY_GATE_RELEASE_APP_PRIVATE_KEY:
+        required: false
     outputs:
       version:
         description: Stable version without the tag prefix.
@@ -72,20 +96,93 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  release-gate:
+    if: ${{ inputs.require_workflow_gate }}
     runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.gates.outputs.ready }}
+    steps:
+      - name: Check required workflow
+        id: gates
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TARGET_SHA: ${{ inputs.target_sha }}
+          REQUIRED_WORKFLOW: ${{ inputs.required_workflow }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$REQUIRED_WORKFLOW" ]]; then
+            echo "required_workflow is required when require_workflow_gate is true." >&2
+            exit 2
+          fi
+
+          if [[ ! "$TARGET_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "target_sha must be a full 40-character commit SHA." >&2
+            exit 1
+          fi
+
+          runs=$(gh api --method GET "repos/${REPOSITORY}/actions/runs" \
+            -f "head_sha=${TARGET_SHA}" \
+            -f 'event=push' \
+            -f 'per_page=100')
+
+          if jq -e --arg workflow "$REQUIRED_WORKFLOW" --arg sha "$TARGET_SHA" '
+            any(.workflow_runs[];
+              .name == $workflow and
+              .head_sha == $sha and
+              .event == "push" and
+              .status == "completed" and
+              .conclusion == "success"
+            )
+          ' <<< "$runs" >/dev/null; then
+            echo "Required workflow succeeded: $REQUIRED_WORKFLOW"
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Required workflow missing or failed: $REQUIRED_WORKFLOW" >&2
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  release:
+    needs: release-gate
+    if: ${{ always() && (!inputs.require_workflow_gate || needs.release-gate.outputs.ready == 'true') }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
     outputs:
       version: ${{ steps.calculate.outputs.version }}
       version_tag: ${{ steps.calculate.outputs.version_tag }}
       floating_tag: ${{ steps.publish.outputs.floating_tag }}
       skipped: ${{ steps.final-target.outputs.skip || steps.target.outputs.skip }}
     steps:
+      - name: Check the release App credentials
+        id: credentials
+        shell: bash
+        env:
+          RELEASE_APP_ID: ${{ secrets.QUALITY_GATE_RELEASE_APP_ID }}
+          RELEASE_APP_PRIVATE_KEY: ${{ secrets.QUALITY_GATE_RELEASE_APP_PRIVATE_KEY }}
+          ENVIRONMENT_NAME: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$RELEASE_APP_ID" && -n "$RELEASE_APP_PRIVATE_KEY" ]]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          elif [[ -n "$RELEASE_APP_ID" || -n "$RELEASE_APP_PRIVATE_KEY" ]]; then
+            echo "::error::Only one of QUALITY_GATE_RELEASE_APP_ID and QUALITY_GATE_RELEASE_APP_PRIVATE_KEY is set. Both are required."
+            exit 1
+          elif [[ -n "$ENVIRONMENT_NAME" ]]; then
+            echo "::error::The release App credentials are empty in environment '${ENVIRONMENT_NAME}'. Create QUALITY_GATE_RELEASE_APP_ID and QUALITY_GATE_RELEASE_APP_PRIVATE_KEY as secrets of that environment, and forward them by name in the caller's secrets: block."
+            exit 1
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout target commit
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ inputs.target_sha }}
           fetch-depth: 0
           path: target
+          persist-credentials: false
 
       - name: Validate immutable toolkit ref
         shell: bash
@@ -105,6 +202,27 @@ jobs:
           ref: ${{ inputs.toolkit_ref }}
           fetch-depth: 1
           path: release-toolkit
+          persist-credentials: false
+
+      - name: Create release App token
+        if: steps.credentials.outputs.configured == 'true'
+        id: release-token
+        uses: actions/create-github-app-token@0f859bf9e69e887678d5bbfbee594437cb440ffe # v2.1.0
+        with:
+          app-id: ${{ secrets.QUALITY_GATE_RELEASE_APP_ID }}
+          private-key: ${{ secrets.QUALITY_GATE_RELEASE_APP_PRIVATE_KEY }}
+          owner: prefeitura-rio
+          repositories: flakes
+
+      - name: Authenticate the target remote
+        shell: bash
+        env:
+          REPOSITORY: target
+          RELEASE_TOKEN: ${{ steps.release-token.outputs.token || github.token }}
+        run: |
+          set -euo pipefail
+          git -C "$REPOSITORY" remote set-url origin \
+            "https://x-access-token:${RELEASE_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
 
       - name: Validate release target
         id: target

@@ -1,5 +1,7 @@
 name: Manual Quality Gate Release
 
+# ARCHIVED: the current Quality Gate is released from prefeitura-rio/flakes.
+# Kept for historical compatibility; this workflow must not publish releases.
 on:
   workflow_dispatch:
     inputs:
@@ -27,6 +29,7 @@ permissions:
 
 jobs:
   release-gate:
+    if: ${{ github.event_name == 'workflow_call' }}
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -56,7 +59,7 @@ jobs:
 
   release:
     needs: release-gate
-    if: needs.release-gate.outputs.ready == 'true'
+    if: ${{ github.event_name == 'workflow_call' }}
     permissions:
       contents: write
     uses: ./.github/workflows/release.yml
