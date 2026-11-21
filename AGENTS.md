@@ -52,19 +52,31 @@ bash provenance/tests/test-scanners.sh
 ```
 
 SAST scripts (`sast/scripts`): `normalize-ignores.sh` (needs `bash`, `awk`,
-`sed` and coreutils) and `summary.sh` (step summary, DefectDojo reimport and
+`sed` and coreutils), `summary.sh` (step summary, DefectDojo reimport and
 `break_on` gate; needs `bash` and `jq`; `curl` is a stub, so no network is
-used). `test-action-tailscale.sh` checks that `sast/action.yml` skips the
-`Tailscale connect` step, with a notice, when either OAuth credential is empty
-(needs `bash`, `awk` and `sed`). `test-workflow-secrets.sh` checks that the
-reusable workflow `.github/workflows/sast.yml` passes every secret it declares
-(except the obsolete ones) to the `sast` action (needs `bash`, `awk` and
-`grep`):
+used) and the DefectDojo upload of `run-vulnerability-scan.sh` (`syft`,
+`grype` and `curl` are stubs; both upload scripts send `curl` through
+`DD_PROXY` when it is set). `test-action-tailscale.sh` checks that
+`sast/action.yml` skips the `Tailscale connect` step, with a notice, when
+either OAuth credential is empty, and wires the `ts_networking` mode into
+`tailscaled-args` and `DD_PROXY` (needs `bash`, `awk` and `sed`).
+`test-tailscale-networking.sh` checks that `tailscale-networking.sh` picks the
+kernel TUN device or userspace networking with a SOCKS5 proxy (needs `bash`
+and `awk`; the TUN device and `/proc/self/status` are fakes).
+`test-runner-env.sh` checks that `pick-python.sh` asks `setup-python` for 3.12
+only when the `python3` on `PATH` cannot create a venv (`python3` is a stub),
+and that the scanner steps run under `C.UTF-8`. `test-workflow-secrets.sh`
+checks that the reusable workflow `.github/workflows/sast.yml` passes every
+secret it declares (except the obsolete ones) to the `sast` action (needs
+`bash`, `awk` and `grep`):
 
 ```bash
 bash sast/tests/test-normalize-ignores.sh
 bash sast/tests/test-summary.sh
+bash sast/tests/test-vulnerability-scan.sh
 bash sast/tests/test-action-tailscale.sh
+bash sast/tests/test-tailscale-networking.sh
+bash sast/tests/test-runner-env.sh
 bash sast/tests/test-workflow-secrets.sh
 ```
 

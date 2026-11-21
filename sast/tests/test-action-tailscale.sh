@@ -6,6 +6,8 @@
 # with awk (no YAML parser needed), checks that the two credential inputs are
 # optional and evaluates both `if:` conditions for every combination of empty
 # and filled credentials, translated to bash after a strict grammar check.
+# It also checks the wiring for runner containers without TUN: the
+# ts_networking input, the networking step, its tailscaled-args and DD_PROXY.
 
 set -euo pipefail
 
@@ -94,6 +96,38 @@ for input in ts_oauth_client_id ts_oauth_secret; do
     fail "input $input must default to an empty string"
 done
 
+# Runner containers without TUN (iplanrio-runners): the networking step runs
+# with the connection, its tailscaled arguments reach the Tailscale action
+# and its proxy reaches both DefectDojo upload steps.
+[[ "$(input_field ts_networking required)" == "false" ]] ||
+  fail "input ts_networking must be required: false"
+[[ "$(input_field ts_networking default)" == '"auto"' ]] ||
+  fail "input ts_networking must default to auto"
+networking_if=$(step_if "Pick Tailscale networking")
+[[ "$networking_if" == "$connect_if" ]] ||
+  fail "'Pick Tailscale networking' must run exactly when 'Tailscale connect' does"
+networking=$(step_block "Pick Tailscale networking")
+grep -qx '      id: ts_networking' <<<"$networking" ||
+  fail "'Pick Tailscale networking' must have id: ts_networking"
+# shellcheck disable=SC2016 # a literal ${{ }} expression of action.yml
+grep -qxF '        TS_NETWORKING: ${{ inputs.ts_networking }}' <<<"$networking" ||
+  fail "'Pick Tailscale networking' does not get inputs.ts_networking"
+grep -qF 'scripts/tailscale-networking.sh' <<<"$networking" ||
+  fail "'Pick Tailscale networking' does not run tailscale-networking.sh"
+step_names=$(awk '/^runs:/ { r = 1 } r && /^    - name: / { print substr($0, 13) }' "$action")
+grep -A1 -x 'Pick Tailscale networking' <<<"$step_names" | grep -qx 'Tailscale connect' ||
+  fail "'Pick Tailscale networking' must come right before 'Tailscale connect'"
+# shellcheck disable=SC2016 # a literal ${{ }} expression of action.yml
+step_block "Tailscale connect" |
+  grep -qxF '        tailscaled-args: ${{ steps.ts_networking.outputs.tailscaled_args }}' ||
+  fail "'Tailscale connect' does not pass the picked tailscaled-args"
+for step in "Run Vulnerability scan & collect sbom" "Showing issues to summary"; do
+  block=$(step_block "$step") || fail "expected exactly one step named '$step'"
+  # shellcheck disable=SC2016 # a literal ${{ }} expression of action.yml
+  grep -qxF '        DD_PROXY: ${{ steps.ts_networking.outputs.proxy }}' <<<"$block" ||
+    fail "'$step' does not get the Tailscale proxy as DD_PROXY"
+done
+
 # client id, secret, expected connect (1 runs, 0 skipped)
 cases=(
   "id|secret|1"
@@ -114,4 +148,4 @@ for case in "${cases[@]}"; do
     fail "$label: notice step runs=$skip, expected $((1 - expected))"
 done
 
-printf 'PASS: sast/action.yml skips Tailscale without both OAuth credentials\n'
+printf 'PASS: sast/action.yml skips Tailscale without both OAuth credentials and wires its networking mode\n'

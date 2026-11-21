@@ -282,6 +282,17 @@ assert_curl_arg_count 'engagement_name=main' 2 'DefectDojo reimport on the defau
 assert_curl_arg_count 'close_old_findings=true' 2 'DefectDojo reimport on the default branch'
 assert_stdout_contains 'Opengrep scan reimported' 'DefectDojo reimport on the default branch'
 assert_stdout_contains 'Checkov scan reimported' 'DefectDojo reimport on the default branch'
+assert_curl_arg_count '--proxy' 0 'DefectDojo reimport on the default branch'
+
+# Userspace tailscaled: every DefectDojo call goes through its SOCKS5 proxy.
+reset_work
+use_reports grype-empty.sarif opengrep-empty.json checkov.json
+run_isolated "${summary_env[@]}" "${dojo_env[@]}" ENABLE_CHECKOV=true DD_PROXY=socks5h://localhost:1055 -- "$summary"
+assert_status 0 'DefectDojo reimport through the Tailscale proxy'
+assert_curl_arg_count '--proxy' 3 'DefectDojo reimport through the Tailscale proxy'
+assert_curl_arg_count 'socks5h://localhost:1055' 3 'DefectDojo reimport through the Tailscale proxy'
+assert_stdout_contains 'Opengrep scan reimported' 'DefectDojo reimport through the Tailscale proxy'
+assert_stdout_contains 'Checkov scan reimported' 'DefectDojo reimport through the Tailscale proxy'
 
 # Another branch: nothing goes to DefectDojo.
 reset_work

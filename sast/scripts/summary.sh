@@ -5,7 +5,12 @@ set -eo pipefail
 
 # Import opengrep and checkov to defectdojo (grype goes in run-vulnerability-scan.sh)
 if [ "$DD_API_TOKEN" != "" ] && [ "$CURRENT_BRANCH" = "$DEFAULT_BRANCH" ]; then
-    PRODUCT_INFO=$(curl -s -X GET "$DD_URL/api/v2/products/?name=${PRODUCT_NAME}" \
+    # DD_PROXY: SOCKS5 proxy of a userspace tailscaled (tailscale-networking.sh); empty with TUN.
+    dd_proxy_args=()
+    if [ -n "${DD_PROXY:-}" ]; then
+        dd_proxy_args=(--proxy "$DD_PROXY")
+    fi
+    PRODUCT_INFO=$(curl -s "${dd_proxy_args[@]}" -X GET "$DD_URL/api/v2/products/?name=${PRODUCT_NAME}" \
         -H "Authorization: Token $DD_API_TOKEN")
     PRODUCT_INFO=$(echo -n "$PRODUCT_INFO" | tr -d '\000-\037')
     COUNT=$(echo "$PRODUCT_INFO" | jq '.count')
@@ -17,7 +22,7 @@ if [ "$DD_API_TOKEN" != "" ] && [ "$CURRENT_BRANCH" = "$DEFAULT_BRANCH" ]; then
         PARAM_TYPE="product_type_name=Uncategorized"
     fi
     # opengrep
-    RESPONSE=$(curl -s -X POST "$DD_URL/api/v2/reimport-scan/" \
+    RESPONSE=$(curl -s "${dd_proxy_args[@]}" -X POST "$DD_URL/api/v2/reimport-scan/" \
         -H "Authorization: Token $DD_API_TOKEN" \
         -H "Content-Type: multipart/form-data" \
         -F "active=true" \
@@ -37,7 +42,7 @@ if [ "$DD_API_TOKEN" != "" ] && [ "$CURRENT_BRANCH" = "$DEFAULT_BRANCH" ]; then
     fi
     # checkov
     if [ "$ENABLE_CHECKOV" = "true" ] && [ -f checkov-report.json ]; then
-        RESPONSE=$(curl -s -X POST "$DD_URL/api/v2/reimport-scan/" \
+        RESPONSE=$(curl -s "${dd_proxy_args[@]}" -X POST "$DD_URL/api/v2/reimport-scan/" \
             -H "Authorization: Token $DD_API_TOKEN" \
             -H "Content-Type: multipart/form-data" \
             -F "active=true" \
