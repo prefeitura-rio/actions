@@ -90,28 +90,29 @@ run_picker() {
   [[ "$status" == 0 ]] || fail "pick-python.sh exited $status: $(<"$out")"
 }
 
-# output_line <key>: the value pick-python.sh wrote for <key>; fails unless
-# it wrote exactly one.
-output_line() {
+# expect_output <key> <value> <case>: pick-python.sh wrote exactly one
+# <key>= line, and its value is <value>. Runs in the test shell (not in a
+# command substitution), so its fail stops the test.
+expect_output() {
   local lines
   lines=$(grep -c "^$1=" "$output" || true)
-  [[ "$lines" == 1 ]] || fail "pick-python.sh wrote $lines '$1=' lines: $(<"$output")"
-  sed -n "s/^$1=//p" "$output"
+  [[ "$lines" == 1 ]] || fail "$3: pick-python.sh wrote $lines '$1=' lines: $(<"$output")"
+  [[ "$(sed -n "s/^$1=//p" "$output")" == "$2" ]] || fail "$3: expected $1 '$2', got $(<"$output")"
 }
 
 run_picker "$stub_dir:$sys_dir" 0
-[[ "$(output_line version)" == '' ]] || fail "python3 with venv: unexpected output $(<"$output")"
+expect_output version '' 'python3 with venv'
 [[ "$(<"$out")" != *'::notice'* ]] || fail 'python3 with venv: printed a notice'
 [[ "$(<"$stub_log")" == "-m venv $tmp_dir/"*/venv ]] ||
   fail "python3 with venv: unexpected python3 call $(<"$stub_log")"
 
 run_picker "$stub_dir:$sys_dir" 1
-[[ "$(output_line version)" == '3.12' ]] || fail "python3 without ensurepip: unexpected output $(<"$output")"
+expect_output version 3.12 'python3 without ensurepip'
 [[ "$(<"$out")" == *'::notice title=SAST Python::'* ]] || fail 'python3 without ensurepip: no notice'
 [[ "$(<"$out")" != *'ensurepip is not available.'* ]] || fail 'python3 without ensurepip: venv error leaked to the log'
 
 run_picker "$sys_dir" 0
-[[ "$(output_line version)" == '3.12' ]] || fail "no python3 on PATH: unexpected output $(<"$output")"
+expect_output version 3.12 'no python3 on PATH'
 
 # Pip cache: on with a file that setup-python's default
 # cache-dependency-path matches anywhere in the workspace, off otherwise.
@@ -130,7 +131,7 @@ ln -s "$tmp_dir/missing-requirements.txt" "$ws/broken/requirements.txt"
 # expect_cache <workspace> <venv status> <expected cache> <case>
 expect_cache() {
   run_picker "$stub_dir:$sys_dir" "$2" "$1"
-  [[ "$(output_line cache)" == "$3" ]] || fail "$4: expected cache '$3', got $(<"$output")"
+  expect_output cache "$3" "$4"
 }
 
 for venv in 0 1; do
@@ -152,7 +153,7 @@ run_picker "$stub_dir:$sys_dir" 0 "$ws/node"
 [[ "$(<"$out")" != *'::notice'* ]] || fail 'python3 on PATH without dependency files: printed a notice'
 
 run_picker "$stub_dir:$sys_dir" 1 "$tmp_dir/missing-workspace"
-[[ "$(output_line cache)" == '' ]] || fail "missing workspace: expected the cache off, got $(<"$output")"
+expect_output cache '' 'missing workspace'
 
 leftover=$(find "$tmp_dir" -mindepth 1 -maxdepth 1 -name 'tmp.*')
 [[ -z "$leftover" ]] || fail "pick-python.sh left its probe directory behind: $leftover"
