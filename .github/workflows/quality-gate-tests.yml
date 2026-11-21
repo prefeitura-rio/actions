@@ -218,8 +218,14 @@ jobs:
         run: bash sast/tests/test-normalize-ignores.sh
       - name: Run summary and DefectDojo script tests
         run: bash sast/tests/test-summary.sh
+      - name: Run vulnerability scan DefectDojo upload tests
+        run: bash sast/tests/test-vulnerability-scan.sh
       - name: Run Tailscale step condition tests
         run: bash sast/tests/test-action-tailscale.sh
+      - name: Run Tailscale networking mode tests
+        run: bash sast/tests/test-tailscale-networking.sh
+      - name: Run runner environment (Python and locale) tests
+        run: bash sast/tests/test-runner-env.sh
       - name: Run reusable workflow secret forwarding tests
         run: bash sast/tests/test-workflow-secrets.sh
 

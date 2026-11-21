@@ -62,6 +62,10 @@ inputs:
     description: Tailscale OAuth secret; when it or ts_oauth_client_id is empty, the Tailscale connection is skipped and DefectDojo is not reached
     required: false
     default: ""
+  ts_networking:
+    description: "How tailscaled joins the tailnet: tun (kernel TUN device), userspace (--tun=userspace-networking, DefectDojo uploads go through its local SOCKS5 proxy; for runner containers without /dev/net/tun or NET_ADMIN, such as iplanrio-runners) or auto (tun when the TUN device is usable, userspace otherwise)"
+    required: false
+    default: "auto"
 
 runs:
   using: composite
@@ -71,6 +75,13 @@ runs:
       shell: bash
       run: |
         echo "::notice title=Tailscale skipped::ts_oauth_client_id or ts_oauth_secret is empty (Dependabot runs get no Actions secrets), so Tailscale is not connected and DefectDojo will not be reached; the scanners still run and gate the job."
+    - name: Pick Tailscale networking
+      id: ts_networking
+      if: inputs.ts_oauth_client_id != '' && inputs.ts_oauth_secret != ''
+      shell: bash
+      env:
+        TS_NETWORKING: ${{ inputs.ts_networking }}
+      run: bash "$GITHUB_ACTION_PATH/scripts/tailscale-networking.sh"
     - name: Tailscale connect
       if: inputs.ts_oauth_client_id != '' && inputs.ts_oauth_secret != ''
       uses: tailscale/github-action@780049a30b6ff5c378a9e7b389d15ece7a204888 # v4.1.3
@@ -78,12 +89,18 @@ runs:
         oauth-client-id: ${{ inputs.ts_oauth_client_id }}
         oauth-secret: ${{ inputs.ts_oauth_secret }}
         tags: ${{ inputs.ts_tags }}
+        tailscaled-args: ${{ steps.ts_networking.outputs.tailscaled_args }}
+    - name: Pick Python
+      id: python
+      if: always()
+      shell: bash
+      run: bash "$GITHUB_ACTION_PATH/scripts/pick-python.sh"
     - name: Setup environment
       if: always()
       uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
       with:
         cache: 'pip'
-        python-version: ''
+        python-version: ${{ steps.python.outputs.version }}
     - name: Prepare tool cache
       id: tools
       if: always()
@@ -102,6 +119,8 @@ runs:
       shell: bash
       env:
         ENABLE_CHECKOV: ${{ inputs.enable_checkov }}
+        LANG: C.UTF-8
+        LC_ALL: C.UTF-8
       run: |
         bash "$GITHUB_ACTION_PATH/scripts/install-tools.sh"
     - name: Normalize ignore files
@@ -111,6 +130,9 @@ runs:
     - name: Run opengrep
       if: always()
       shell: bash
+      env:
+        LANG: C.UTF-8
+        LC_ALL: C.UTF-8
       run: bash "$GITHUB_ACTION_PATH/scripts/run-opengrep.sh"
     - name: Run Vulnerability scan & collect sbom
       if: always()
@@ -120,6 +142,7 @@ runs:
         CURRENT_BRANCH: ${{ github.ref_name }}
         DD_URL: ${{ inputs.dd_url || '' }}
         DD_API_TOKEN: ${{ inputs.dd_token || '' }}
+        DD_PROXY: ${{ steps.ts_networking.outputs.proxy }}
         PRODUCT_NAME: ${{ github.repository }}
         ENGAGEMENT_NAME: "${{ inputs.override_branch || github.ref_name }}"
       run: |
@@ -130,6 +153,8 @@ runs:
       env:
         ENABLE_CHECKOV: ${{ inputs.enable_checkov }}
         CHECKOV_OPTS: ${{ inputs.checkov_opts }}
+        LANG: C.UTF-8
+        LC_ALL: C.UTF-8
       run: |
         bash "$GITHUB_ACTION_PATH/scripts/run-checkov.sh"
     - name: Showing issues to summary
@@ -141,6 +166,7 @@ runs:
         CURRENT_BRANCH: ${{ github.ref_name }}
         DD_URL: ${{ inputs.dd_url || '' }}
         DD_API_TOKEN: ${{ inputs.dd_token || '' }}
+        DD_PROXY: ${{ steps.ts_networking.outputs.proxy }}
         PRODUCT_NAME: ${{ github.repository }}
         ENGAGEMENT_NAME: "${{ inputs.override_branch || github.ref_name }}"
         ENABLE_CHECKOV: ${{ inputs.enable_checkov }}
