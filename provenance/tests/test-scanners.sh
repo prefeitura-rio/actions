@@ -413,6 +413,29 @@ assert_calls cosign "$(expected_verify_blob "$(download_dir)" grype)" \
   fail 'install grype with cosign bootstrap: cosign is not installed with mode 0755'
 [[ -x "$scanner_bin/grype" ]] || fail 'install grype with cosign bootstrap: grype is not installed'
 
+# A SCANNER_BIN that does not exist yet and is not on PATH (the job's temp
+# directory on a runner whose user cannot write to /usr/local/bin): the
+# script creates it, and the bootstrapped cosign is called by its path.
+fresh_bin="$tmp_dir/runner-temp/scanner-bin"
+rm -rf "$tmp_dir/runner-temp"
+run_isolated "$tmp_dir" "$curl_only_dir:$sys_dir" SCANNER_BIN="$fresh_bin" CURL_FIXTURES="$fixtures" \
+  -- bash "$fixture_script"
+assert_status 0 'install into a new SCANNER_BIN off PATH'
+assert_downloads 'install into a new SCANNER_BIN off PATH' "$cosign_url" \
+  "$syft_url" "$syft_base/syft_1.46.0_checksums.txt.pem" \
+  "$syft_base/syft_1.46.0_checksums.txt.sig" "$syft_base/syft_1.46.0_checksums.txt" \
+  "$grype_url" "$grype_base/grype_0.115.0_checksums.txt.pem" \
+  "$grype_base/grype_0.115.0_checksums.txt.sig" "$grype_base/grype_0.115.0_checksums.txt"
+dl=$(download_dir)
+assert_calls cosign "$(expected_verify_blob "$dl" syft)
+$(expected_verify_blob "$dl" grype)" 'install into a new SCANNER_BIN off PATH'
+[[ -n "$(find "$fresh_bin/cosign" -perm 0755)" ]] ||
+  fail 'install into a new SCANNER_BIN off PATH: cosign is not installed with mode 0755'
+for tool in syft grype; do
+  [[ "$("$fresh_bin/$tool")" == "$tool fixture" ]] ||
+    fail "install into a new SCANNER_BIN off PATH: $tool is not the archived binary"
+done
+
 # A rejected signature stops the installation of that tool before extraction.
 for tool in syft grype; do
   reset_bin
@@ -438,6 +461,38 @@ assert_stderr_contains \
   'install with tampered checksums file'
 assert_not_called cosign 'install with tampered checksums file'
 assert_empty_dir "$scanner_bin" 'install with tampered checksums file'
+
+# --- build-and-release.yml ---------------------------------------------------
+
+# Every step of the reusable workflow that runs install-scanners.sh installs
+# into the job's temp directory (writable by the job user on GitHub-hosted
+# and self-hosted runners alike, without sudo) and puts it on PATH for the
+# steps that run syft and grype.
+workflow="$script_dir/../../.github/workflows/build-and-release.yml"
+[[ -f "$workflow" ]] || fail "workflow not found: $workflow"
+install_steps=0
+check_install_step() {
+  local step="$1"
+  [[ "$step" == *install-scanners.sh* ]] || return 0
+  install_steps=$((install_steps + 1))
+  [[ "$step" == *'SCANNER_BIN: ${{ runner.temp }}/scanner-bin'* ]] ||
+    fail "build-and-release.yml: install step does not set SCANNER_BIN under runner.temp:
+$step"
+  [[ "$step" == *'echo "$SCANNER_BIN" >> "$GITHUB_PATH"'* ]] ||
+    fail "build-and-release.yml: install step does not add SCANNER_BIN to GITHUB_PATH:
+$step"
+}
+step=''
+while IFS= read -r line || [[ -n "$line" ]]; do
+  if [[ "$line" =~ ^\ {6}-\  || "$line" =~ ^\ {0,2}[A-Za-z_-] ]]; then
+    check_install_step "$step"
+    step=''
+  fi
+  step+="$line"$'\n'
+done <"$workflow"
+check_install_step "$step"
+[[ "$install_steps" == 2 ]] ||
+  fail "build-and-release.yml: expected 2 steps running install-scanners.sh, found $install_steps"
 
 # --- generate-sbom.sh --------------------------------------------------------
 
