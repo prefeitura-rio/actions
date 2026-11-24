@@ -24,8 +24,15 @@ bash quality-gate/tests/scripts/test-portable.sh
 bash release/tests/test-version.sh
 bash release/tests/test-publish-tags.sh
 bash release/tests/test-move-floating-tag.sh
-bash release/tests/test-version-autobump.sh
 bash .github/scripts/tests/test-check-reusable-workflow-refs.sh
+```
+
+The diff guard of `.github/workflows/version-autobump.yml` (the `skip`
+output it writes to `$GITHUB_OUTPUT`, run as the runner runs a `shell: bash`
+step) is tested with `bash`, `git`, `awk`, `sed` and `grep`:
+
+```bash
+bash release/tests/test-version-autobump.sh
 ```
 
 The release workflow contract test also needs mikefarah's `yq` (preinstalled

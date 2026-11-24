@@ -3,8 +3,9 @@
 # reusable workflow .github/workflows/version-autobump.yml in a throwaway git
 # repository, so the `skip` output it writes to $GITHUB_OUTPUT is checked
 # without GitHub. The step script is read from the workflow and its GitHub
-# expressions are replaced by the values each case gives. Needs bash, git, awk
-# and sed.
+# expressions are replaced by the values each case gives. It runs as the
+# runner runs a `shell: bash` step: bash --noprofile --norc -eo pipefail.
+# Needs bash, git, awk, sed and grep.
 set -euo pipefail
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
@@ -64,7 +65,8 @@ new_repo() {
 }
 
 # run_guard <repo> <ref name> <has_tag> <latest_tag> <context>: runs the step
-# in <repo> as the runner does (bash -e, working directory = the checkout)
+# in <repo> as the runner runs a `shell: bash` step (bash --noprofile --norc
+# -eo pipefail, working directory = the checkout)
 # and sets guard_output to what it appended to $GITHUB_OUTPUT.
 guard_output=""
 # shellcheck disable=SC2016 # the opening of a GitHub expression, not a shell expansion
@@ -81,7 +83,7 @@ run_guard() {
     fail "the step uses a GitHub expression this test does not replace: $(grep -F "$expression_open" "$rendered")"
   fi
   : >"$output"
-  (cd "$repo" && GITHUB_OUTPUT="$output" GITHUB_REF_NAME="$ref_name" bash -e "$rendered" >/dev/null) ||
+  (cd "$repo" && GITHUB_OUTPUT="$output" GITHUB_REF_NAME="$ref_name" bash --noprofile --norc -eo pipefail "$rendered" >/dev/null) ||
     fail "the step failed for ref $ref_name, has_tag $has_tag, tag $latest_tag, context $context"
   if [[ -e "$repo/GITHUB_OUTPUT" ]]; then
     fail "the step wrote a file named GITHUB_OUTPUT in the working directory instead of \$GITHUB_OUTPUT"
@@ -121,6 +123,19 @@ expect_skip "branch other than main" false \
   "$repo" feature true v1.2.3 app
 expect_skip "first release, no tag" false \
   "$repo" main false '' app
+expect_skip "tag that git diff cannot resolve" false \
+  "$repo" main true v0.0.0-missing app
+
+# A diff whose list of file names is far larger than a pipe buffer (64 KiB):
+# a reader that stops at the first line must not turn it into "no changes".
+for i in $(seq 1 4000); do
+  printf 'x\n' >"$repo/app/a-file-with-a-long-enough-name-to-fill-the-pipe-$i.txt"
+done
+git -C "$repo" add app
+git -C "$repo" commit -qm "many app files"
+
+expect_skip "change in the context listing more than 64 KiB of file names" false \
+  "$repo" main true v1.2.3 app
 
 # Every write to the step outputs of the workflow goes to the file the
 # runner reads, never to a relative path named GITHUB_OUTPUT.
