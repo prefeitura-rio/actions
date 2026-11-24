@@ -38,13 +38,17 @@ jobs:
         id: version
         shell: bash
         run: |
-          LATEST_TAG=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
+          # No grep or head: under `shell: bash` (pipefail) a grep that
+          # matches nothing (first release) fails the step, and a head that
+          # closes early kills the listing of many tags with SIGPIPE. awk
+          # reads every tag and exits 0 when none is v<X.Y.Z>.
+          LATEST_TAG=$(git tag --sort=-v:refname | awk '!found && /^v[0-9]+\.[0-9]+\.[0-9]+$/ { print; found = 1 }')
           BRANCH="${GITHUB_REF_NAME}"
 
           if [ -z "$LATEST_TAG" ]; then
             echo "First release: setting version to v1.0.0"
             HAS_TAG="false"
-            NEXT_VERSION="v1.0.0"
+            NEXT_VERSION="1.0.0"
           else
             HAS_TAG="true"
             CLEAN_VER="${LATEST_TAG#v}"

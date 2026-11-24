@@ -27,9 +27,10 @@ bash release/tests/test-move-floating-tag.sh
 bash .github/scripts/tests/test-check-reusable-workflow-refs.sh
 ```
 
-The diff guard of `.github/workflows/version-autobump.yml` (the `skip`
-output it writes to `$GITHUB_OUTPUT`, run as the runner runs a `shell: bash`
-step) is tested with `bash`, `git`, `awk`, `sed` and `grep`:
+The version step and the diff guard of `.github/workflows/version-autobump.yml`
+(the `tag`, `latest_tag`, `has_tag` and `skip` outputs they write to
+`$GITHUB_OUTPUT`, run as the runner runs a `shell: bash` step) are tested with
+`bash`, `git`, `awk`, `sed` and `grep`:
 
 ```bash
 bash release/tests/test-version-autobump.sh
