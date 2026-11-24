@@ -14,6 +14,7 @@ on:
       - ".github/workflows/quality-gate.yml"
       - ".github/workflows/quality-gate-tests.yml"
       - ".github/workflows/release.yml"
+      - ".github/workflows/version-autobump.yml"
       - ".github/workflows/quality-gate-release.yml"
       - ".github/workflows/quality-gate-manual-release.yml"
       - ".github/workflows/actions-release.yml"
@@ -31,6 +32,7 @@ on:
       - ".github/workflows/quality-gate.yml"
       - ".github/workflows/quality-gate-tests.yml"
       - ".github/workflows/release.yml"
+      - ".github/workflows/version-autobump.yml"
       - ".github/workflows/quality-gate-release.yml"
       - ".github/workflows/quality-gate-manual-release.yml"
       - ".github/workflows/actions-release.yml"
@@ -196,6 +198,8 @@ jobs:
         run: bash release/tests/test-move-floating-tag.sh
       - name: Run release workflow contract tests
         run: bash release/tests/test-release-workflow.sh
+      - name: Run version-autobump guard tests
+        run: bash release/tests/test-version-autobump.sh
 
   provenance-scripts:
     name: Provenance scripts

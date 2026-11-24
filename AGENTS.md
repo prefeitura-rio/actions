@@ -27,6 +27,14 @@ bash release/tests/test-move-floating-tag.sh
 bash .github/scripts/tests/test-check-reusable-workflow-refs.sh
 ```
 
+The diff guard of `.github/workflows/version-autobump.yml` (the `skip`
+output it writes to `$GITHUB_OUTPUT`, run as the runner runs a `shell: bash`
+step) is tested with `bash`, `git`, `awk`, `sed` and `grep`:
+
+```bash
+bash release/tests/test-version-autobump.sh
+```
+
 The release workflow contract test also needs mikefarah's `yq` (preinstalled
 on GitHub-hosted runners); it exits with status 2 when `yq` is missing:
 
@@ -125,8 +133,8 @@ hand (`shfmt -d <file>`) when shfmt is available.
   pull requests to `master` and on pushes to `master`, only when the diff
   touches `quality-gate/`, `release/`, `provenance/`, `sast/action.yml`,
   `sast/scripts/`, `sast/tests/`, `.github/workflows/sast.yml`,
-  `.github/scripts/` or the quality gate and
-  release workflows.
+  `.github/workflows/version-autobump.yml`, `.github/scripts/` or the quality
+  gate and release workflows.
 - `Security` (`.github/workflows/ci.yml`, the local `sast` action) runs on
   pushes to `master` and `feat/**`, only when the diff touches the paths listed
   in that workflow; it does not run on pull requests.
