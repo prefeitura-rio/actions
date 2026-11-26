@@ -8,6 +8,7 @@ on:
       - "release/**"
       - "provenance/**"
       - "sast/action.yml"
+      - "sast/opengrep-rules/**"
       - "sast/scripts/**"
       - "sast/tests/**"
       - ".github/workflows/sast.yml"
@@ -26,6 +27,7 @@ on:
       - "release/**"
       - "provenance/**"
       - "sast/action.yml"
+      - "sast/opengrep-rules/**"
       - "sast/scripts/**"
       - "sast/tests/**"
       - ".github/workflows/sast.yml"
@@ -232,6 +234,24 @@ jobs:
         run: bash sast/tests/test-runner-env.sh
       - name: Run reusable workflow secret forwarding tests
         run: bash sast/tests/test-workflow-secrets.sh
+      - name: Run run-opengrep.sh argument tests
+        run: bash sast/tests/test-run-opengrep.sh
+      # Same version and sha256 as sast/scripts/prepare-tool-cache.sh and
+      # sast/scripts/install-tools.sh; bump them together.
+      - name: Install opengrep
+        env:
+          OPENGREP_VERSION: 1.23.0
+          OPENGREP_SHA256: 1f06548af379ab6080698a609612890ffad2d92dc2172f1e97d38d48096d5ef8
+        run: |
+          bin_dir="$RUNNER_TEMP/opengrep-bin"
+          mkdir -p "$bin_dir"
+          curl -sfL "https://github.com/opengrep/opengrep/releases/download/v${OPENGREP_VERSION}/opengrep_manylinux_x86" \
+            -o "$bin_dir/opengrep"
+          echo "$OPENGREP_SHA256  $bin_dir/opengrep" | sha256sum -c
+          chmod +x "$bin_dir/opengrep"
+          echo "$bin_dir" >>"$GITHUB_PATH"
+      - name: Run custom opengrep rule tests
+        run: bash sast/tests/test-opengrep-rules.sh
 
   cli-package:
     name: Quality gate CLI package

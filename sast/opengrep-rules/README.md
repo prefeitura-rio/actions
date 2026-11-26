@@ -6,6 +6,12 @@ so adding a `*.yaml` here is enough — no `action.yml` change required.
 In-source `NOSONAR` suppressions are filtered out; findings go to the step
 summary, the `break_on` gate and DefectDojo.
 
+`run-opengrep.sh` excludes the p/default rule
+`yaml.github-actions.security.github-actions-mutable-action-tag` (`--exclude-rule`):
+`ci/` ships `ci-github-actions-mutable-action-tag`, the same rule without the
+refs to `prefeitura-rio/actions`, which consumers use by `@master`, `@latest`
+or `@v<X.Y.Z>`. Third-party actions are still flagged.
+
 ## Layout
 
 | Dir | Target | Notes |
@@ -42,6 +48,7 @@ Because Apex/Mule-XML have no Opengrep parser, those rules use
 | `mule-pii-payload-logging` | WARNING | logger prints the full `#[payload]` |
 | `ci-unpinned-latest-install` | WARNING | `@latest` dependency install in a pipeline |
 | `ci-secret-on-command-line` | WARNING | secret passed as `-D…=$VAR` / `…=$VAR` |
+| `ci-github-actions-mutable-action-tag` | WARNING | step `uses:` pinned by tag or branch instead of a 40-hex SHA, except `prefeitura-rio/actions` |
 | `sf-permset-dangerous-system-permission` | WARNING | ModifyAllData/ViewAllData/AuthorApex/ModifyMetadata in a permission set |
 | `sf-object-owd-public-readwrite` | INFO | object OWD `ReadWrite` (review objects holding PII) |
 | `sf-custom-metadata-secret-in-plaintext` | WARNING | token/secret stored in a `__mdt` Text field |

@@ -69,6 +69,15 @@ used) and the DefectDojo upload of `run-vulnerability-scan.sh` (`syft`,
 `sast/action.yml` skips the `Tailscale connect` step, with a notice, when
 either OAuth credential is empty, and wires the `ts_networking` mode into
 `tailscaled-args` and `DD_PROXY` (needs `bash`, `awk` and `sed`).
+`test-run-opengrep.sh` checks that `run-opengrep.sh` scans `p/default` and
+`opengrep-rules/` and excludes the `p/default` rule
+`github-actions-mutable-action-tag`, replaced by
+`ci-github-actions-mutable-action-tag`, and that Quality Gate Tests installs
+the opengrep the action pins (needs `bash`, `jq`, `grep` and `sed`; `opengrep`
+is a stub). `test-opengrep-rules.sh` runs that rule with the real `opengrep`
+over workflow fixtures: every mutable `uses:` of a step is flagged except
+`prefeitura-rio/actions` (needs `opengrep` on `PATH` and `jq`; it exits with
+status 2 when `opengrep` is missing).
 `test-tailscale-networking.sh` checks that `tailscale-networking.sh` picks the
 kernel TUN device or userspace networking with a SOCKS5 proxy (needs `bash`
 and `awk`; the TUN device and `/proc/self/status` are fakes).
@@ -84,6 +93,8 @@ secret it declares (except the obsolete ones) to the `sast` action (needs
 bash sast/tests/test-normalize-ignores.sh
 bash sast/tests/test-summary.sh
 bash sast/tests/test-vulnerability-scan.sh
+bash sast/tests/test-run-opengrep.sh
+bash sast/tests/test-opengrep-rules.sh
 bash sast/tests/test-action-tailscale.sh
 bash sast/tests/test-tailscale-networking.sh
 bash sast/tests/test-runner-env.sh
@@ -133,7 +144,7 @@ hand (`shfmt -d <file>`) when shfmt is available.
 - `Quality Gate Tests` (`.github/workflows/quality-gate-tests.yml`) runs on
   pull requests to `master` and on pushes to `master`, only when the diff
   touches `quality-gate/`, `release/`, `provenance/`, `sast/action.yml`,
-  `sast/scripts/`, `sast/tests/`, `.github/workflows/sast.yml`,
+  `sast/opengrep-rules/`, `sast/scripts/`, `sast/tests/`, `.github/workflows/sast.yml`,
   `.github/workflows/version-autobump.yml`, `.github/scripts/` or the quality
   gate and release workflows.
 - `Security` (`.github/workflows/ci.yml`, the local `sast` action) runs on
