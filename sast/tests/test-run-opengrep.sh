@@ -7,6 +7,8 @@
 #   id the registry serves and the short id of semgrep-rules), which
 #   opengrep-rules/ci/ replaces with a copy that exempts prefeitura-rio/actions;
 # - drops in-source (NOSONAR) suppressions from the SARIF it uploads.
+# Also checks that Quality Gate Tests installs the opengrep version and
+# sha256 the action pins, for test-opengrep-rules.sh.
 
 set -euo pipefail
 
@@ -81,5 +83,17 @@ grep -q 'id: ci-github-actions-mutable-action-tag$' "$action_path/opengrep-rules
 [[ ! -e "$work_dir/all-opengrep-sarif.sarif" ]] || fail 'all-opengrep-sarif.sarif was not removed'
 kept=$(jq -r '[.runs[].results[].ruleId] | join(",")' "$work_dir/opengrep-sarif.sarif")
 [[ "$kept" == kept ]] || fail "SARIF keeps [$kept], expected only the unsuppressed result"
+
+# The Quality Gate Tests job that runs test-opengrep-rules.sh installs the
+# opengrep the action pins.
+workflow="$script_dir/../../.github/workflows/quality-gate-tests.yml"
+pinned_version=$(sed -n 's/^OPENGREP_VERSION=//p' "$script_dir/../scripts/prepare-tool-cache.sh")
+ci_version=$(sed -n 's/^ *OPENGREP_VERSION: //p' "$workflow")
+ci_sha=$(sed -n 's/^ *OPENGREP_SHA256: //p' "$workflow")
+[[ -n "$pinned_version" && "$ci_version" == "$pinned_version" ]] ||
+  fail "Quality Gate Tests installs opengrep $ci_version, the action pins $pinned_version"
+if [[ ! "$ci_sha" =~ ^[0-9a-f]{64}$ ]] || ! grep -q "$ci_sha" "$script_dir/../scripts/install-tools.sh"; then
+  fail "Quality Gate Tests checks opengrep against sha256 $ci_sha, which install-tools.sh does not pin"
+fi
 
 echo 'PASS: run-opengrep.sh'
