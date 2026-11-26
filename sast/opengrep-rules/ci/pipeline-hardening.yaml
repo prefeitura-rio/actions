@@ -43,3 +43,40 @@ rules:
       category: security
       cwe: ["CWE-214: Invocation of Process Using Visible Sensitive Information"]
       confidence: MEDIUM
+
+  # Cópia de yaml.github-actions.security.github-actions-mutable-action-tag
+  # (semgrep-rules, p/default), que run-opengrep.sh exclui com --exclude-rule.
+  # Única diferença: isenta prefeitura-rio/actions, que os consumidores usam
+  # por @master/@latest/@v<X.Y.Z> como o README recomenda (DEV-757). Ações de
+  # terceiros e de outros repositórios da organização continuam marcadas.
+  - id: ci-github-actions-mutable-action-tag
+    message: >-
+      Step do GitHub Actions usa tag ou branch mutável. O dono da ação pode
+      repontar tags e branches sem aviso, o que abre caminho para ataques à
+      cadeia de suprimentos (como nos comprometimentos de trivy-action e
+      kics-github-action). Fixe a referência pelo SHA completo de 40
+      caracteres, por exemplo
+      `uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608`.
+    severity: WARNING
+    languages: [yaml]
+    patterns:
+      - pattern-inside: "{steps: ...}"
+      - pattern: |
+          uses: "$ACTION"
+      - metavariable-pattern:
+          metavariable: $ACTION
+          language: generic
+          patterns:
+            - pattern-not-regex: '^\./'
+            - pattern-not-regex: '^docker://'
+            - pattern-not-regex: '@[0-9a-f]{40}(\s|$)'
+            - pattern-not-regex: '^(?i:prefeitura-rio/actions)(/[^@\s]*)?@'
+    metadata:
+      category: security
+      cwe:
+        - "CWE-1357: Reliance on Insufficiently Trustworthy Component"
+        - "CWE-353: Missing Support for Integrity Check"
+      owasp: ["A08:2021 - Software and Data Integrity Failures"]
+      references:
+        - https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions#using-third-party-actions
+      confidence: HIGH
