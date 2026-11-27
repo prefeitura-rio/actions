@@ -169,7 +169,7 @@ run_strlint() {
     rm -f "$repo_config"
     echo "Repo-local ast-grep rules passed."
   else
-    echo "No repo-local sgconfig.yaml or rules/ found - skipping."
+    echo "No repo-local ast-grep rules found - skipping."
   fi
 }
 
