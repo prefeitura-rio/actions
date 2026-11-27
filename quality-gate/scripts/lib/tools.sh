@@ -50,3 +50,41 @@ qg_install_ast_grep() {
   unzip -p "$output" ast-grep > "$target"
   chmod +x "$target"
 }
+
+# Prints the ast-grep project configuration that `ast-grep scan` without
+# --config loads from the current directory: the nearest sgconfig.yml or
+# sgconfig.yaml in it or in one of its parents. Returns 1 when there is none.
+qg_find_ast_grep_project_config() {
+  local dir=$PWD
+  local name
+  while true; do
+    for name in sgconfig.yml sgconfig.yaml; do
+      if [[ -f "$dir/$name" ]]; then
+        printf '%s\n' "$dir/$name"
+        return 0
+      fi
+    done
+    if [[ "$dir" == / ]]; then
+      return 1
+    fi
+    dir=$(dirname -- "$dir")
+  done
+}
+
+# Succeeds when the project root selects the repository-local `ast-grep scan`:
+# a root sgconfig.yaml, or a root rules/ directory that ast-grep can load
+# through a project configuration. A rules/ directory without one is not
+# ast-grep rules (ast-grep would refuse to scan), so it is reported and the
+# .quality-gate/ configuration, when present, is used instead.
+qg_root_ast_grep_rules_selected() {
+  if [[ -f sgconfig.yaml ]]; then
+    return 0
+  fi
+  if [[ -d rules ]]; then
+    if qg_find_ast_grep_project_config > /dev/null; then
+      return 0
+    fi
+    echo "rules/ has no ast-grep project configuration (sgconfig.yml or sgconfig.yaml) - not treated as ast-grep rules."
+  fi
+  return 1
+}

@@ -514,4 +514,55 @@ for script in \
   assert_equal "Unknown check: invalid" "$(<"$ERROR_FILE")" "$(basename "$(dirname "$script")") check contract"
 done
 
+# shellcheck disable=SC1091
+source "$ROOT/scripts/lib/tools.sh"
+RULES_DIR="$TEMP_DIR/strlint-rules"
+
+root_rules_selected() {
+  (cd -- "$1" && qg_root_ast_grep_rules_selected)
+}
+
+mkdir -p "$RULES_DIR/unrelated/rules"
+printf 'roles:\n  admin: [read]\n' > "$RULES_DIR/unrelated/rules/authz.yaml"
+if output=$(root_rules_selected "$RULES_DIR/unrelated"); then
+  fail "rules/ without an ast-grep project configuration should not select the repository-local scan"
+fi
+assert_contains "$output" "rules/ has no ast-grep project configuration" "unrelated rules/ notice"
+
+mkdir -p "$RULES_DIR/none"
+if output=$(root_rules_selected "$RULES_DIR/none"); then
+  fail "a project without sgconfig.yaml or rules/ should not select the repository-local scan"
+fi
+assert_equal "" "$output" "project without repository-local rules is silent"
+
+mkdir -p "$RULES_DIR/root-yaml"
+printf 'ruleDirs:\n  - lint\n' > "$RULES_DIR/root-yaml/sgconfig.yaml"
+root_rules_selected "$RULES_DIR/root-yaml" > /dev/null ||
+  fail "root sgconfig.yaml should select the repository-local scan"
+
+mkdir -p "$RULES_DIR/root-yml/rules"
+printf 'ruleDirs:\n  - rules\n' > "$RULES_DIR/root-yml/sgconfig.yml"
+root_rules_selected "$RULES_DIR/root-yml" > /dev/null ||
+  fail "rules/ with a root sgconfig.yml should select the repository-local scan"
+
+mkdir -p "$RULES_DIR/parent/service/rules"
+printf 'ruleDirs:\n  - lint\n' > "$RULES_DIR/parent/sgconfig.yaml"
+root_rules_selected "$RULES_DIR/parent/service" > /dev/null ||
+  fail "rules/ with a parent sgconfig.yaml should select the repository-local scan"
+assert_equal \
+  "$RULES_DIR/parent/sgconfig.yaml" \
+  "$(cd -- "$RULES_DIR/parent/service" && qg_find_ast_grep_project_config)" \
+  "nearest ast-grep project configuration"
+
+for script in \
+  "$ROOT/go/scripts/check.sh" \
+  "$ROOT/python/scripts/check.sh" \
+  "$ROOT/typescript/scripts/check.sh"; do
+  grep -q '^  if qg_root_ast_grep_rules_selected; then$' "$script" ||
+    fail "$script should select the repository-local scan with qg_root_ast_grep_rules_selected"
+  if grep -q -- '-d rules ]]' "$script"; then
+    fail "$script should not select the repository-local scan by the rules/ directory name alone"
+  fi
+done
+
 printf 'portable quality-gate script tests passed\n'

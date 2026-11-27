@@ -1,0 +1,8 @@
+# Authorization policy, unrelated to ast-grep: a root rules/ directory without
+# an ast-grep project configuration must not select the repository-local scan.
+roles:
+  admin:
+    - read
+    - write
+  viewer:
+    - read

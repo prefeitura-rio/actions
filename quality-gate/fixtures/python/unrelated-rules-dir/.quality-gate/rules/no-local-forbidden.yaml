@@ -1,0 +1,6 @@
+id: no-local-forbidden
+language: Python
+severity: error
+message: Repository-local Python rule was executed.
+rule:
+  pattern: local_forbidden()

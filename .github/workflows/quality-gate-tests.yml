@@ -1368,6 +1368,41 @@ jobs:
             exit 1
           }
 
+  unrelated-rules-dir:
+    name: unrelated rules/ / ${{ matrix.language }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [go, python, typescript]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: run fixture with a root rules/ unrelated to ast-grep
+        id: unrelated-rules
+        uses: ./quality-gate
+        with:
+          check: app:strlint
+          working-directory: quality-gate/fixtures/${{ matrix.language }}/unrelated-rules-dir
+          expected-failure: true
+        continue-on-error: true
+      - name: assert .quality-gate rules ran instead of a scan without configuration
+        env:
+          ERROR_MESSAGE: ${{ steps.unrelated-rules.outputs.error_message }}
+        run: |
+          [[ "${{ steps.unrelated-rules.outcome }}" == "failure" ]] || {
+            echo "::error::Expected the .quality-gate ${{ matrix.language }} rule to fail"
+            exit 1
+          }
+          [[ "$ERROR_MESSAGE" == *"no-local-forbidden"* ]] || {
+            echo "::error::Expected .quality-gate rule no-local-forbidden to be reported"
+            exit 1
+          }
+          [[ "$ERROR_MESSAGE" != *"No ast-grep project configuration"* ]] || {
+            echo "::error::A root rules/ without sgconfig should not run ast-grep scan without configuration"
+            exit 1
+          }
+
   mandatory-policy-rules:
     name: mandatory policy / ${{ matrix.rule }}
     runs-on: ubuntu-latest

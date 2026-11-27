@@ -275,6 +275,9 @@ over the organization fallback. Formatting uses pinned tool defaults. Structural
 lint always runs organization rules first, then the selected additive
 repository-local rules from `sgconfig.yaml`, `rules/`, or `.quality-gate/`.
 Root-level `sgconfig.yaml` or `rules/` takes precedence over `.quality-gate/`.
+A root `rules/` counts only when ast-grep finds a project configuration
+(`sgconfig.yml` or `sgconfig.yaml` in the project directory or a parent);
+without one it is not treated as ast-grep rules and is ignored.
 
 Organization fallback files are stored beside the language adapters:
 
