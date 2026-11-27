@@ -93,6 +93,7 @@ match the project's markers (rejected) and by requesting the correct language
 | `language-override-rejected` | Explicit `language` input is validated against detected markers |
 | `language-override-accepted` | Explicit `language` input works when it matches |
 | `repo-local-rules` | Repository-local ast-grep rules are detected and enforced |
+| `unrelated-rules-dir` | A root `rules/` without an ast-grep project configuration is ignored and `.quality-gate/` rules still run |
 | `mandatory-policy-rules` | Mandatory org rules (no-panic, no-eval, etc.) fail on violations |
 | `polyglot-project-paths` | Polyglot subdirectories route to correct language action |
 | `error-no-language` | Empty directory fails with expected error |

@@ -1,0 +1,6 @@
+id: no-local-forbidden
+language: Go
+severity: error
+message: Repository-local Go rule was executed.
+rule:
+  pattern: localForbidden()

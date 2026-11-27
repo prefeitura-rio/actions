@@ -1,0 +1,3 @@
+function localForbidden(): void {}
+
+localForbidden();

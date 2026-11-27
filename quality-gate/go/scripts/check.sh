@@ -155,7 +155,7 @@ run_strlint() {
   trap - EXIT
   echo "Org-wide ast-grep rules passed."
 
-  if [[ -f sgconfig.yaml || -d rules ]]; then
+  if qg_root_ast_grep_rules_selected; then
     ast-grep scan
     echo "Repo-local ast-grep rules passed."
   elif [[ -f .quality-gate/sgconfig.yaml ]]; then
